@@ -78,6 +78,7 @@ def build(trader_release: bool = False):
     trader_app = stage_trader_app(trader_release)
     version = get_version(trader_app)
     build_name = f'Tradeopss_v{version}' if trader_release else f'TradeopssAI_v{version}'
+    macos_tradovate_only = sys.platform == 'darwin'
 
     print("Cleaning build directories...")
     for d in [DIST_DIR, BUILD_DIR]:
@@ -101,12 +102,15 @@ def build(trader_release: bool = False):
         f'--add-data={CONNECTORS_SRC}{os.pathsep}connectors',
     ]
 
-    for module in [
+    modules = [
         'mt5_trading.py', 'mt5_symbol_policy.py', 'mt5_market_feed.py', 'tradovate.py',
         'topstepx.py', 'prop_firm_manager.py', 'trade_limit_manager.py',
         'broker_selection.py', 'mt5_dashboard_sync.py', 'mt5_comment_parser.py',
         'fundednext.py',
-    ]:
+    ]
+    if macos_tradovate_only:
+        modules = [module for module in modules if not module.startswith('mt5_')]
+    for module in modules:
         src = os.path.join(TRADER_COMPANION_DIR, module)
         if os.path.exists(src):
             data_args.append(f'--add-data={src}{os.pathsep}trader_companion')
@@ -123,8 +127,10 @@ def build(trader_release: bool = False):
         if os.path.isdir(src_dir):
             data_args.append(f'--add-data={src_dir}{os.pathsep}trader_companion/{subdir}')
 
-    collect_all = ['MetaTrader5', 'numpy', 'pandas', 'selenium', 'certifi', 'playwright',
+    collect_all = ['numpy', 'pandas', 'selenium', 'certifi', 'playwright',
                    'customtkinter', 'darkdetect']
+    if not macos_tradovate_only:
+        collect_all.insert(0, 'MetaTrader5')
     if not trader_release:
         collect_all.extend(['scipy', 'sklearn', 'joblib'])
 
@@ -176,10 +182,11 @@ def build(trader_release: bool = False):
     print("Running command:", " ".join(cmd))
     try:
         subprocess.run(cmd, check=True)
-        exe_path = os.path.join(DIST_DIR, f'{build_name}.exe')
-        print(f"\nBuild SUCCESS! output: {exe_path}")
-        if os.path.isfile(exe_path):
-            size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+        output_name = f'{build_name}.app' if macos_tradovate_only else f'{build_name}.exe'
+        output_path = os.path.join(DIST_DIR, output_name)
+        print(f"\nBuild SUCCESS! output: {output_path}")
+        if os.path.exists(output_path):
+            size_mb = os.path.getsize(output_path) / (1024 * 1024) if os.path.isfile(output_path) else 0
             print(f"Size: {size_mb:.1f} MB")
     except subprocess.CalledProcessError as e:
         print(f"\nBuild FAILED: {e}")

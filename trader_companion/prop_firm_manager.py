@@ -36,8 +36,13 @@ class PropFirmManager:
     - TopStep: TopStep
     - Trade Day: Trade Day (EOD Account Type)
     - Tradeify: Tradeify (Growth Account)
+    - Tradeify Select: Tradeify Select 50K (50% consistency add-on)
+    - Blue Guardian Reserve: Blue Guardian Reserve 50K (5-payout spend-down chain)
     - Top One Futures: Top One Futures
     - Funded Futures Family: Funded Futures Family ($50k EOD drawdown)
+    - FTMO Futures: Growth plan ($50k Tradovate account)
+    - FTMO Futures Pro: Pro plan ($50k Tradovate account, no hedge, 90/10 split)
+    - FundedNext Rapid Daily: Rapid Daily 50K ($4,000 first funded target, no hedge)
     
     All configurations are for $50,000 accounts and manual trading only.
     """
@@ -68,6 +73,12 @@ class PropFirmManager:
         "Goat Funded Futures": "GoatFunded",
         "GoatFunded": "GoatFunded",
         "GFF": "GoatFunded",
+        "FTMO Futures": "FTMO Futures",
+        "FTMO": "FTMO Futures",
+        "FTMO Futures Pro": "FTMO Futures Pro",
+        "FundedNext Rapid Daily": "FundedNext Rapid Daily",
+        "Tradeify Select": "Tradeify Select",
+        "Blue Guardian Reserve": "Blue Guardian Reserve",
     }
 
     def __init__(self):
@@ -2027,6 +2038,410 @@ class PropFirmManager:
             self.firm_blueprints["Funded Next"]["strategy_configs"]["farming"]["50k"]
         )
 
+        # FTMO Futures Growth, $50k Tradovate plan. Evaluation requires
+        # $3,000 profit with a $2,000 EOD drawdown and 40% consistency rule.
+        # Sim-Funded retains the $2,000 drawdown and adds a $1,000 daily-loss
+        # limit. Challenge stages target $1,510 and use the full $2,000 EOD
+        # risk budget; funded stages retain a $1,000 target and daily-loss
+        # stop. Farming continues to use MNQ only.
+        self.firm_blueprints["FTMO Futures"] = {
+            "name": "FTMO Futures Growth",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Challenge Phase", "Sim-Funded Phase", "Farming Phase"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "evaluation_profit_target": 3000,
+                "evaluation_max_drawdown": 2000,
+                "evaluation_drawdown_mode": "EOD",
+                "evaluation_consistency_limit_percent": 40,
+                "sim_funded_max_drawdown": 2000,
+                "sim_funded_daily_loss_limit": 1000,
+                "max_mini_contracts": 5,
+                "payout_cycle_days": 4,
+                "minimum_payout": 150,
+                "profit_split_percent": 90,
+            },
+            "strategy_configs": {
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 400,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "challenge_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 400,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade3": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade4": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "farming": {"50k": {
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 1000, "tradovate_sl_ticks": 500,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
+        # FundedNext Rapid Daily, $50k Tradovate plan. $4,000 first funded
+        # target, no hedge, no reactivation. All trades use 2 NQ minis
+        # ($10/tick). Evaluation goal $53,000; each funded cycle requests a
+        # $1,200 gross payout at eligible EOD. A recovery attempt follows any
+        # non-fatal stop loss; a second/third loss (per cycle) reaches that
+        # cycle's hard floor and ends the account (no funded reactivation).
+        self.firm_blueprints["FundedNext Rapid Daily"] = {
+            "name": "FundedNext Rapid Daily 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Cycle 1", "Funded Cycle 2",
+                                "Funded Cycle 3", "Funded Cycle 4", "Funded Cycle 5"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "first_funded_target": 4000,
+                "hedge_allowed": False,
+                "reactivation_allowed": False,
+                "entry_cost_assumption": 159.99,
+                "ev_per_challenge": 258.57,
+                "expected_trading_days": 3.0249,
+                "ev_per_day": 85.48,
+                "first_payout_probability_percent": 13.33,
+                "evaluation_hard_floor": 48000,
+                "cycle1_hard_floor": 48000,
+                "cycle2_5_hard_floor": 50100,
+                "payout_request_gross": 1200,
+            },
+            "strategy_configs": {
+                # Evaluation Phase — goal $53,000 (start $50,000)
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "challenge_trade1_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Cycle 1 — goal $54,000 (start $50,000)
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade1_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Cycle 2 — goal $53,300; 3 escalating attempts
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 50, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade2_recovery1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade2_recovery2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 250, "tradovate_sl_ticks": 70,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Cycles 3-5 — goal $53,300 each; same structure repeats
+                "funded_trade3": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade3_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade4": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade4_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade5": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade5_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
+        # FTMO Futures Pro, $50k Tradovate plan. No hedge, 90/10 split, $139/mo
+        # + $129/reset. Evaluation: repeat 1 NQ mini daily to $53,000 (hard
+        # $1,000 DLL kept $50 clear via a $950 SL; $3,000 max drawdown floor
+        # trails the highest close but never above $50,000). Funded: 2-mini
+        # build/recovery to $56,000, a 1-mini cleanup leg, 5 qualifying days
+        # on 3 MNQ, then a $5,000 gross payout (~$4,500 net) before repeating
+        # Funded Trade 2 for subsequent payouts. TP is capped at 600 ticks
+        # throughout; dynamic recompute (final eval leg, cleanup TP, floor
+        # room) is documented in `rules` — not modelled per-tick here.
+        self.firm_blueprints["FTMO Futures Pro"] = {
+            "name": "FTMO Futures Pro 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Challenge Phase", "Funded Phase", "Qualifying Days", "Payout Cycle"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "monthly_fee": 139,
+                "reset_fee": 129,
+                "profit_split_percent": 90,
+                "hedge_allowed": False,
+                "tp_cap_ticks": 600,
+                "evaluation_goal": 53000,
+                "evaluation_consistency_limit_percent": 50,
+                "evaluation_daily_loss_limit": 1000,
+                "evaluation_max_drawdown": 3000,
+                "evaluation_final_leg_tp_ticks_formula": "remaining_to_goal / 5",
+                "evaluation_floor_formula": "max(highest_close - 3000, cap 50000)",
+                "funded_build_goal": 56000,
+                "funded_daily_loss_limit": 1000,
+                "funded_floor_locked_at": 50000,
+                "cleanup_tp_ticks_formula": "(56000 - balance) / 5",
+                "qualifying_days_required": 5,
+                "qualifying_day_threshold": 200,
+                "payout_cap_gross": 5000,
+                "payout_net_approx": 4500,
+                "max_concurrent_accounts_per_kyc": 3,
+            },
+            "strategy_configs": {
+                # Evaluation — repeat daily until balance = $53,000
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 190,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 1 — Build (goal $56,000)
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 600, "tradovate_sl_ticks": 95,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 1R — Recovery (repeat up to twice)
+                "funded_trade1_recovery": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 600, "tradovate_sl_ticks": 95,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 1C — Cleanup; TP recomputed from live balance,
+                # values below are the $55,050 example from the spec.
+                "funded_trade1_cleanup": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 190, "tradovate_sl_ticks": 190,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Qualifying Days — need 5 days at $200+ before any payout
+                "qualifying_day": {"50k": {
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 3,
+                    "tradovate_tp_ticks": 138, "tradovate_sl_ticks": 600,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 2 — repeats for payouts 2, 3, 4...
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 95,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
+        # Tradeify Select 50K, $205 challenge ($165 base + $40 50% consistency
+        # add-on). Evaluation is a fixed 2-day target (day 2 TP must match
+        # day 1 exactly so each day is 50% of total profit — documented in
+        # `rules`, not modelled per-tick). Funded build runs 4 cycles into 5
+        # qualifying farming days ($150 min/day) before each payout; the
+        # floor locks permanently at $50,100 after the first payout.
+        self.firm_blueprints["Tradeify Select"] = {
+            "name": "Tradeify Select 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "challenge_fee": 205,
+                "challenge_base_fee": 165,
+                "consistency_addon_fee": 40,
+                "reset_fee": 149,
+                "consistency_rule_percent": 50,
+                "evaluation_profit_target": 3000,
+                "evaluation_eod_trailing_drawdown": 2000,
+                "evaluation_daily_loss_limit": None,
+                "evaluation_max_contracts": 4,
+                "evaluation_day2_tp_formula": "must equal day1 realized profit exactly",
+                "funded_max_payout": 3000,
+                "funded_max_profit": 6000,
+                "funded_eod_drawdown": 2000,
+                "funded_daily_loss_limit": None,
+                "funded_floor_locked_after_first_payout": 50100,
+                "farming_days_required": 5,
+                "farming_min_profit_per_day": 150,
+            },
+            "strategy_configs": {
+                # Evaluation — fixed 2-day target
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "challenge_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded build — 4 cycles, each into Farming on TP
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 540, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 260,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade3": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 245,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade4": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 238,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Qualifying farming — 5 days at $150+ minimum
+                "farming": {"50k": {
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 154, "tradovate_sl_ticks": 600,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
+        # Blue Guardian Reserve 50K. $91/attempt (35% code), no hedge, 90/10
+        # split net of a 3% processing fee ($1,746 net per $2,000 gross
+        # payout, 5-payout spend-down chain, max sim extraction $8,730).
+        # Evaluation is 2 fixed days at +$1,500 each (50% consistency cushion,
+        # no DLL). Funded Trade 1 overshoots to $55,000 so the retained
+        # equity pre-funds Payout 2; the drawdown floor locks at $50,100
+        # after Payout 1. A 1-mini Farming trade harvests the 5 winning days
+        # required before each payout. Payout 5 promotion opens a strict
+        # single-attempt Live phase (documented in `rules`, not a repeatable
+        # stage).
+        self.firm_blueprints["Blue Guardian Reserve"] = {
+            "name": "Blue Guardian Reserve 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase", "Live Phase"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "attempt_fee": 91,
+                "discount_code_percent": 35,
+                "profit_split_percent": 90,
+                "processing_fee_percent": 3,
+                "net_payout_per_cycle": 1746,
+                "gross_payout_per_cycle": 2000,
+                "payout_chain_total": 5,
+                "max_sim_extraction": 8730,
+                "reactivation_default": "OFF",
+                "reactivation_fee": 600,
+                "reactivation_max_per_30_days": 2,
+                "evaluation_consistency_percent": 50,
+                "evaluation_daily_loss_limit": None,
+                "funded_daily_loss_limit": None,
+                "funded_floor_locked_after_payout1": 50100,
+                "farming_days_required": 5,
+                "farming_min_profit_per_day": 150,
+                "payout2_5_min_net_profit_since_last_payout": 750,
+                "live_start_balance": 0,
+                "live_eod_drawdown": 2000,
+                "live_bonus_credit": 2000,
+                "live_breach_cooldown_weeks": 2,
+            },
+            "strategy_configs": {
+                # Evaluation — 2 fixed days, +$1,500 each
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 400,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "challenge_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 400,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 1 — overshoot to $55,000
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trade 2 — wide SL funded by Payout 1's retained equity
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 100, "tradovate_sl_ticks": 290,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Funded Trades 3-5 — identical stage, repeats through Payout 5
+                "funded_trade3": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade4": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                "funded_trade5": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Farming — post-TP buffer, run until 5 winning days are logged
+                "farming": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 31, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+                # Live Session 1 — post-Payout-5 promotion, single attempt
+                "live_trade1": {"50k": {
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 210, "tradovate_sl_ticks": 200,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
         # Every prop supports 50k, 100k, and 150k blueprints. Farming keeps
         # its 50k lot sizes; all other phases scale lots by account size.
         for firm_info in self.firm_blueprints.values():
@@ -2085,6 +2500,8 @@ class PropFirmManager:
             return "Funded Futures Family"
         elif any(prefix.startswith(var) for var in ["GFFU", "GFFF"]):
             return "GoatFunded"
+        elif any(prefix.startswith(var) for var in ["FTMO"]):
+            return "FTMO Futures"
         
         self.logger.warning(f"Unknown prefix '{prefix}' from account '{username}' — prop firm not recognized")
         return None
@@ -2114,6 +2531,17 @@ class PropFirmManager:
             normalized_code = "The5ers"
         elif firm_code in ("Goat Funded Futures", "Goat Funded", "GFF"):
             normalized_code = "GoatFunded"
+        elif firm_code in ("FTMO", "FTMO Futures", "FTMO Futures Growth"):
+            normalized_code = "FTMO Futures"
+        elif firm_code in ("FTMO Futures Pro", "FTMO Pro", "FTMO Futures Pro 50K", "FTMO Pro 50K"):
+            normalized_code = "FTMO Futures Pro"
+        elif firm_code in ("FundedNext Rapid Daily", "FundedNext Rapid Daily 50K",
+                           "Funded Next Rapid Daily", "FN Rapid Daily", "Rapid Daily"):
+            normalized_code = "FundedNext Rapid Daily"
+        elif firm_code in ("Tradeify Select", "Tradeify Select 50K"):
+            normalized_code = "Tradeify Select"
+        elif firm_code in ("Blue Guardian Reserve", "Blue Guardian Reserve 50K", "Blue Guardian", "BGR"):
+            normalized_code = "Blue Guardian Reserve"
         elif firm_code == "TopOneFutures":
             normalized_code = "Top One Futures"
         elif firm_code in ("MFFU", "My Funded Futures"):
@@ -2148,6 +2576,16 @@ class PropFirmManager:
                 return self.firm_blueprints["Funded Futures Family"]
             if "goatfunded" in compact or "goatfund" in compact:
                 return self.firm_blueprints["GoatFunded"]
+            if "ftmofuturespro" in compact or "ftmopro" in compact:
+                return self.firm_blueprints["FTMO Futures Pro"]
+            if "ftmofutures" in compact or compact == "ftmo":
+                return self.firm_blueprints["FTMO Futures"]
+            if "rapiddaily" in compact:
+                return self.firm_blueprints["FundedNext Rapid Daily"]
+            if "tradeifyselect" in compact:
+                return self.firm_blueprints["Tradeify Select"]
+            if "blueguardian" in compact:
+                return self.firm_blueprints["Blue Guardian Reserve"]
 
         self.logger.warning(
             f"get_firm_info: unrecognised firm_code '{firm_code}' — "
@@ -2578,6 +3016,37 @@ class PropFirmManager:
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
             "Farming":   ["farming"],
         },
+        "Tradeify Select": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "Blue Guardian Reserve": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4", "funded_trade5"],
+            "Farming":   ["farming"],
+            "Live":      ["live_trade1"],
+        },
+        "FTMO Futures": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Sim-Funded": ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming": ["farming"],
+        },
+        "FTMO Futures Pro": {
+            "Challenge": ["challenge_trade1"],
+            "Funded":    ["funded_trade1", "funded_trade1_recovery", "funded_trade1_cleanup"],
+            "Qualifying Days": ["qualifying_day"],
+            "Payout Cycle":    ["funded_trade2"],
+        },
+        "FundedNext Rapid Daily": {
+            "Challenge": ["challenge_trade1", "challenge_trade1_recovery"],
+            "Funded":    ["funded_trade1", "funded_trade1_recovery",
+                          "funded_trade2", "funded_trade2_recovery1", "funded_trade2_recovery2",
+                          "funded_trade3", "funded_trade3_recovery",
+                          "funded_trade4", "funded_trade4_recovery",
+                          "funded_trade5", "funded_trade5_recovery"],
+        },
         "Funded Futures Family": {
             "Challenge": ["challenge_trade1", "challenge_trade2"],
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3"],
@@ -2851,6 +3320,11 @@ class PropFirmManager:
         "FundingTicks":     50000.0,
         "TradeDay":         50000.0,
         "Tradeify":         50000.0,
+        "Tradeify Select":  50100.0,
+        "Blue Guardian Reserve": 50100.0,
+        "FTMO Futures":     48000.0,
+        "FTMO Futures Pro": 50000.0,
+        "FundedNext Rapid Daily": 48000.0,
         "AlphaFutures":     50000.0,
         "Apex":             50000.0,
         "Lucid":            50000.0,
@@ -2876,6 +3350,11 @@ class PropFirmManager:
         "TradeDay":         {"Challenge": 3100, "Funded": 5000},
         "AlphaFutures":     {"Challenge": 4040, "Funded": 6000},
         "Tradeify":         {"Challenge": 3060, "Funded": 5400},
+        "Tradeify Select":  {"Challenge": 3000, "Funded": 6000},
+        "Blue Guardian Reserve": {"Challenge": 3000, "Funded": 5000, "Live": 2100},
+        "FTMO Futures":     {"Challenge": 3000, "Funded": 4000, "Sim-Funded": 4000},
+        "FTMO Futures Pro": {"Challenge": 3000, "Funded": 6000},
+        "FundedNext Rapid Daily": {"Challenge": 3000, "Funded": 4000},
         "Apex":             {"Challenge": 7200, "Funded": 2000},
         "Top One Futures":  {"Challenge": 3030, "Funded": 3000},
         "Funded Futures Family": {"Challenge": 3020, "Funded": 5025},

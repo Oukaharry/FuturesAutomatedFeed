@@ -1,6 +1,10 @@
 import sys
 import os
 
+# MetaTrader5's Python API and this app's MT5 terminal integration are Windows
+# only. macOS runs the browser-based Tradovate companion without those paths.
+TRADOVATE_ONLY_MODE = sys.platform == "darwin"
+
 # Fix SSL certificates for PyInstaller-bundled exe (HTTPS connections to production)
 if hasattr(sys, '_MEIPASS'):
     _cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
@@ -20,6 +24,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
 APP_VERSION = "1.11.14"
+COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -254,24 +259,29 @@ try:
 except ImportError:
     CTK_AVAILABLE = False
 
-try:
-    import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
+if TRADOVATE_ONLY_MODE:
+    mt5 = None
+    MT5_AVAILABLE = False
+    print("macOS Tradovate-only mode: MetaTrader5 features are disabled.")
+else:
     try:
-        from trader_companion.signals.price_data import copy_rates_from_pos_cached
-        mt5.copy_rates_from_pos = copy_rates_from_pos_cached
-    except ImportError:
+        import MetaTrader5 as mt5
+        MT5_AVAILABLE = True
         try:
-            from signals.price_data import copy_rates_from_pos_cached
+            from trader_companion.signals.price_data import copy_rates_from_pos_cached
             mt5.copy_rates_from_pos = copy_rates_from_pos_cached
         except ImportError:
-            pass
-except Exception as e:
-    MT5_AVAILABLE = False
-    import traceback
-    _mt5_err = traceback.format_exc()
-    print(f"MetaTrader5 import failed: {type(e).__name__}: {e}")
-    print(_mt5_err)
+            try:
+                from signals.price_data import copy_rates_from_pos_cached
+                mt5.copy_rates_from_pos = copy_rates_from_pos_cached
+            except ImportError:
+                pass
+    except Exception as e:
+        MT5_AVAILABLE = False
+        import traceback
+        _mt5_err = traceback.format_exc()
+        print(f"MetaTrader5 import failed: {type(e).__name__}: {e}")
+        print(_mt5_err)
 
 # Import new comment parser
 try:
@@ -292,16 +302,21 @@ except ImportError:
         print("MT5 Comment Parser module not found.")
 
 # ============ Trading Engine Imports (from TradeAccountConnector) ============
-try:
-    from trader_companion.mt5_trading import MT5API, get_installed_mt5_terminals
-    TRADING_ENGINE_AVAILABLE = True
-except ImportError:
+if TRADOVATE_ONLY_MODE:
+    MT5API = None
+    get_installed_mt5_terminals = None
+    TRADING_ENGINE_AVAILABLE = False
+else:
     try:
-        from mt5_trading import MT5API, get_installed_mt5_terminals
+        from trader_companion.mt5_trading import MT5API, get_installed_mt5_terminals
         TRADING_ENGINE_AVAILABLE = True
     except ImportError:
-        TRADING_ENGINE_AVAILABLE = False
-        MT5API = None
+        try:
+            from mt5_trading import MT5API, get_installed_mt5_terminals
+            TRADING_ENGINE_AVAILABLE = True
+        except ImportError:
+            TRADING_ENGINE_AVAILABLE = False
+            MT5API = None
 
 try:
     from trader_companion.prop_firm_manager import PropFirmManager
@@ -434,64 +449,68 @@ except ImportError:
     except ImportError:
         TradeLimitManager = None
 
-try:
-    from trader_companion.signals.rsi import get_rsi_signal
-    from trader_companion.signals.macd import get_macd_signal
-    from trader_companion.signals.stochastic import get_stochastic_signal
-    from trader_companion.signals.cci import get_cci_signal
-    from trader_companion.signals.supertrend import get_supertrend_signal
-    from trader_companion.signals.momentum import get_momentum_signal
-    from trader_companion.signals.bb import get_bb_signal
-    from trader_companion.signals.sma import get_sma_signal
-    from trader_companion.signals.ema import get_ema_signal
-    from trader_companion.signals.dmi import get_dmi_signal
-    from trader_companion.signals.mfi import get_mfi_signal
-    from trader_companion.signals.roc import get_roc_signal
-    from trader_companion.signals.sar import get_sar_signal
-    from trader_companion.signals.tsi import get_tsi_signal
-    from trader_companion.signals.wr import get_wr_signal
-    from trader_companion.signals.donchian_channel import get_donchian_channel_signal
-    from trader_companion.signals.price_channel import get_price_channel_signal
-    from trader_companion.signals.keltner_channel import get_keltner_channel_signal
-    from trader_companion.signals.vortex import get_vortex_signal
-    from trader_companion.signals.cmo import get_cmo_signal
-    from trader_companion.signals.coppock_curve import get_coppock_curve_signal
-    from trader_companion.signals.ultimate_oscillator import get_ultimate_oscillator_signal
-    from trader_companion.signals.elder_ray import get_elder_ray_signal
-    from trader_companion.signals.gator_oscillator import get_gator_oscillator_signal
-    from trader_companion.signals.fractal import get_fractal_signal
-    SIGNALS_AVAILABLE = True
-except ImportError:
+if TRADOVATE_ONLY_MODE:
+    SIGNALS_AVAILABLE = False
+    get_rsi_signal = None
+else:
     try:
-        from signals.rsi import get_rsi_signal
-        from signals.macd import get_macd_signal
-        from signals.stochastic import get_stochastic_signal
-        from signals.cci import get_cci_signal
-        from signals.supertrend import get_supertrend_signal
-        from signals.momentum import get_momentum_signal
-        from signals.bb import get_bb_signal
-        from signals.sma import get_sma_signal
-        from signals.ema import get_ema_signal
-        from signals.dmi import get_dmi_signal
-        from signals.mfi import get_mfi_signal
-        from signals.roc import get_roc_signal
-        from signals.sar import get_sar_signal
-        from signals.tsi import get_tsi_signal
-        from signals.wr import get_wr_signal
-        from signals.donchian_channel import get_donchian_channel_signal
-        from signals.price_channel import get_price_channel_signal
-        from signals.keltner_channel import get_keltner_channel_signal
-        from signals.vortex import get_vortex_signal
-        from signals.cmo import get_cmo_signal
-        from signals.coppock_curve import get_coppock_curve_signal
-        from signals.ultimate_oscillator import get_ultimate_oscillator_signal
-        from signals.elder_ray import get_elder_ray_signal
-        from signals.gator_oscillator import get_gator_oscillator_signal
-        from signals.fractal import get_fractal_signal
+        from trader_companion.signals.rsi import get_rsi_signal
+        from trader_companion.signals.macd import get_macd_signal
+        from trader_companion.signals.stochastic import get_stochastic_signal
+        from trader_companion.signals.cci import get_cci_signal
+        from trader_companion.signals.supertrend import get_supertrend_signal
+        from trader_companion.signals.momentum import get_momentum_signal
+        from trader_companion.signals.bb import get_bb_signal
+        from trader_companion.signals.sma import get_sma_signal
+        from trader_companion.signals.ema import get_ema_signal
+        from trader_companion.signals.dmi import get_dmi_signal
+        from trader_companion.signals.mfi import get_mfi_signal
+        from trader_companion.signals.roc import get_roc_signal
+        from trader_companion.signals.sar import get_sar_signal
+        from trader_companion.signals.tsi import get_tsi_signal
+        from trader_companion.signals.wr import get_wr_signal
+        from trader_companion.signals.donchian_channel import get_donchian_channel_signal
+        from trader_companion.signals.price_channel import get_price_channel_signal
+        from trader_companion.signals.keltner_channel import get_keltner_channel_signal
+        from trader_companion.signals.vortex import get_vortex_signal
+        from trader_companion.signals.cmo import get_cmo_signal
+        from trader_companion.signals.coppock_curve import get_coppock_curve_signal
+        from trader_companion.signals.ultimate_oscillator import get_ultimate_oscillator_signal
+        from trader_companion.signals.elder_ray import get_elder_ray_signal
+        from trader_companion.signals.gator_oscillator import get_gator_oscillator_signal
+        from trader_companion.signals.fractal import get_fractal_signal
         SIGNALS_AVAILABLE = True
     except ImportError:
-        SIGNALS_AVAILABLE = False
-        get_rsi_signal = None
+        try:
+            from signals.rsi import get_rsi_signal
+            from signals.macd import get_macd_signal
+            from signals.stochastic import get_stochastic_signal
+            from signals.cci import get_cci_signal
+            from signals.supertrend import get_supertrend_signal
+            from signals.momentum import get_momentum_signal
+            from signals.bb import get_bb_signal
+            from signals.sma import get_sma_signal
+            from signals.ema import get_ema_signal
+            from signals.dmi import get_dmi_signal
+            from signals.mfi import get_mfi_signal
+            from signals.roc import get_roc_signal
+            from signals.sar import get_sar_signal
+            from signals.tsi import get_tsi_signal
+            from signals.wr import get_wr_signal
+            from signals.donchian_channel import get_donchian_channel_signal
+            from signals.price_channel import get_price_channel_signal
+            from signals.keltner_channel import get_keltner_channel_signal
+            from signals.vortex import get_vortex_signal
+            from signals.cmo import get_cmo_signal
+            from signals.coppock_curve import get_coppock_curve_signal
+            from signals.ultimate_oscillator import get_ultimate_oscillator_signal
+            from signals.elder_ray import get_elder_ray_signal
+            from signals.gator_oscillator import get_gator_oscillator_signal
+            from signals.fractal import get_fractal_signal
+            SIGNALS_AVAILABLE = True
+        except ImportError:
+            SIGNALS_AVAILABLE = False
+            get_rsi_signal = None
 
 # ML + deep-learning direction engine (gradient boosting + neural net).
 # Optional: requires scikit-learn; the AI degrades gracefully without it.
@@ -1807,9 +1826,13 @@ class TradeOpssAIApp:
         "TopStep RTP":      "#EA580C",   # amber-orange — child of Topstep, distinct from standard red
         "Apex":             "#E67E22",
         "Funded Next":      "#E91E63",
+        "FundedNext Rapid Daily": "#F472B6",
+        "FTMO Futures Pro": "#0EA5E9",
         "FundingTicks":     "#F1C40F",
         "TradeDay":         "#9B59B6",
         "Tradeify":         "#1ABC9C",
+        "Tradeify Select":  "#14B8A6",
+        "Blue Guardian Reserve": "#2563EB",
         "Alpha Futures":    "#2980B9",
         "Top One Futures": "#0D9488",
         "Funded Futures Family": "#7C3AED",
@@ -1882,7 +1905,7 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
-        self.pusher = MT5DataPusher()
+        self.pusher = None if TRADOVATE_ONLY_MODE else MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
         self._auto_push_first_run = True
@@ -2025,7 +2048,8 @@ class TradeOpssAIApp:
             except requests.exceptions.ConnectionError:
                 self.root.after(0, lambda: self._login_fail("Cannot connect to server"))
             except Exception as e:
-                self.root.after(0, lambda: self._login_fail(str(e)))
+                error_message = str(e)
+                self.root.after(0, lambda m=error_message: self._login_fail(m))
 
         threading.Thread(target=_check, daemon=True).start()
 
@@ -4975,41 +4999,42 @@ class TradeOpssAIApp:
     def _build_trading_engine_ui(self, parent):
         """Build the Trading Engine section with CTk styled cards."""
 
-        # ── MT5 Connection Card ──
-        mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
-        mt5_card.pack(fill="x", padx=4, pady=(4, 2))
+        if not TRADOVATE_ONLY_MODE:
+            # ── MT5 Connection Card ──
+            mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
+            mt5_card.pack(fill="x", padx=4, pady=(4, 2))
 
-        mt5_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
-                  tk.Frame(mt5_card, bg="#161B22")
-        mt5_row.pack(fill="x", padx=10, pady=(2, 2))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Login:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_login = self._ctk_entry(mt5_row, width=120)
-        self.mt5_login.pack(side="left", padx=(0, 8))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Pass:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_password = self._ctk_entry(mt5_row, width=120, show="*")
-        self.mt5_password.pack(side="left", padx=(0, 8))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Server:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_server = self._ctk_entry(mt5_row, width=160)
-        self.mt5_server.pack(side="left", padx=(0, 8))
-
-        mt5_btn_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
+            mt5_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
                       tk.Frame(mt5_card, bg="#161B22")
-        mt5_btn_row.pack(fill="x", padx=10, pady=(0, 4))
-        self.mt5_btn = self._ctk_button(mt5_btn_row, text="Connect MT5",
-                                        command=self.toggle_mt5_connection,
-                                        fg="#24292F", hover="#000000", width=140)
-        self.mt5_btn.pack(side="left")
+            mt5_row.pack(fill="x", padx=10, pady=(2, 2))
 
-        if not TRADING_ENGINE_AVAILABLE:
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(mt5_row, text="Login:", font=("Segoe UI", 11),
+                             text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.mt5_login = self._ctk_entry(mt5_row, width=120)
+            self.mt5_login.pack(side="left", padx=(0, 8))
+
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(mt5_row, text="Pass:", font=("Segoe UI", 11),
+                             text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.mt5_password = self._ctk_entry(mt5_row, width=120, show="*")
+            self.mt5_password.pack(side="left", padx=(0, 8))
+
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(mt5_row, text="Server:", font=("Segoe UI", 11),
+                             text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.mt5_server = self._ctk_entry(mt5_row, width=160)
+            self.mt5_server.pack(side="left", padx=(0, 8))
+
+            mt5_btn_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
+                          tk.Frame(mt5_card, bg="#161B22")
+            mt5_btn_row.pack(fill="x", padx=10, pady=(0, 4))
+            self.mt5_btn = self._ctk_button(mt5_btn_row, text="Connect MT5",
+                                            command=self.toggle_mt5_connection,
+                                            fg="#24292F", hover="#000000", width=140)
+            self.mt5_btn.pack(side="left")
+
+        if not TRADOVATE_ONLY_MODE and not TRADING_ENGINE_AVAILABLE:
             if CTK_AVAILABLE:
                 ctk.CTkLabel(mt5_card, text="Trading engine modules not loaded — broker trading unavailable.",
                              font=("Segoe UI", 9, "italic"), text_color=self.C_GOLD,
@@ -5029,7 +5054,7 @@ class TradeOpssAIApp:
             ctk.CTkLabel(bk_global, text="Platform:", font=("Segoe UI", 11),
                          text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
         self.broker_var = tk.StringVar(value="Tradovate")
-        platforms = ["Tradovate", "TopStepX"]
+        platforms = ["Tradovate"] if TRADOVATE_ONLY_MODE else ["Tradovate", "TopStepX"]
         if CTK_AVAILABLE:
             ctk.CTkComboBox(bk_global, variable=self.broker_var, values=platforms,
                             state="readonly", width=120, height=30,
@@ -5082,8 +5107,14 @@ class TradeOpssAIApp:
                    tk.Frame(parent)
         opts_row.pack(fill="x", padx=10, pady=(2, 2))
 
-        self.hedge_mode_var = tk.StringVar(value="Hedging")
-        if CTK_AVAILABLE:
+        self.hedge_mode_var = tk.StringVar(value="BrokerOnly" if TRADOVATE_ONLY_MODE else "Hedging")
+        if TRADOVATE_ONLY_MODE:
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(opts_row, text="Tradovate broker trading", font=("Segoe UI", 11),
+                             text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 20))
+            else:
+                ttk.Label(opts_row, text="Tradovate broker trading").pack(side="left", padx=(0, 16))
+        elif CTK_AVAILABLE:
             ctk.CTkRadioButton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
                                value="Hedging", font=("Segoe UI", 11), text_color=self.C_TEXT,
                                fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 12))
@@ -5138,6 +5169,17 @@ class TradeOpssAIApp:
         "TopStep_RTP": "TopStep RTP",
         "TradeDay": "TradeDay",
         "Tradeify": "Tradeify",
+        "Tradeify Select": "Tradeify Select",
+        "Blue Guardian Reserve": "Blue Guardian Reserve",
+        "FTMO": "FTMO Futures",
+        "FTMO Futures": "FTMO Futures",
+        "FTMO Futures Growth": "FTMO Futures",
+        "FTMO Futures Pro": "FTMO Futures Pro",
+        "FTMO Pro": "FTMO Futures Pro",
+        "FTMO Futures Pro 50K": "FTMO Futures Pro",
+        "FundedNext Rapid Daily": "FundedNext Rapid Daily",
+        "FundedNext Rapid Daily 50K": "FundedNext Rapid Daily",
+        "Funded Next Rapid Daily": "FundedNext Rapid Daily",
         "Alpha Futures": "AlphaFutures",
         "Apex": "Apex",
         "Top One Futures": "Top One Futures",
@@ -5203,6 +5245,16 @@ class TradeOpssAIApp:
             return "Funded Futures Family"
         if "goatfunded" in compact or "goat funded" in norm:
             return "GoatFunded"
+        if "ftmofuturespro" in compact or "ftmopro" in compact:
+            return "FTMO Futures Pro"
+        if "ftmofutures" in compact or compact == "ftmo":
+            return "FTMO Futures"
+        if "rapiddaily" in compact:
+            return "FundedNext Rapid Daily"
+        if "tradeifyselect" in compact:
+            return "Tradeify Select"
+        if "blueguardian" in compact:
+            return "Blue Guardian Reserve"
         if "lucidmaxx" in compact or "lucid maxx" in norm:
             return "LucidMaxx"
 
@@ -5214,6 +5266,7 @@ class TradeOpssAIApp:
         "TopStep": "Topstep",
         "Trade Day": "TradeDay",
         "Tradeify": "Tradeify",
+        "FTMO Futures": "FTMO Futures",
         "FundingTicks": "Funding Ticks",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
@@ -5270,6 +5323,11 @@ class TradeOpssAIApp:
         "FundingTicks":     "ACCOUNT_SIZE",
         "TradeDay":         "ACCOUNT_SIZE",
         "Tradeify":         "ACCOUNT_SIZE",
+        "Tradeify Select":  "ACCOUNT_SIZE",
+        "Blue Guardian Reserve": "ACCOUNT_SIZE",
+        "FTMO Futures":     "ACCOUNT_SIZE",
+        "FTMO Futures Pro": "ACCOUNT_SIZE",
+        "FundedNext Rapid Daily": "ACCOUNT_SIZE",
         "AlphaFutures":     "ACCOUNT_SIZE",
         "Apex":             "ACCOUNT_SIZE",
         "Lucid":            "ACCOUNT_SIZE",
@@ -6695,7 +6753,7 @@ class TradeOpssAIApp:
                     mt5_pass = self._cell(mt5_creds.get("password"))
                     mt5_server = self._cell(mt5_creds.get("server"))
 
-                if mt5_login and mt5_pass and mt5_server:
+                if not TRADOVATE_ONLY_MODE and mt5_login and mt5_pass and mt5_server:
                     def _fill_mt5(login=mt5_login, pwd=mt5_pass, srv=mt5_server):
                         # Only fill if fields are currently empty
                         if not self.mt5_login.get().strip():
@@ -7050,6 +7108,8 @@ class TradeOpssAIApp:
         heavy work runs on a background thread — the Tk main loop must never
         block (it froze the app right after scan when run inline).
         """
+        if TRADOVATE_ONLY_MODE:
+            return
         if self.hedge_mode_var.get() != "Hedging":
             self.mt5_free_margin_var.set("")
             return
@@ -11443,6 +11503,8 @@ class TradeOpssAIApp:
 
     def _get_mt5_trading_api(self):
         """Get or create the MT5 trading API from companion's existing MT5 connection."""
+        if TRADOVATE_ONLY_MODE:
+            return None
         if self.trading_api and hasattr(self.trading_api, 'is_connected') and self.trading_api.is_connected():
             return self.trading_api
         # Try to create from companion's MT5 credentials
@@ -15059,7 +15121,7 @@ class TradeOpssAIApp:
                         self.phase_var.set(config['phase'])
                     if config.get('account_size'):
                         self.acct_size_var.set(config['account_size'])
-                    if config.get('hedge_mode'):
+                    if config.get('hedge_mode') and not TRADOVATE_ONLY_MODE:
                         self.hedge_mode_var.set(config['hedge_mode'])
                     if config.get('direction'):
                         self.direction_var.set(config['direction'])
@@ -15138,13 +15200,16 @@ def main():
         print("Tradeopss AI - Console Mode")
         print("=" * 50)
         print("\nGUI not available. Install tkinter to use the graphical interface.")
-        print("\nUsage:")
-        print("  1. Set your API key in the dashboard")
-        print("  2. Use the MT5DataPusher class programmatically")
-        print("\nExample:")
-        print("  pusher = MT5DataPusher('http://localhost:5001', 'your-api-key')")
-        print("  pusher.connect_mt5(login, password, server)")
-        print("  pusher.push_to_dashboard('ClientName', 'AdminName', 'TraderName')")
+        if TRADOVATE_ONLY_MODE:
+            print("\nInstall a Python distribution with Tk support to use Tradovate trading.")
+        else:
+            print("\nUsage:")
+            print("  1. Set your API key in the dashboard")
+            print("  2. Use the MT5DataPusher class programmatically")
+            print("\nExample:")
+            print("  pusher = MT5DataPusher('http://localhost:5001', 'your-api-key')")
+            print("  pusher.connect_mt5(login, password, server)")
+            print("  pusher.push_to_dashboard('ClientName', 'AdminName', 'TraderName')")
 
 
 if __name__ == "__main__":
