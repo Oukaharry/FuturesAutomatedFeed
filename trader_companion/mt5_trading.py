@@ -1092,10 +1092,28 @@ class MT5API:
         info = mt5.symbol_info(symbol)
         if info is None:
             return [mt5.ORDER_FILLING_IOC]
-        fillings = getattr(info, "trade_fillings", None)
-        if not fillings or len(fillings) == 0:
+        filling_flags = getattr(info, "filling_mode", None)
+        if filling_flags is None:
             return [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]
-        return list(fillings)
+
+        filling_flags = int(filling_flags)
+        supported = []
+        # MetaTrader5's Python package exposes ORDER_FILLING_* request values,
+        # but not the SYMBOL_FILLING_* capability constants.  The terminal's
+        # filling_mode bitmask uses FOK=1 and IOC=2.
+        if filling_flags & 2:
+            supported.append(mt5.ORDER_FILLING_IOC)
+        if filling_flags & 1:
+            supported.append(mt5.ORDER_FILLING_FOK)
+
+        # A zero/unknown capability mask is reported by some terminals; retain
+        # the existing multi-mode fallback in that case.
+        if not supported:
+            supported = [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]
+        logging.info(
+            "MT5 filling modes for %s: flags=%s, requests=%s",
+            symbol, filling_flags, supported)
+        return supported
 
     def check_connection_health(self):
         """

@@ -1964,6 +1964,7 @@ class PropFirmManager:
         # an independent clone so values can diverge safely later.
         self.firm_blueprints["Funded Next Flex"] = copy.deepcopy(self.firm_blueprints["Funded Next"])
         self.firm_blueprints["Funded Next Flex"]["name"] = "Funded Next Flex"
+        self.firm_blueprints["Funded Next Flex"]["account_sizes"] = ["$50,000", "$100,000", "$150,000"]
 
         # Funded Next Flex tuning (50k account):
         # - Challenge tuned to ~2.5k cumulative target with 40% consistency-friendly sizing.
@@ -2025,6 +2026,30 @@ class PropFirmManager:
         fn_flex_cfg["farming"]["50k"] = copy.deepcopy(
             self.firm_blueprints["Funded Next"]["strategy_configs"]["farming"]["50k"]
         )
+
+        # Every prop supports 50k, 100k, and 150k blueprints. Farming keeps
+        # its 50k lot sizes; all other phases scale lots by account size.
+        for firm_info in self.firm_blueprints.values():
+            firm_info["account_sizes"] = ["$50,000", "$100,000", "$150,000"]
+            for phase_key, size_map in firm_info.get("strategy_configs", {}).items():
+                base_50k = size_map.get("50k")
+                if not isinstance(base_50k, dict):
+                    continue
+
+                for size_key, multiplier in (("100k", 2), ("150k", 3)):
+                    if size_key in size_map:
+                        continue
+                    size_map[size_key] = copy.deepcopy(base_50k)
+                    if phase_key == "farming":
+                        continue
+
+                    scaled_config = size_map[size_key]
+                    for qty_key in ("tradovate_qty", "topstepx_qty"):
+                        if scaled_config.get(qty_key) is not None:
+                            scaled_config[qty_key] *= multiplier
+                    if scaled_config.get("mt5_volume") is not None:
+                        scaled_config["mt5_volume"] = round(
+                            float(scaled_config["mt5_volume"]) * multiplier, 2)
 
     def detect_prop_firm(self, username: str) -> Optional[str]:
         """Detect prop firm based on username prefix. Returns None if unrecognized."""

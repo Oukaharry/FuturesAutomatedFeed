@@ -19,8 +19,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.15"
-COMPANION_AUTH_PATH = "/api/companion/auth"
+APP_VERSION = "1.11.14"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -6792,7 +6791,7 @@ class TradeOpssAIApp:
                     self.log(
                         f"   📌 Lifecycle row → funded {fu[-8:] if len(fu) > 8 else fu} only "
                         f"(eval {ch[-8:] if len(ch) > 8 else ch} is prior stage — ignored)")
-                sz_raw = ev.get("Account Size", "—")
+                sz_raw = ev.get("Account Size") or ev.get("Size") or "—"
                 acct_size = (str(sz_raw).strip() if sz_raw is not None else "") or "—"
                 current_display, phase_key = self._detect_eval_phase(ev)
                 current_display = str(current_display or "Challenge")
@@ -7428,9 +7427,13 @@ class TradeOpssAIApp:
                 # 1. Broker order
                 if platform == "Tradovate":
                     if side == "buy":
-                        order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                        order_result = broker_account.buy_market(
+                            trado_sym, trado_qty, tp=trado_tp, sl=trado_sl,
+                            account_size=acct_size, expected_account=acct_num)
                     else:
-                        order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                        order_result = broker_account.sell_market(
+                            trado_sym, trado_qty, tp=trado_tp, sl=trado_sl,
+                            account_size=acct_size, expected_account=acct_num)
                 elif platform == "TopStepX":
                     # Account is already selected upstream — don't re-open the slow
                     # dropdown here. place_*_order verifies the selector still matches
@@ -9272,9 +9275,13 @@ class TradeOpssAIApp:
 
                     if platform == "Tradovate":
                         if side == "buy":
-                            order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                            order_result = broker_account.buy_market(
+                                trado_sym, trado_qty, tp=trado_tp, sl=trado_sl,
+                                account_size=acct_size, expected_account=acct_num)
                         else:
-                            order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                            order_result = broker_account.sell_market(
+                                trado_sym, trado_qty, tp=trado_tp, sl=trado_sl,
+                                account_size=acct_size, expected_account=acct_num)
                     elif platform == "AlphaTrader":
                         order_result = broker_account.place_order(
                             trado_sym, side=side, qty=trado_qty,

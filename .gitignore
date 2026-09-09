@@ -73,3 +73,6 @@ dist/
 # Large release binaries
 *.zip
 TradeopssAI_v1.7.1/
+
+# Local companion build executables
+*.exe

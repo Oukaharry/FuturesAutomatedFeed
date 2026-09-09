@@ -3,51 +3,55 @@
  "version": 1,
  "symbol": "ustech",
  "timeframe_minutes": 5,
- "optimized_at": 1787926979.420187,
+ "optimized_at": 1788923956.7695868,
  "n_bars": 6000,
  "horizon": 4,
  "params": {
   "RSI": {
-   "period": 7,
-   "overbought": 80,
-   "oversold": 30
+   "period": 21,
+   "overbought": 70,
+   "oversold": 20
   },
   "Stochastic": {
-   "k_period": 9,
+   "k_period": 21,
    "overbought": 80,
    "oversold": 20
   },
   "MACD": {
-   "fast_period": 8,
+   "fast_period": 12,
    "slow_period": 17,
    "signal_period": 5
   },
   "SMA": {
-   "period": 50
+   "period": 10
   },
   "EMA": {
-   "period": 50
+   "period": 9
   },
   "CCI": {
-   "period": 20,
-   "overbought": 150,
-   "oversold": -150
+   "period": 14,
+   "overbought": 100,
+   "oversold": -100
   },
   "WilliamsR": {
-   "period": 10,
+   "period": 21,
    "overbought": -20,
    "oversold": -80
   },
   "MFI": {
    "period": 14,
    "overbought": 90,
-   "oversold": 20
+   "oversold": 10
   },
   "ROC": {
    "period": 20
   },
   "Momentum": {
-   "period": 20
+   "period": 5
+  },
+  "TSI": {
+   "r": 13,
+   "s": 7
   },
   "BollingerBands": {
    "period": 14,
@@ -60,6 +64,9 @@
   "Donchian": {
    "period": 40
   },
+  "PriceChannel": {
+   "period": 10
+  },
   "Keltner": {
    "period": 14,
    "atr_mult": 2.0
@@ -69,7 +76,7 @@
   },
   "CMO": {
    "period": 9,
-   "overbought": 50,
+   "overbought": 60,
    "oversold": -50
   },
   "UltimateOsc": {
@@ -84,112 +91,112 @@
  "report": {
   "RSI": {
    "params": {
-    "period": 7,
-    "overbought": 80,
-    "oversold": 30
+    "period": 21,
+    "overbought": 70,
+    "oversold": 20
    },
-   "accuracy": 0.5253,
-   "n": 790,
+   "accuracy": 0.5429,
+   "n": 105,
    "is_default": false
   },
   "Stochastic": {
    "params": {
-    "k_period": 9,
+    "k_period": 21,
     "overbought": 80,
     "oversold": 20
    },
-   "accuracy": 0.528,
-   "n": 2890,
+   "accuracy": 0.514,
+   "n": 2743,
    "is_default": false
   },
   "MACD": {
    "params": {
-    "fast_period": 8,
+    "fast_period": 12,
     "slow_period": 17,
     "signal_period": 5
    },
-   "accuracy": 0.4869,
-   "n": 5974,
+   "accuracy": 0.511,
+   "n": 5975,
    "is_default": false
   },
   "SMA": {
    "params": {
-    "period": 50
+    "period": 10
    },
-   "accuracy": 0.4989,
-   "n": 5945,
+   "accuracy": 0.4932,
+   "n": 5986,
    "is_default": false
   },
   "EMA": {
    "params": {
-    "period": 50
+    "period": 9
    },
-   "accuracy": 0.4982,
-   "n": 5945,
+   "accuracy": 0.4931,
+   "n": 5987,
    "is_default": false
   },
   "CCI": {
    "params": {
-    "period": 20,
-    "overbought": 150,
-    "oversold": -150
+    "period": 14,
+    "overbought": 100,
+    "oversold": -100
    },
-   "accuracy": 0.5285,
-   "n": 982,
+   "accuracy": 0.5122,
+   "n": 2499,
    "is_default": false
   },
   "WilliamsR": {
    "params": {
-    "period": 10,
+    "period": 21,
     "overbought": -20,
     "oversold": -80
    },
-   "accuracy": 0.5265,
-   "n": 2847,
+   "accuracy": 0.514,
+   "n": 2743,
    "is_default": false
   },
   "MFI": {
    "params": {
     "period": 14,
     "overbought": 90,
-    "oversold": 20
+    "oversold": 10
    },
-   "accuracy": 0.58,
-   "n": 100,
+   "accuracy": 0.5484,
+   "n": 31,
    "is_default": false
   },
   "ROC": {
    "params": {
     "period": 20
    },
-   "accuracy": 0.4981,
-   "n": 5973,
+   "accuracy": 0.4943,
+   "n": 5974,
    "is_default": false
   },
   "Momentum": {
    "params": {
-    "period": 20
+    "period": 5
    },
    "accuracy": 0.4986,
-   "n": 5945,
+   "n": 5931,
    "is_default": false
   },
   "TSI": {
    "params": {
-    "r": 25,
-    "s": 13
+    "r": 13,
+    "s": 7
    },
-   "accuracy": 0.4912,
-   "n": 1132,
-   "is_default": true
+   "accuracy": 0.483,
+   "n": 2114,
+   "is_default": false
   },
   "BollingerBands": {
    "params": {
     "period": 14,
     "deviation": 2.5
    },
-   "accuracy": 0.5444,
-   "n": 90,
+   "accuracy": 0.5155,
+   "n": 97,
    "is_default": false
   },
   "DMI": {
@@ -197,51 +204,51 @@
     "period": 21,
     "threshold": 20
    },
-   "accuracy": 0.4901,
-   "n": 5332,
+   "accuracy": 0.4919,
+   "n": 5414,
    "is_default": false
   },
   "Donchian": {
    "params": {
     "period": 40
    },
-   "accuracy": 0.5219,
-   "n": 548,
+   "accuracy": 0.5155,
+   "n": 516,
    "is_default": false
   },
   "PriceChannel": {
    "params": {
-    "period": 20
+    "period": 10
    },
-   "accuracy": 0.4869,
-   "n": 1409,
-   "is_default": true
+   "accuracy": 0.4879,
+   "n": 2062,
+   "is_default": false
   },
   "Keltner": {
    "params": {
     "period": 14,
     "atr_mult": 2.0
    },
-   "accuracy": 0.4977,
-   "n": 430,
+   "accuracy": 0.5322,
+   "n": 451,
    "is_default": false
   },
   "Vortex": {
    "params": {
     "period": 21
    },
-   "accuracy": 0.5024,
-   "n": 5973,
+   "accuracy": 0.4943,
+   "n": 5974,
    "is_default": false
   },
   "CMO": {
    "params": {
     "period": 9,
-    "overbought": 50,
+    "overbought": 60,
     "oversold": -50
    },
-   "accuracy": 0.5223,
-   "n": 1346,
+   "accuracy": 0.5143,
+   "n": 1190,
    "is_default": false
   },
   "UltimateOsc": {
@@ -249,8 +256,8 @@
     "overbought": 65,
     "oversold": 35
    },
-   "accuracy": 0.5072,
-   "n": 905,
+   "accuracy": 0.5074,
+   "n": 1007,
    "is_default": false
   },
   "Supertrend": {
@@ -258,8 +265,8 @@
     "period": 10,
     "multiplier": 2.0
    },
-   "accuracy": 0.5023,
-   "n": 5994,
+   "accuracy": 0.4972,
+   "n": 5995,
    "is_default": false
   }
  }
