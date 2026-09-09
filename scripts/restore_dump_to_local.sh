@@ -23,10 +23,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 DUMP_PATH="${1:-}"
-LOCAL_HOST="${POSTGRES_HOST:-localhost}"
+LOCAL_HOST="${POSTGRES_HOST:-}"
 LOCAL_PORT="${POSTGRES_PORT:-5432}"
 LOCAL_DB="${POSTGRES_DB:-tradeopss}"
-LOCAL_USER="${POSTGRES_USER:-postgres}"
+LOCAL_USER="${POSTGRES_USER:-ouka}"
 
 import_dotenv() {
   local env_file="$1"
@@ -96,7 +96,7 @@ fi
 local_pass="${LOCAL_PGPASSWORD:-${LOCAL_PGPASSWORD_DEFAULT:-${POSTGRES_PASSWORD:-}}}"
 local_pass="${local_pass#"${local_pass%%[![:space:]]*}"}"
 local_pass="${local_pass%"${local_pass##*[![:space:]]}"}"
-if [[ -z "$local_pass" ]]; then
+if [[ -n "$LOCAL_HOST" && -z "$local_pass" ]]; then
   read -r -s -p "Enter LOCAL Postgres password: " local_pass
   echo ""
 fi
@@ -113,7 +113,8 @@ backup_db="${LOCAL_DB}__backup_${stamp}"
 
 echo ""
 echo "Restoring dump: $DUMP_PATH"
-echo "Target local DB: ${LOCAL_USER}@${LOCAL_HOST}:${LOCAL_PORT}/${LOCAL_DB}"
+target_host="${LOCAL_HOST:-local socket}"
+echo "Target local DB: ${LOCAL_USER}@${target_host}:${LOCAL_PORT}/${LOCAL_DB}"
 echo ""
 
 psql -U "$LOCAL_USER" -h "$LOCAL_HOST" -p "$LOCAL_PORT" -d postgres -v ON_ERROR_STOP=1 \
