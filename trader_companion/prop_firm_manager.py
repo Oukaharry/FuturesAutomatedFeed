@@ -2239,19 +2239,19 @@ class PropFirmManager:
                 # Evaluation — repeat daily until balance = $53,000
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 190,
+                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1 — Build (goal $56,000)
                 "funded_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 600, "tradovate_sl_ticks": 95,
+                    "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1R — Recovery (repeat up to twice)
                 "funded_trade1_recovery": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 600, "tradovate_sl_ticks": 95,
+                    "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1C — Cleanup; TP recomputed from live balance,
@@ -2270,7 +2270,7 @@ class PropFirmManager:
                 # Funded Trade 2 — repeats for payouts 2, 3, 4...
                 "funded_trade2": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 95,
+                    "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
             },
@@ -2310,33 +2310,33 @@ class PropFirmManager:
                 # Evaluation — fixed 2-day target
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 200,
+                    "tradovate_tp_ticks": 151, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 200,
+                    "tradovate_tp_ticks": 151, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded build — 4 cycles, each into Farming on TP
                 "funded_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 540, "tradovate_sl_ticks": 200,
+                    "tradovate_tp_ticks": 541, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 260,
+                    "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 260,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade3": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 245,
+                    "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 245,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 240, "tradovate_sl_ticks": 238,
+                    "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 238,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Qualifying farming — 5 days at $150+ minimum
@@ -2391,40 +2391,40 @@ class PropFirmManager:
                 # Evaluation — 2 fixed days, +$1,500 each
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 400,
+                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 400,
+                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1 — overshoot to $55,000
                 "funded_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 200,
+                    "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 2 — wide SL funded by Payout 1's retained equity
                 "funded_trade2": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 100, "tradovate_sl_ticks": 290,
+                    "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 290,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trades 3-5 — identical stage, repeats through Payout 5
                 "funded_trade3": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 190,
+                    "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Farming — post-TP buffer, run until 5 winning days are logged
