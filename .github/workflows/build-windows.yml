@@ -31,9 +31,9 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ inputs.trader_release }}" -eq "true") {
-            python build.py --trader
+            python build.py --windows --trader
           } else {
-            python build.py
+            python build.py --windows
           }
 
       - name: Upload executable
