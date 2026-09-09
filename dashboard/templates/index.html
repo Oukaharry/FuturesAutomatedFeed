@@ -6514,10 +6514,38 @@
             }
         }
 
+        function propAccountCredentialGroup(propFirm) {
+            const normalized = String(propFirm || '').toLowerCase().replace(/[()_%\-]/g, '').replace(/\s+/g, '');
+            if (normalized === 'tradeify' || normalized === 'tradeifyselect' || normalized === 'tradeify50addon') {
+                return 'tradeify';
+            }
+            if (normalized.includes('fundednext')) {
+                return 'fundednext';
+            }
+            return normalized;
+        }
+
+        function syncSharedPropCredentials(index) {
+            const source = currentData.prop_accounts[index];
+            if (!source) return;
+            const group = propAccountCredentialGroup(source.prop_firm);
+            if (!group) return;
+            const sharedKeys = ['login', 'password', 'tradovate_username', 'tradovate_password'];
+            currentData.prop_accounts.forEach((account, accountIndex) => {
+                if (accountIndex === index || propAccountCredentialGroup(account.prop_firm) !== group) return;
+                sharedKeys.forEach(sharedKey => {
+                    account[sharedKey] = source[sharedKey] || '';
+                });
+            });
+        }
+
         function updatePropAccount(index, key, value) {
             if (!currentData.prop_accounts) return;
             isEditing = true;
             currentData.prop_accounts[index][key] = value;
+            if (['prop_firm', 'login', 'password', 'tradovate_username', 'tradovate_password'].includes(key)) {
+                syncSharedPropCredentials(index);
+            }
             showPropSaveStatus('saving');
             _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
             saveData();
