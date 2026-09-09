@@ -13,16 +13,16 @@ import requests
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trader_companion.trader_app import MT5DataPusher, APP_VERSION
+from trader_companion.trader_app import MT5DataPusher, APP_VERSION, COMPANION_AUTH_PATH, _companion_auth_headers
 
 
 def lookup_client(url, email):
     """Lookup client hierarchy from email - NO API KEY."""
     try:
         response = requests.post(
-            f"{url.rstrip('/')}/api/client/auth",
+            f"{url.rstrip('/')}{COMPANION_AUTH_PATH}",
             json={"email": email},
-            headers={"Content-Type": "application/json"},
+            headers=_companion_auth_headers(),
             timeout=15
         )
         
