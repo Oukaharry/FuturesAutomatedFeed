@@ -4607,6 +4607,13 @@
                     // Update Dropdown Options if available
                     if (data.dropdown_options) {
                         Object.assign(dropdownOptions, data.dropdown_options);
+                        if (Array.isArray(dropdownOptions['Prop Firm'])) {
+                            dropdownOptions['Prop Firm'] = [...new Set(
+                                dropdownOptions['Prop Firm'].map(firm =>
+                                    firm === 'Tradeify Select'
+                                        ? 'Tradeify (50% Add-On)' : firm)
+                            )];
+                        }
                     }
 
                     // MT5 auto-populate banner removed (no UI check).
@@ -7577,7 +7584,7 @@
                 } else if (v.includes('alpha')) {
                     return base + "background-color: #27ae60; color: white;";
                 } else if (v.includes('tradeify') && v.includes('addon')) {
-                    return base + "background-color: #14B8A6; color: white;";
+                    return base + "background-color: #000000; color: white;";
                 } else if (v.includes('tradeify')) {
                     return base + "background-color: #000000; color: white;";
                 } else if (v.includes('fundednext')) {

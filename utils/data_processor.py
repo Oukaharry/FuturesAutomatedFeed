@@ -383,7 +383,7 @@ _FIRM_MAP = {
     "fundednext": "FundedNext", "fundednextflex": "FundedNext",
     "fundednextrapiddaily": "FundedNext Rapid Daily",
     "tradeday": "TradeDay",
-    "tradeify": "Tradeify", "tradeifyselect": "Tradeify Select",
+    "tradeify": "Tradeify", "tradeifyselect": "Tradeify (50% Add-On)",
     "alphafutures": "Alpha Futures",
     "ftmo": "FTMO", "ftmofuturespro": "FTMO Futures Pro",
     "blueguardian": "Blue Guardian", "blueguardianreserve": "Blue Guardian Reserve",
