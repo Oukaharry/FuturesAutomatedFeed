@@ -39,6 +39,6 @@ jobs:
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: TradeopssAI-Windows
+          name: ${{ inputs.trader_release == true && 'Tradeopss-Windows' || 'TradeopssAI-Windows' }}
           path: dist/*.exe
           if-no-files-found: error

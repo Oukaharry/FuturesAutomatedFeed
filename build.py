@@ -1,9 +1,11 @@
 import argparse
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 # --- Build Script for TradeOpssAI / Tradeopss (trader) ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +17,8 @@ TRADER_COMPANION_DIR = os.path.join(PROJECT_ROOT, 'trader_companion')
 DIST_DIR = os.path.join(PROJECT_ROOT, 'dist')
 BUILD_DIR = os.path.join(PROJECT_ROOT, 'build')
 STAGE_DIR = os.path.join(BUILD_DIR, '_stage')
+WINDOWS_WORKFLOW = 'build-windows.yml'
+WINDOWS_ARTIFACT_DIR = os.path.join(PROJECT_ROOT, 'dist-windows')
 
 # ML-only signal artifacts — omitted from trader (no-AI) builds.
 TRADER_EXCLUDE_SIGNALS = frozenset({
@@ -193,15 +197,116 @@ def build(trader_release: bool = False):
         sys.exit(1)
 
 
+def build_windows_via_github(trader_release: bool = False):
+    """Trigger the Windows runner and download its executable artifact."""
+    if shutil.which('gh') is None:
+        raise RuntimeError(
+            "GitHub CLI (gh) is required for --windows. "
+            "Install it with 'brew install gh' and run 'gh auth login'."
+        )
+
+    subprocess.run(['gh', 'auth', 'status'], check=True)
+
+    command = ['gh', 'workflow', 'run', WINDOWS_WORKFLOW, '--ref', 'main']
+    if trader_release:
+        command.extend(['-f', 'trader_release=true'])
+    print('Triggering GitHub Windows build...')
+    dispatch_started = datetime.now(timezone.utc)
+    subprocess.run(command, check=True)
+
+    # workflow run returns no run ID, so find the newly created latest run.
+    run_id = None
+    for _ in range(15):
+        result = subprocess.run(
+            [
+                'gh', 'run', 'list', '--workflow', WINDOWS_WORKFLOW,
+                '--branch', 'main', '--limit', '1', '--json',
+                'databaseId,createdAt',
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        try:
+            runs = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            runs = []
+        for run in runs:
+            try:
+                created_at = datetime.fromisoformat(
+                    run['createdAt'].replace('Z', '+00:00'))
+            except (KeyError, ValueError):
+                continue
+            if created_at >= dispatch_started:
+                run_id = str(run['databaseId'])
+                break
+        if run_id:
+            break
+        import time
+        time.sleep(2)
+
+    if not run_id:
+        raise RuntimeError('Could not find the newly triggered GitHub Actions run.')
+
+    print(f'Watching GitHub Actions run {run_id}...')
+    subprocess.run(['gh', 'run', 'watch', run_id, '--exit-status'], check=True)
+
+    artifact_name = 'Tradeopss-Windows' if trader_release else 'TradeopssAI-Windows'
+    os.makedirs(WINDOWS_ARTIFACT_DIR, exist_ok=True)
+    subprocess.run(
+        [
+            'gh', 'run', 'download', run_id,
+            '--name', artifact_name,
+            '--dir', WINDOWS_ARTIFACT_DIR,
+        ],
+        check=True,
+    )
+    print(f'Windows artifact downloaded to: {WINDOWS_ARTIFACT_DIR}')
+
+
+def build_targets(target: str, trader_release: bool = False):
+    """Build the selected target: macOS locally, Windows through GitHub."""
+    if target in ('macos', 'both'):
+        if sys.platform != 'darwin':
+            raise RuntimeError('--macos is only available when running on macOS.')
+        build(trader_release=trader_release)
+
+    if target in ('windows', 'both'):
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            build(trader_release=trader_release)
+        else:
+            build_windows_via_github(trader_release=trader_release)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Build Tradeopss desktop exe')
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        '--windows',
+        action='store_const',
+        const='windows',
+        dest='target',
+        help='Build/download the Windows executable through GitHub Actions',
+    )
+    target_group.add_argument(
+        '--macos',
+        action='store_const',
+        const='macos',
+        dest='target',
+        help='Build the macOS .app locally',
+    )
     parser.add_argument(
         '--trader',
         action='store_true',
         help='Trader release: no ML/AI (RELEASE_DISABLE_ML), outputs Tradeopss_v*.exe',
     )
     args = parser.parse_args()
-    build(trader_release=args.trader)
+    target = args.target or 'both'
+    try:
+        build_targets(target, trader_release=args.trader)
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        print(f'\nBuild FAILED: {exc}')
+        sys.exit(1)
 
 
 if __name__ == '__main__':
