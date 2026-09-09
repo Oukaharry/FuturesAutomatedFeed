@@ -5711,7 +5711,7 @@
                         'fundednextflex': 'FundedNext',
                         'fundednextrapiddaily': 'FundedNext Rapid Daily',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
-                        'tradeifyselect': 'Tradeify Select',
+                        'tradeifyselect': 'Tradeify (50% Add-On)',
                         'ftmofuturespro': 'FTMO Futures Pro',
                         'blueguardianreserve': 'Blue Guardian Reserve',
                         'alphafutures': 'Alpha Futures', 'lucid': 'Lucid', 'lucidmaxx': 'LucidMaxx',
@@ -6415,18 +6415,21 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify Select', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'
+                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
                     // Hide restricted firms from BEF admin
                     if (isFirmHidden(acc.prop_firm)) return;
 
+                    const selectedFirm = acc.prop_firm === 'Tradeify Select'
+                        ? 'Tradeify (50% Add-On)' : acc.prop_firm;
+
                     const row = document.createElement('tr');
                     
                     // Prop Firm Select
                     let firmOptions = firms.map(f => 
-                        `<option value="${f}" ${acc.prop_firm === f ? 'selected' : ''}>${f}</option>`
+                        `<option value="${f}" ${selectedFirm === f ? 'selected' : ''}>${f}</option>`
                     ).join('');
 
                     row.innerHTML = `
@@ -7535,20 +7538,23 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify Select', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
         };
 
         function getDropdownHtml(value, type, index, key, readOnly = false) {
+            if (type === 'Prop Firm' && value === 'Tradeify Select') {
+                value = 'Tradeify (50% Add-On)';
+            }
             let colorStyle = "";
             let containerStyle = ""; // For full cell background/border-radius on Prop Firm
 
             // Helper to get prop firm style
             const getPropFirmStyle = (firmName) => {
                 const v = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
-                const base = "border-radius: 12px; padding: 4px 10px; display: block; width: 100%; box-sizing: border-box; text-align: center; font-weight: 600;";
+                const base = "border-radius: 12px; min-height: 36px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; text-align: center; font-weight: 600; line-height: 1.15;";
                 
                 if (v.includes('myfunded') || v.includes('mffu')) {
                     return base + "background-color: #FFD700; color: black;";
@@ -7559,13 +7565,19 @@
                 } else if (v.includes('funding')) {
                     return base + "background-color: #ffcc99; color: black;";
                 } else if (v.includes('tradeday')) {
-                    return base + "background-color: #FFFFFF; color: black; border: 1px solid #ccc;";
+                    return base + "background-color: #8B5CF6; color: white;";
                 } else if (v.includes('topsteprtp')) {
                     return base + "background-color: #ea580c; color: white;";  // amber-orange — RTP child of Topstep
                 } else if (v.includes('topstep')) {
                     return base + "background-color: #e74c3c; color: white;";
+                } else if (v.includes('ftmofuturespro')) {
+                    return base + "background-color: #0EA5E9; color: white;";
+                } else if (v.includes('blueguardianreserve')) {
+                    return base + "background-color: #2563EB; color: white;";
                 } else if (v.includes('alpha')) {
                     return base + "background-color: #27ae60; color: white;";
+                } else if (v.includes('tradeify') && v.includes('addon')) {
+                    return base + "background-color: #14B8A6; color: white;";
                 } else if (v.includes('tradeify')) {
                     return base + "background-color: #000000; color: white;";
                 } else if (v.includes('fundednext')) {
@@ -7581,7 +7593,7 @@
                 } else if (v.includes('goatfunded') || v.includes('goatfund')) {
                     return base + "background-color: #22C55E; color: white;";
                 }
-                return "";
+                return base + "background-color: #334155; color: white;";
             };
 
             if (type === 'Status' || type === 'Status P1') {
@@ -9750,7 +9762,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify Select', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};

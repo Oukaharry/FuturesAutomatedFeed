@@ -2532,13 +2532,14 @@ class PropFirmManager:
         elif firm_code in ("Goat Funded Futures", "Goat Funded", "GFF"):
             normalized_code = "GoatFunded"
         elif firm_code in ("FTMO", "FTMO Futures", "FTMO Futures Growth"):
-            normalized_code = "FTMO Futures"
+            normalized_code = "FTMO Futures Pro"
         elif firm_code in ("FTMO Futures Pro", "FTMO Pro", "FTMO Futures Pro 50K", "FTMO Pro 50K"):
             normalized_code = "FTMO Futures Pro"
         elif firm_code in ("FundedNext Rapid Daily", "FundedNext Rapid Daily 50K",
                            "Funded Next Rapid Daily", "FN Rapid Daily", "Rapid Daily"):
             normalized_code = "FundedNext Rapid Daily"
-        elif firm_code in ("Tradeify Select", "Tradeify Select 50K"):
+        elif firm_code in ("Tradeify Select", "Tradeify Select 50K",
+                           "Tradeify (50% Add-On)"):
             normalized_code = "Tradeify Select"
         elif firm_code in ("Blue Guardian Reserve", "Blue Guardian Reserve 50K", "Blue Guardian", "BGR"):
             normalized_code = "Blue Guardian Reserve"

@@ -773,7 +773,7 @@ def normalize_prop_firm_name(name):
         "fundingtick": "Funding Ticks",
         "tradeday": "TradeDay",
         "tradeify": "Tradeify",
-        "tradeifyselect": "Tradeify Select",
+        "tradeifyselect": "Tradeify (50% Add-On)",
         "tradify": "Tradeify",
         "ftmo": "FTMO",
         "ftmofuturespro": "FTMO Futures Pro",

@@ -5170,10 +5170,11 @@ class TradeOpssAIApp:
         "TradeDay": "TradeDay",
         "Tradeify": "Tradeify",
         "Tradeify Select": "Tradeify Select",
+        "Tradeify (50% Add-On)": "Tradeify Select",
         "Blue Guardian Reserve": "Blue Guardian Reserve",
-        "FTMO": "FTMO Futures",
-        "FTMO Futures": "FTMO Futures",
-        "FTMO Futures Growth": "FTMO Futures",
+        "FTMO": "FTMO Futures Pro",
+        "FTMO Futures": "FTMO Futures Pro",
+        "FTMO Futures Growth": "FTMO Futures Pro",
         "FTMO Futures Pro": "FTMO Futures Pro",
         "FTMO Pro": "FTMO Futures Pro",
         "FTMO Futures Pro 50K": "FTMO Futures Pro",
@@ -5251,7 +5252,7 @@ class TradeOpssAIApp:
             return "FTMO Futures"
         if "rapiddaily" in compact:
             return "FundedNext Rapid Daily"
-        if "tradeifyselect" in compact:
+        if "tradeifyselect" in compact or ("tradeify" in compact and "addon" in compact):
             return "Tradeify Select"
         if "blueguardian" in compact:
             return "Blue Guardian Reserve"
@@ -5266,7 +5267,9 @@ class TradeOpssAIApp:
         "TopStep": "Topstep",
         "Trade Day": "TradeDay",
         "Tradeify": "Tradeify",
+        "Tradeify Select": "Tradeify (50% Add-On)",
         "FTMO Futures": "FTMO Futures",
+        "FTMO Futures Pro": "FTMO Futures Pro",
         "FundingTicks": "Funding Ticks",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
@@ -5278,8 +5281,11 @@ class TradeOpssAIApp:
     }
 
     def _sync_prop_firm_from_account(self, ev):
-        """Align dashboard Prop Firm with account prefix when they disagree."""
+        """Use account-prefix detection only when the dashboard firm is missing."""
         if not self.prop_firm_mgr or not isinstance(ev, dict):
+            return
+        dashboard_label = self._cell(ev.get("Prop Firm"))
+        if dashboard_label and dashboard_label not in ("—", "-", "N/A"):
             return
         acct = self._cell(ev.get("Account #.1") or ev.get("Account #"))
         if len(acct) < 4:
@@ -5288,15 +5294,8 @@ class TradeOpssAIApp:
         if not detected:
             return
         label = self._DETECTED_PROP_FIRM_LABEL.get(detected, detected)
-        cur_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
         new_code = self._resolve_firm_code(label)
-
-        # Funded Next account prefixes cannot distinguish standard vs Flex.
-        # If the row is explicitly set to Flex, never downgrade it to standard.
-        if cur_code == "Funded Next Flex" and new_code == "Funded Next":
-            return
-
-        if cur_code != new_code:
+        if new_code:
             ev["Prop Firm"] = label
 
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}

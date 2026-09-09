@@ -1353,8 +1353,13 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
                 "fundednextflex": "Funded Next Flex",
                 "fundednextrapiddaily": "FundedNext Rapid Daily",
                 "tradeday": "TradeDay", "tradeify": "Tradeify",
-                "tradeifyselect": "Tradeify Select",
+                "tradeifyselect": "Tradeify (50% Add-On)",
+                "tradeify50addon": "Tradeify (50% Add-On)",
+                "ftmo": "FTMO Futures Pro",
+                "ftmofutures": "FTMO Futures Pro",
+                "ftmofuturesgrowth": "FTMO Futures Pro",
                 "ftmofuturespro": "FTMO Futures Pro",
+                "ftmopro": "FTMO Futures Pro",
                 "blueguardianreserve": "Blue Guardian Reserve",
                 "alphafutures": "Alpha Futures",
                 "toponefutures": "Top One Futures", "topone": "Top One Futures",
@@ -1364,7 +1369,10 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
             }
             for ev in clean_evaluations:
                 if isinstance(ev, dict) and ev.get('Prop Firm'):
-                    raw = ev['Prop Firm'].strip().lower().replace(" ", "").replace("_", "")
+                    raw = (ev['Prop Firm'].strip().lower()
+                           .replace(" ", "").replace("_", "")
+                           .replace("(", "").replace(")", "")
+                           .replace("%", "").replace("-", ""))
                     if raw in FIRM_NORMALIZE:
                         ev['Prop Firm'] = FIRM_NORMALIZE[raw]
 
