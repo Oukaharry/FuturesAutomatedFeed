@@ -2239,7 +2239,7 @@ class PropFirmManager:
                 # Evaluation — repeat daily until balance = $53,000
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 190,
+                    "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1 — Build (goal $56,000)
@@ -2257,8 +2257,8 @@ class PropFirmManager:
                 # Funded Trade 1C — Cleanup; TP recomputed from live balance,
                 # values below are the $55,050 example from the spec.
                 "funded_trade1_cleanup": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 190, "tradovate_sl_ticks": 190,
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Qualifying Days — need 5 days at $200+ before any payout

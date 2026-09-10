@@ -9506,14 +9506,20 @@ class TradeOpssAIApp:
         old_connections = dict(self._broker_connections)
         self._broker_connections.clear()
 
-        # Get unique prop firms in order
+        # Group label variations that use the same broker login. For example,
+        # Tradeify and Tradeify Select share one Tradovate connection, while
+        # each row still keeps its own blueprint for TP/SL and sizing.
         firms = []
         seen = set()
+        self._broker_firm_aliases = {}
         for ev in evaluations:
             firm = ev.get("Prop Firm", "Unknown")
-            if firm not in seen:
-                seen.add(firm)
-                firms.append(firm)
+            platform = self._platform_for_firm(firm)
+            connection_key = platform or str(firm)
+            self._broker_firm_aliases[firm] = connection_key
+            if connection_key not in seen:
+                seen.add(connection_key)
+                firms.append(connection_key)
 
         if not firms:
             if CTK_AVAILABLE:
@@ -9553,12 +9559,22 @@ class TradeOpssAIApp:
         auto_count = 0
         missing_creds = []  # list of firm names that have no dashboard creds
         for firm in firms:
-            strip_color = self.PROP_FIRM_COLORS.get(firm, "#95A5A6")
+            member_firms = [
+                label for label, key in self._broker_firm_aliases.items()
+                if key == firm
+            ]
+            display_firm = firm if firm in ("Tradovate", "TopStepX", "AlphaTrader", "BlackArrow") else (member_firms[0] if member_firms else firm)
+            strip_color = self.PROP_FIRM_COLORS.get(display_firm, "#95A5A6")
             # Try exact match first, then case-insensitive, then alias match, then unmatched pool
-            pa = pa_lookup.get(firm, {})
+            pa = pa_lookup.get(display_firm, {})
+            if not pa:
+                for member_firm in member_firms:
+                    pa = pa_lookup.get(member_firm, {})
+                    if pa:
+                        break
             if not pa:
                 for pf_key, pf_val in pa_lookup.items():
-                    if pf_key.lower() == firm.lower():
+                    if pf_key.lower() in {m.lower() for m in member_firms + [display_firm]}:
                         pa = pf_val
                         break
             if not pa:
@@ -9584,7 +9600,7 @@ class TradeOpssAIApp:
                     "lucid": ["lucid trading"],
                     "lucid trading": ["lucid"],
                 }
-                firm_lower = firm.lower()
+                firm_lower = display_firm.lower()
                 aliases = _FIRM_ALIASES.get(firm_lower, [])
                 for pf_key, pf_val in pa_lookup.items():
                     if pf_key.lower() in aliases:
@@ -9612,7 +9628,7 @@ class TradeOpssAIApp:
                              corner_radius=0).pack(side="left", fill="y")
 
                 # Firm name
-                ctk.CTkLabel(row, text=firm[:16], width=110,
+                ctk.CTkLabel(row, text=display_firm[:16], width=110,
                              font=("Consolas", 10, "bold"), text_color=strip_color,
                              anchor="w").pack(side="left", padx=(8, 0))
 
@@ -9660,11 +9676,11 @@ class TradeOpssAIApp:
                 hist_btn.pack(side="right", padx=(4, 0))
 
                 # Dashboard button — show for all firms (use _BROWSER_MONITORED_FIRMS with case-insensitive + alias match)
-                _dash_cfg = self._BROWSER_MONITORED_FIRMS.get(firm)
+                _dash_cfg = self._BROWSER_MONITORED_FIRMS.get(display_firm)
                 if not _dash_cfg:
                     # Case-insensitive lookup
                     for _bk, _bv in self._BROWSER_MONITORED_FIRMS.items():
-                        if _bk.lower() == firm.lower():
+                        if _bk.lower() == display_firm.lower():
                             _dash_cfg = _bv
                             break
                 if _dash_cfg and not RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
@@ -9673,12 +9689,12 @@ class TradeOpssAIApp:
                                              border_width=1, border_color="#3B3B6E",
                                              font=("Consolas", 9), text_color="#A78BFA",
                                              corner_radius=4,
-                                             command=lambda f=firm: self._launch_propfirm_dashboard(f))
+                                             command=lambda f=display_firm: self._launch_propfirm_dashboard(f))
                     dash_btn.pack(side="right", padx=(4, 0))
             else:
                 row = tk.Frame(self._broker_rows_frame, bg="#0A1220")
                 row.pack(fill="x", padx=4, pady=1)
-                tk.Label(row, text=firm[:16], width=14, anchor='w',
+                tk.Label(row, text=display_firm[:16], width=14, anchor='w',
                          bg="#0A1220", fg=strip_color, font=('Consolas', 9)).pack(side="left", padx=2)
                 user_entry = ttk.Entry(row, width=16)
                 user_entry.pack(side="left", padx=2)
@@ -9699,7 +9715,7 @@ class TradeOpssAIApp:
                 auto_count += 1
             else:
                 # Don't hang / silently wait: record missing creds so UI + logs are explicit.
-                missing_creds.append(firm)
+                missing_creds.append(display_firm)
                 try:
                     # Mark status as missing creds (unless already connected)
                     if not existing_account:
@@ -11471,7 +11487,8 @@ class TradeOpssAIApp:
 
     def _get_broker_for_firm(self, firm_name):
         """Get the connected broker account for a specific prop firm."""
-        conn = self._broker_connections.get(firm_name)
+        connection_key = getattr(self, "_broker_firm_aliases", {}).get(firm_name, firm_name)
+        conn = self._broker_connections.get(connection_key)
         if conn and conn.get("account"):
             return conn["account"]
         # If the firm has a row in broker connections but isn't connected, do NOT
@@ -11480,7 +11497,7 @@ class TradeOpssAIApp:
             return None
         # Legacy fallback: only for setups without multi-firm broker panel.
         # Platform follows the resolved blueprint, not just a label substring.
-        platform = self._platform_for_firm(firm_name)
+        platform = self._platform_for_firm(connection_key)
         if platform == "TopStepX":
             return self.topstepx_account if self.topstepx_account else None
         if platform == "Tradovate" and self.tradovate_account:
