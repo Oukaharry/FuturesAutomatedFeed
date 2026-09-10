@@ -1827,6 +1827,9 @@ def merge_dashboard_update_evaluations(
         elif '_manual_push_fields' in merged:
             merged.pop('_manual_push_fields', None)
 
+        if _row_should_clear_day_placeholders(merged):
+            _clear_system_day_placeholders(merged)
+
         out[idx] = merged
 
     return out
@@ -1892,10 +1895,14 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             merged = dict(out[idx])
             merged.update(ev_in)
             _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
+            if _row_should_clear_day_placeholders(merged):
+                _clear_system_day_placeholders(merged)
             out[idx] = merged
         else:
             merged = dict(ev_in)
             _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
+            if _row_should_clear_day_placeholders(merged):
+                _clear_system_day_placeholders(merged)
             appended.append(merged)
 
     out.extend(appended)
@@ -9422,6 +9429,43 @@ def _hedge_cell_currency_only(raw):
     if not probe:
         return False
     return bool(re.search(r'\d', probe))
+
+
+def _row_should_clear_day_placeholders(ev):
+    """True when eval row is in a terminal failure state (Fail, Breach, etc.)."""
+    from dashboard.eval_status import is_eval_phase_failed
+    if not isinstance(ev, dict):
+        return False
+    return (
+        is_eval_phase_failed(ev.get('Status P1'))
+        or is_eval_phase_failed(ev.get('Status'))
+    )
+
+
+def _clear_system_day_placeholders(ev):
+    """Remove weekday-name placeholders from hedge/prop day cells (keep $ P&L)."""
+    from utils.data_processor import _is_weekday_or_empty_label
+    if not isinstance(ev, dict):
+        return []
+    cleared = []
+    for key in list(ev.keys()):
+        if not isinstance(key, str):
+            continue
+        if not (
+            key.startswith('Hedge Result')
+            or key.startswith('Hedge Day')
+            or key.startswith('Prop Day')
+        ):
+            continue
+        val = ev.get(key)
+        if not val or str(val).strip() in ('', '-', '—', '–'):
+            continue
+        if _hedge_cell_currency_only(val):
+            continue
+        if _weekday_abbrs_in_text(val) or _is_weekday_or_empty_label(val):
+            ev[key] = ''
+            cleared.append(key)
+    return cleared
 
 
 def _row_all_day_slots_blank_or_currency(ev, day_cols):
