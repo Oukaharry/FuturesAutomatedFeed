@@ -29,7 +29,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.16"
+APP_VERSION = "1.11.16"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -597,12 +597,20 @@ except ImportError:
     pytz = None
 
 
-def _companion_auth_headers():
-    """Headers for TradeOpssAI-only /api/companion/auth."""
-    return {
+def _companion_request_headers(extra=None):
+    """Headers for all TradeOpssAI companion API calls."""
+    headers = {
         "Content-Type": "application/json",
         "X-Companion-Version": APP_VERSION,
     }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def _companion_auth_headers():
+    """Headers for TradeOpssAI-only /api/companion/auth."""
+    return _companion_request_headers()
 
 
 def _gzip_post(url, payload, timeout=120, **kwargs):
@@ -623,16 +631,13 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
         headers = kwargs.pop('headers', {})
         headers['Content-Type'] = 'application/json'
         headers['Content-Encoding'] = 'gzip'
-        # Redundant tagging so server can record version even if payload is transformed upstream.
-        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
-            headers.setdefault('X-Companion-Version', APP_VERSION)
+        headers.setdefault('X-Companion-Version', APP_VERSION)
         return requests.post(url, data=compressed, headers=headers, timeout=timeout, **kwargs)
     except Exception:
         # Fallback: plain JSON
         h = kwargs.pop('headers', {}) or {}
         h.setdefault('Content-Type', 'application/json')
-        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
-            h.setdefault('X-Companion-Version', APP_VERSION)
+        h.setdefault('X-Companion-Version', APP_VERSION)
         return requests.post(url, json=payload, headers=h, timeout=timeout, **kwargs)
 
 
@@ -3114,7 +3119,7 @@ class TradeOpssAIApp:
                 response = requests.post(
                     f"{dashboard_url}/api/client/push",
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_request_headers(),
                     timeout=30
                 )
 
@@ -4021,7 +4026,7 @@ class TradeOpssAIApp:
             response = requests.post(
                 f"{dashboard_url}/api/client/push_hedging_review",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30
             )
 
@@ -4727,6 +4732,7 @@ class TradeOpssAIApp:
                         f"{dashboard_url}/api/client/import_csv_companion",
                         data={"email": email},
                         files={"file": (os.path.basename(csv_path), f, "text/csv")},
+                        headers={"X-Companion-Version": APP_VERSION},
                         timeout=120
                     )
 
@@ -4822,7 +4828,7 @@ class TradeOpssAIApp:
                 response = requests.post(
                     f"{dashboard_url}/api/client/migrate_sheet",
                     json={"email": email, "sheet_url": sheet_url},
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_request_headers(),
                     timeout=180
                 )
                 
@@ -6514,7 +6520,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=10,
             )
             if r.status_code != 200:
@@ -6552,7 +6558,7 @@ class TradeOpssAIApp:
             resp = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30,
             )
             ok = resp.status_code == 200
@@ -6589,7 +6595,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=10
             )
             if r.status_code != 200:
@@ -6638,7 +6644,7 @@ class TradeOpssAIApp:
                     r = requests.post(
                         f"{dashboard_url}/api/client/data",
                         json={"email": email},
-                        headers={"Content-Type": "application/json"},
+                        headers=_companion_request_headers(),
                         timeout=15
                     )
                     if r.status_code != 429:
@@ -10974,7 +10980,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=15)
             if r.status_code != 200:
                 self.root.after(0, lambda s=r.status_code:
@@ -11139,7 +11145,7 @@ class TradeOpssAIApp:
             resp = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30)
             if resp.status_code == 200:
                 rj = resp.json()

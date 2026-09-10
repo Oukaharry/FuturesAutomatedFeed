@@ -1,5 +1,5 @@
 from typing import Any
-from flask import Flask, render_template, jsonify, request, redirect, url_for, g
+from flask import Flask, render_template, jsonify, request, redirect, url_for, g, current_app
 from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -5402,6 +5402,46 @@ def _companion_access_denied(client_id, identity=None):
     }), 403
 
 
+def _required_companion_version():
+    """Server-side TradeOpssAI version gate (sync with trader_app APP_VERSION)."""
+    try:
+        cfg = current_app.config.get('REQUIRED_COMPANION_VERSION')
+        if cfg:
+            return str(cfg).strip()
+    except RuntimeError:
+        pass
+    return os.getenv('REQUIRED_COMPANION_VERSION', '1.11.16').strip()
+
+
+def _extract_companion_version(data=None):
+    payload = data if isinstance(data, dict) else (request.get_json(silent=True) or {})
+    return (
+        request.headers.get('X-Companion-Version')
+        or payload.get('companion_version')
+        or payload.get('version')
+        or ''
+    ).strip()
+
+
+def _companion_version_denied(data=None):
+    """403 when companion version missing or not equal to REQUIRED_COMPANION_VERSION."""
+    version = _extract_companion_version(data)
+    required = _required_companion_version()
+    if not version:
+        return jsonify({
+            "status": "error",
+            "message": "TradeOpssAI client required (missing X-Companion-Version)",
+            "required_version": required,
+        }), 403
+    if version != required:
+        return jsonify({
+            "status": "error",
+            "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
+            "required_version": required,
+        }), 403
+    return None
+
+
 def _perform_client_email_auth(email: str, *, actor: str = 'client'):
     """Shared email→hierarchy lookup for companion auth."""
     try:
@@ -5466,23 +5506,16 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
-    Requires X-Companion-Version (legacy connector clients cannot auth here).
+    Requires X-Companion-Version matching REQUIRED_COMPANION_VERSION on the server.
     """
     try:
-        companion_version = (
-            request.headers.get('X-Companion-Version')
-            or (request.get_json(silent=True) or {}).get('companion_version')
-            or ''
-        ).strip()
-        if not companion_version:
-            return jsonify({
-                "status": "error",
-                "message": "TradeOpssAI client required (missing X-Companion-Version)",
-            }), 403
-
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
+
+        denied = _companion_version_denied(data)
+        if denied:
+            return denied
 
         email = data.get('email', '').strip().lower()
         if not email:
@@ -5508,6 +5541,10 @@ def api_client_data():
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+        denied = _companion_version_denied(data)
+        if denied:
+            return denied
 
         email = (data.get('email') or '').strip().lower()
         if not email:
@@ -5733,6 +5770,10 @@ def api_client_push():
     
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
     
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -5750,10 +5791,7 @@ def api_client_push():
         app.logger.warning("Push blocked for %s (email=%s)", client_id, email)
         return denied
 
-    # Trader Companion version (for audit/visibility; not trusted for auth)
-    companion_version = (
-        str(data.get('companion_version') or data.get('version') or request.headers.get('X-Companion-Version') or '').strip()
-    )
+    companion_version = _extract_companion_version(data)
     
     # Get MT5 data from push.
     # trade_history_deals = Stats tab only (full history). deals = legacy; hedge uses aggregated_by_comment.
@@ -6189,6 +6227,10 @@ def api_migrate_sheet():
     
     if not sheet_url:
         return jsonify({"status": "error", "message": "Google Sheet URL required"}), 400
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
     
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -8603,6 +8645,10 @@ def api_push_hedging_review():
 
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:
@@ -12685,6 +12731,10 @@ def import_csv_companion():
     email = (request.form.get('email') or '').strip().lower()
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
+
+    denied = _companion_version_denied({"email": email})
+    if denied:
+        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:

@@ -82,7 +82,10 @@ def migrate_sheet(url, email, sheet_url):
         response = requests.post(
             f"{url.rstrip('/')}/api/client/migrate_sheet",
             json={"email": email, "sheet_url": sheet_url},
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "X-Companion-Version": APP_VERSION,
+            },
             timeout=60
         )
         
