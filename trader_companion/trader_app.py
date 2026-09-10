@@ -1,6 +1,12 @@
 import sys
 import os
 
+# Selenium/Chrome can fork after Tk/CoreFoundation has initialized on macOS.
+# Disable Apple's fork-safety abort so the browser companion can recover from
+# child-process startup without terminating the whole application.
+if sys.platform == "darwin":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+
 # MetaTrader5's Python API and this app's MT5 terminal integration are Windows
 # only. macOS runs the browser-based Tradovate companion without those paths.
 TRADOVATE_ONLY_MODE = sys.platform == "darwin"
@@ -7723,11 +7729,38 @@ class TradeOpssAIApp:
                           status="no_balance", target_account_id=target_account_id)
                 else:
                     trade_index = self._phase_trade_index(phase_key)
-                    # Flat lock level for profit-cushion math on trade 2+
-                    threshold = self.prop_firm_mgr.get_lock_level(firm_code)
+                    starting = self._resolve_starting_balance(row_eval, "Funded", acct_size)
+                    funded_profit = balance - starting
+
+                    # Trade 2+ always aims at the funded cycle goal. If the
+                    # blueprint has no explicit goal, the helper falls back
+                    # to the profit trade 1 would have produced.
+                    if trade_index >= 2:
+                        cycle_goal, goal_source = self._funded_cycle_goal_dollars(
+                            firm_code, current_phase, phase_key, acct_size, config)
+                        if cycle_goal is not None:
+                            config = self.prop_firm_mgr.calculate_adjusted_tp(
+                                config, funded_profit, tick_value,
+                                target_profit_dollars=cycle_goal)
+                            self.log(
+                                f"🎯 Funded cycle TP {acct_num}: balance=${balance:,.2f} "
+                                f"start=${starting:,.2f} profit=${funded_profit:+,.2f} "
+                                f"goal=${cycle_goal:,.2f} ({goal_source}) → "
+                                f"TP={config.get('tradovate_tp_ticks')}t")
+                        else:
+                            self.log(
+                                f"⚠ Funded cycle TP {acct_num}: no cycle goal or trade 1 TP "
+                                "available — keeping blueprint TP", "WARN")
+
+                    # Trade 2+ risks only the remaining buffer above the cycle
+                    # hard floor/min-equity. Trade 1 keeps the fixed $2,000 rule.
+                    cycle_floor, floor_source = self._funded_cycle_hard_floor(
+                        firm_code, config, account_min_eq)
+                    threshold = (cycle_floor if trade_index >= 2 and cycle_floor is not None
+                                 else self.prop_firm_mgr.get_lock_level(firm_code))
                     sl_mode = self._funded_sl_mode(firm_code)
                     self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
-                             f"trade_index={trade_index} lock_level=${threshold} "
+                             f"trade_index={trade_index} floor=${threshold} ({floor_source}) "
                              f"mode={sl_mode} tick_value={tick_value}")
                     config = self.prop_firm_mgr.calculate_funded_sl(
                         config, balance, threshold, trade_index, tick_value,
@@ -7736,41 +7769,13 @@ class TradeOpssAIApp:
                           status="applied", balance=balance, balance_source=bal_src,
                           trade_index=trade_index, lock_level=threshold,
                           target_account_id=target_account_id,
+                          cycle_floor_source=floor_source,
+                          funded_profit=funded_profit,
                           sl_after=config.get("tradovate_sl_ticks"))
             except Exception as _fe:
                 self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
                 audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
                       status="error", error=str(_fe))
-            # Funded Next Flex trades 2+: TP = remaining distance to $3,000 target.
-            # Requires live Tradovate balance — keeps blueprint TP if unavailable.
-            if firm_code == "Funded Next Flex" and self._phase_trade_index(phase_key) >= 1:
-                try:
-                    _trade_idx = self._phase_trade_index(phase_key)
-                    _live_bal = scoped_net_liq if (scoped_net_liq is not None and scoped_net_liq > 0) else None
-                    if _live_bal is None and broker_account and hasattr(broker_account, 'get_min_equity'):
-                        _me2 = broker_account.get_min_equity(account_id=target_account_id)
-                        if isinstance(_me2, dict) and (_me2.get('net_liq') or 0) > 0:
-                            _live_bal = float(_me2['net_liq'])
-                    if _live_bal is None or _live_bal <= 0:
-                        self.log(f"⚠ FNFT Flex TP-to-target {acct_num}: no live balance — keeping blueprint TP")
-                    else:
-                        _start_bal = self._resolve_starting_balance(row_eval, "Funded", acct_size)
-                        _stage_profit = _live_bal - _start_bal
-                        self.log(f"🎯 FNFT Flex TP-to-target {acct_num}: trade={_trade_idx} "
-                                 f"balance=${_live_bal:,.2f} start=${_start_bal:,.2f} "
-                                 f"profit=${_stage_profit:,.2f} target=$3,050.00")
-                        config = self.prop_firm_mgr.calculate_adjusted_tp(
-                            config, _stage_profit, tick_value,
-                            target_profit_dollars=3050.0)
-                        audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
-                              status="applied", firm=firm_code, phase_key=phase_key,
-                              live_balance=_live_bal, stage_start=_start_bal,
-                              stage_profit_so_far=_stage_profit,
-                              target_profit_dollars=3050.0,
-                              tp_before=_before_tp,
-                              tp_after=config.get("tradovate_tp_ticks"))
-                except Exception as _tp_err:
-                    self.log(f"⚠ FNFT Flex TP-to-target failed for {acct_num}: {_tp_err}")
         else:
             # CHALLENGE / FARMING.
             # 1) TP by stage profit (skipped for farming symbols upstream)
@@ -11599,6 +11604,101 @@ class TradeOpssAIApp:
         if self._split_payout_applies(firm_code):
             return self.prop_firm_mgr.FUNDED_SL_MODE_SPLIT
         return self.prop_firm_mgr.FUNDED_SL_MODE_CLASSIC
+
+    def _funded_cycle_goal_dollars(self, firm_code, current_phase, phase_key,
+                                   acct_size, config):
+        """Return the funded-cycle profit goal, or trade 1's TP as recovery goal."""
+        goal_keys = (
+            "funded_cycle_goal", "funded_cycle_target", "cycle_goal",
+            "cycle_target", "funded_target", "payout_target", "profit_target",
+        )
+
+        for key in goal_keys:
+            value = config.get(key)
+            if value is not None:
+                try:
+                    return float(value), f"config.{key}"
+                except (TypeError, ValueError):
+                    pass
+
+        try:
+            firm_info = self.prop_firm_mgr.get_firm_info(firm_code)
+            rules = firm_info.get("rules", {}) if isinstance(firm_info, dict) else {}
+            for key in goal_keys:
+                value = rules.get(key)
+                if value is not None:
+                    return float(value), f"rules.{key}"
+        except Exception:
+            pass
+
+        # Existing firm targets are the best-known explicit payout-cycle goals.
+        try:
+            targets = self.prop_firm_mgr._PROFIT_TARGETS.get(firm_code, {})
+            value = targets.get("Funded")
+            if value is not None:
+                return float(value), "profit_targets.Funded"
+        except Exception:
+            pass
+
+        # Recovery fallback: trade 2+ should restore the profit that trade 1
+        # would have produced from the start of this funded cycle.
+        phase_map = {
+            "Payout 1": "Funded", "Payout 2": "Funded",
+            "Payout 3": "Funded", "Payout 4": "Funded",
+        }
+        orders = getattr(self.prop_firm_mgr, "_PHASE_TRADE_ORDER", {}).get(firm_code, {})
+        phase_group = current_phase if current_phase in orders else phase_map.get(current_phase, current_phase)
+        keys = orders.get(phase_group, [])
+        first_key = keys[0] if keys else "funded_trade1"
+        first_config = self.prop_firm_mgr.get_strategy_config(firm_code, first_key, acct_size)
+        symbol = (first_config.get("tradovate_symbol", "")
+                  or first_config.get("topstepx_symbol", ""))
+        qty = float(first_config.get("tradovate_qty", 0)
+                    or first_config.get("topstepx_qty", 0) or 0)
+        tp_ticks = float(first_config.get("tradovate_tp_ticks", 0)
+                         or first_config.get("topstepx_tp_ticks", 0) or 0)
+        if qty > 0 and tp_ticks > 0:
+            return qty * tp_ticks * self.prop_firm_mgr.get_tick_value(symbol), "trade1_tp_recovery"
+        return None, "unavailable"
+
+    def _funded_cycle_hard_floor(self, firm_code, config, account_min_eq):
+        """Resolve the hard floor used to size funded trade 2+ SL risk."""
+        for key in (
+            "funded_cycle_hard_floor", "cycle_hard_floor", "hard_floor",
+            "funded_floor_locked_after_payout1",
+            "funded_floor_locked_after_first_payout",
+        ):
+            value = config.get(key)
+            if value is not None:
+                try:
+                    return float(value), f"config.{key}"
+                except (TypeError, ValueError):
+                    pass
+
+        try:
+            firm_info = self.prop_firm_mgr.get_firm_info(config.get("firm_code", firm_code))
+            rules = firm_info.get("rules", {}) if isinstance(firm_info, dict) else {}
+            for key in (
+                "funded_cycle_hard_floor", "cycle_hard_floor", "hard_floor",
+                "funded_floor_locked_after_payout1",
+                "funded_floor_locked_after_first_payout",
+            ):
+                value = rules.get(key)
+                if value is not None:
+                    return float(value), f"rules.{key}"
+        except Exception:
+            pass
+
+        if isinstance(account_min_eq, dict) and account_min_eq.get("min_equity") is not None:
+            return float(account_min_eq["min_equity"]), "account.min_equity"
+
+        try:
+            hard_stop = self.prop_firm_mgr._HARD_STOP_THRESHOLDS.get(firm_code)
+            if hard_stop is not None:
+                return float(hard_stop), "hard_stop_thresholds"
+        except Exception:
+            pass
+        return None, "unavailable"
 
     def _toggle_ml_mode(self):
         """Enable ML signals only after password; default is random per firm."""
