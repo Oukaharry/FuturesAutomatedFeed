@@ -16,6 +16,9 @@ venv/
 # Local env/secrets
 .env
 
+# Production hierarchy (client/trader tree — live on each server, never commit)
+config/hierarchy.json
+
 # Local AI/human memory docs (keep out of git)
 plan.md
 
