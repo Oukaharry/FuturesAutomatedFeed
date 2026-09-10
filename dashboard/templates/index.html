@@ -9287,29 +9287,34 @@
                             return Math.max(0, Math.min(100, n));
                         };
                         // Override the most recent row's net profit with live value.
-                        // When doing this, also recompute latest profit split so the row stays internally consistent.
+                        // Recompute open-period split only when there is no manual override.
                         if (rows.length && window._statsNetProfit !== undefined) {
                             const latestNet = Number(window._statsNetProfit) || 0;
                             rows[0].low = formatMoney(latestNet);
 
-                            const latestPct = _normSplitPct(rows[0].split_pct);
-                            // Baseline = net at end of most recent *prior* period that paid a split (profit_split > 0).
-                            // Periods with $0 split (drawdown) do not move the baseline.
-                            let baseline = 0;
-                            for (let i = 1; i < rows.length; i++) {
-                                const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
-                                if (psPrior > 0) {
-                                    baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-                                    break;
+                            if (!rows[0].profit_split_override) {
+                                const latestPct = _normSplitPct(rows[0].split_pct);
+                                // Prefer server baseline; fall back to last prior row with split > 0.
+                                let baseline = (window._lastSplitNetProfit !== undefined && !Number.isNaN(Number(window._lastSplitNetProfit)))
+                                    ? Number(window._lastSplitNetProfit)
+                                    : 0;
+                                if (baseline === 0) {
+                                    for (let i = 1; i < rows.length; i++) {
+                                        const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+                                        if (psPrior > 0) {
+                                            baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                                            break;
+                                        }
+                                    }
                                 }
+                                let latestSplit = 0;
+                                if (latestNet > 0 && latestNet > baseline) {
+                                    latestSplit = (latestNet - baseline) * latestPct / 100;
+                                }
+                                rows[0].profit_split = latestSplit > 0
+                                    ? ('$' + Math.round(latestSplit).toLocaleString('en-US'))
+                                    : '$0';
                             }
-                            let latestSplit = 0;
-                            if (latestNet > 0 && latestNet > baseline) {
-                                latestSplit = (latestNet - baseline) * latestPct / 100;
-                            }
-                            rows[0].profit_split = latestSplit > 0
-                                ? ('$' + Math.round(latestSplit).toLocaleString('en-US'))
-                                : '$0';
                         }
                         rows.forEach((r, idx) => {
                             const psRaw = (r.profit_split || '').trim();
