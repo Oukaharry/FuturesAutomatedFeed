@@ -5199,6 +5199,37 @@ class TradeOpssAIApp:
         "GFF": "GoatFunded",
     }
 
+    # ── Broker login sharing ──────────────────────────────────────────
+    # Some prop firms sell multiple blueprint variants (Tradeify vs Tradeify
+    # Select, Funded Next vs Funded Next Flex vs Rapid Daily) but the
+    # underlying broker account is the SAME Tradovate login. Group those
+    # variants under one canonical family so they share a single broker
+    # connection row/credentials instead of each needing its own login.
+    # Firms not listed here keep their own name as the family (no sharing).
+    _BROKER_LOGIN_FAMILIES = {
+        "tradeify": "Tradeify",
+        "tradeify select": "Tradeify",
+        "tradeify (50% add-on)": "Tradeify",
+        "funded next": "Funded Next",
+        "fundednext": "Funded Next",
+        "funded next flex": "Funded Next",
+        "fundednextflex": "Funded Next",
+        "funded next rapid daily": "Funded Next",
+        "fundednext rapid daily": "Funded Next",
+        "fundednextrapiddaily": "Funded Next",
+        "mffu": "MFFU",
+        "my funded futures": "MFFU",
+        "lucid": "Lucid",
+        "lucid trading": "Lucid",
+        "lucidmaxx": "Lucid",
+    }
+
+    def _broker_login_family(self, firm_name):
+        """Canonical broker-login group for a prop-firm label (default: itself)."""
+        name = str(firm_name or "").strip()
+        key = name.lower().replace("_", " ").strip()
+        return self._BROKER_LOGIN_FAMILIES.get(key, name)
+
     def _resolve_firm_code(self, prop_firm_name, default="MFFU_Flex"):
         """Resolve a dashboard 'Prop Firm' label to a blueprint firm code.
 
@@ -9509,13 +9540,16 @@ class TradeOpssAIApp:
         # Group label variations that use the same broker login. For example,
         # Tradeify and Tradeify Select share one Tradovate connection, while
         # each row still keeps its own blueprint for TP/SL and sizing.
+        # Grouped by FIRM FAMILY (Tradeify family, Funded Next family, ...),
+        # NOT by broker platform — platform grouping would collapse every
+        # Tradovate-based firm (MFFU, Apex, Tradeify, Funded Next, ...) into
+        # a single row and break dashboard credential auto-population.
         firms = []
         seen = set()
         self._broker_firm_aliases = {}
         for ev in evaluations:
             firm = ev.get("Prop Firm", "Unknown")
-            platform = self._platform_for_firm(firm)
-            connection_key = platform or str(firm)
+            connection_key = self._broker_login_family(firm)
             self._broker_firm_aliases[firm] = connection_key
             if connection_key not in seen:
                 seen.add(connection_key)
@@ -9563,7 +9597,7 @@ class TradeOpssAIApp:
                 label for label, key in self._broker_firm_aliases.items()
                 if key == firm
             ]
-            display_firm = firm if firm in ("Tradovate", "TopStepX", "AlphaTrader", "BlackArrow") else (member_firms[0] if member_firms else firm)
+            display_firm = firm
             strip_color = self.PROP_FIRM_COLORS.get(display_firm, "#95A5A6")
             # Try exact match first, then case-insensitive, then alias match, then unmatched pool
             pa = pa_lookup.get(display_firm, {})
