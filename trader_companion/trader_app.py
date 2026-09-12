@@ -29,7 +29,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.16"
+APP_VERSION = "1.11.16"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -597,12 +597,20 @@ except ImportError:
     pytz = None
 
 
-def _companion_auth_headers():
-    """Headers for TradeOpssAI-only /api/companion/auth."""
-    return {
+def _companion_request_headers(extra=None):
+    """Headers for all TradeOpssAI companion API calls."""
+    headers = {
         "Content-Type": "application/json",
         "X-Companion-Version": APP_VERSION,
     }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def _companion_auth_headers():
+    """Headers for TradeOpssAI-only /api/companion/auth."""
+    return _companion_request_headers()
 
 
 def _gzip_post(url, payload, timeout=120, **kwargs):
@@ -623,16 +631,13 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
         headers = kwargs.pop('headers', {})
         headers['Content-Type'] = 'application/json'
         headers['Content-Encoding'] = 'gzip'
-        # Redundant tagging so server can record version even if payload is transformed upstream.
-        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
-            headers.setdefault('X-Companion-Version', APP_VERSION)
+        headers.setdefault('X-Companion-Version', APP_VERSION)
         return requests.post(url, data=compressed, headers=headers, timeout=timeout, **kwargs)
     except Exception:
         # Fallback: plain JSON
         h = kwargs.pop('headers', {}) or {}
         h.setdefault('Content-Type', 'application/json')
-        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
-            h.setdefault('X-Companion-Version', APP_VERSION)
+        h.setdefault('X-Companion-Version', APP_VERSION)
         return requests.post(url, json=payload, headers=h, timeout=timeout, **kwargs)
 
 
@@ -3114,7 +3119,7 @@ class TradeOpssAIApp:
                 response = requests.post(
                     f"{dashboard_url}/api/client/push",
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_request_headers(),
                     timeout=30
                 )
 
@@ -4021,7 +4026,7 @@ class TradeOpssAIApp:
             response = requests.post(
                 f"{dashboard_url}/api/client/push_hedging_review",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30
             )
 
@@ -4727,6 +4732,7 @@ class TradeOpssAIApp:
                         f"{dashboard_url}/api/client/import_csv_companion",
                         data={"email": email},
                         files={"file": (os.path.basename(csv_path), f, "text/csv")},
+                        headers={"X-Companion-Version": APP_VERSION},
                         timeout=120
                     )
 
@@ -4822,7 +4828,7 @@ class TradeOpssAIApp:
                 response = requests.post(
                     f"{dashboard_url}/api/client/migrate_sheet",
                     json={"email": email, "sheet_url": sheet_url},
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_request_headers(),
                     timeout=180
                 )
                 
@@ -5340,6 +5346,43 @@ class TradeOpssAIApp:
     # Keywords for substring matching (catches "Fail", "Failed", "Breached", etc.)
     _INACTIVE_KEYWORDS = ("fail", "breach", "delete", "closed", "ended", "lost")
 
+    def _row_is_terminal_failure(self, ev):
+        """True when Status P1 or Status is Fail / Breach / etc."""
+        for field in ("Status P1", "Status"):
+            s = self._cell(ev.get(field)).lower()
+            if s and any(kw in s for kw in self._INACTIVE_KEYWORDS):
+                return True
+        return False
+
+    def _clear_system_day_placeholders(self, ev):
+        """Remove weekday placeholders the companion queued (keep $0 / P&L)."""
+        if not isinstance(ev, dict):
+            return []
+        cleared = []
+        for key in list(ev.keys()):
+            if not isinstance(key, str):
+                continue
+            if not (
+                key.startswith("Hedge Result")
+                or key.startswith("Hedge Day")
+                or key.startswith("Prop Day")
+            ):
+                continue
+            val = self._cell(ev.get(key))
+            if not val or val in ("—", "-"):
+                continue
+            if self._parse_day_token(val) is None:
+                continue
+            ev[key] = ""
+            cleared.append(key)
+        return cleared
+
+    def _scrub_failed_row_day_placeholders(self, evaluations):
+        """Clear queued weekday cells on every failed row before dashboard push."""
+        for ev in evaluations or []:
+            if isinstance(ev, dict) and self._row_is_terminal_failure(ev):
+                self._clear_system_day_placeholders(ev)
+
     # ── Funded-phase starting balance map ─────────────────────────────
     # Some prop firms reset the funded balance to a value that differs from
     # the challenge "Account Size".  Without this, current-profit math is wrong
@@ -5557,6 +5600,93 @@ class TradeOpssAIApp:
         "sat": 5, "saturday": 5,
         "sun": 6, "sunday": 6,
     }
+    _WEEKDAY_LABELS = (
+        "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY",
+    )
+
+    @classmethod
+    def _next_trading_weekday(cls, from_weekday=None):
+        """Next Mon–Fri session after from_weekday (Kenya EAT). Fri → Mon."""
+        wd = kenya_today().weekday() if from_weekday is None else int(from_weekday)
+        if wd >= 4:
+            return 0
+        return wd + 1
+
+    def _phase_group_for_orders(self, phase, firm_code):
+        phase_map = {
+            "Challenge": "Challenge", "Funded": "Funded", "Farming": "Farming",
+            "Double Dip": "Double Dip", "Min Trading Days": "Min Trading Days",
+            "Funded Phase": "Funded Phase", "Residual Phase": "Residual Phase",
+            "Residual": "Residual Phase",
+            "Payout 1": "Funded", "Payout 2": "Funded", "Payout 3": "Funded", "Payout 4": "Funded",
+        }
+        firm_orders = (
+            self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
+            if self.prop_firm_mgr else {}
+        )
+        if phase in firm_orders:
+            return phase
+        return phase_map.get(phase, phase)
+
+    def _next_progression_phase(self, ev, firm_code, completed_phase):
+        """Phase after completed_phase in this row's blueprint progression."""
+        firm_orders = (
+            self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
+            if self.prop_firm_mgr else {}
+        )
+        chain = []
+        if not self._has_passed_to_funded(ev):
+            if firm_orders.get("Challenge"):
+                chain.append("Challenge")
+        if self._has_passed_to_funded(ev) or self._cell(ev.get("Account #.1")):
+            pg = self._phase_group_for_orders("Funded", firm_code)
+            if firm_orders.get(pg):
+                chain.append("Funded")
+        if firm_orders.get("Farming"):
+            chain.append("Farming")
+        try:
+            idx = chain.index(completed_phase)
+        except ValueError:
+            return None
+        return chain[idx + 1] if idx + 1 < len(chain) else None
+
+    def _resolve_next_hedge_field(self, ev, firm_code, current_phase, traded_field):
+        """Next hedge column after a completed trade (same phase or next blueprint phase)."""
+        if not traded_field or not firm_code:
+            return None
+
+        phase_to_fields = {ph: flist for ph, flist in self._ALL_PHASE_FIELD_SETS}
+        traded_phase = None
+        traded_idx = None
+        for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
+            if traded_field in field_list:
+                traded_phase = phase_name
+                traded_idx = field_list.index(traded_field)
+                break
+        if traded_phase is None or traded_idx is None:
+            return None
+
+        fields = phase_to_fields.get(traded_phase, [])
+        firm_orders = (
+            self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
+            if self.prop_firm_mgr else {}
+        )
+        pg = self._phase_group_for_orders(traded_phase, firm_code)
+        trade_keys = firm_orders.get(pg, [])
+
+        next_idx = traded_idx + 1
+        if trade_keys and next_idx < len(trade_keys) and next_idx < len(fields):
+            return fields[next_idx]
+
+        next_phase = self._next_progression_phase(ev, firm_code, traded_phase)
+        if not next_phase:
+            return None
+        if next_phase == "Funded" and not (
+            self._has_passed_to_funded(ev) or self._cell(ev.get("Account #.1"))
+        ):
+            return None
+        next_fields = phase_to_fields.get(next_phase, [])
+        return next_fields[0] if next_fields else None
 
     @classmethod
     def _parse_day_token(cls, value):
@@ -6491,17 +6621,12 @@ class TradeOpssAIApp:
             pass
         return None
 
-    def _mark_day_cell_traded_on_dashboard(self, acct_num, field_name):
-        """Replace the day-name placeholder cell with "$0.00" on the dashboard.
+    def _mark_day_cell_traded_on_dashboard(self, acct_num, field_name, firm_code=None, current_phase=None):
+        """Mark the traded hedge cell $0.00 and queue the next weekday placeholder.
 
-        Called after a Tradovate or TopStepX order lands. Writing "$0.00" rather
-        than blanking the cell is deliberate: the cell-finder treats a real
-        value (non-empty, non-day-token) as a completed trade, so the next scan
-        will skip this cell and the trade cannot be re-fired.
-
-        The cell is only overwritten when it still holds a day-name token —
-        never when it already contains a real P&L result. Best-effort: never
-        raises so a push failure can't block the trade flow.
+        After a broker fill: current cell → $0.00; next blueprint stage cell →
+        next trading weekday (Tue→WED, Fri→MON, Kenya EAT). Phase/column comes
+        from the row's firm blueprint (e.g. CH3 done + passed → FD1 / Hedge Result 1.1).
         """
         if not field_name or not acct_num:
             return False
@@ -6514,7 +6639,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=10,
             )
             if r.status_code != 200:
@@ -6523,7 +6648,8 @@ class TradeOpssAIApp:
             evaluations = data.get("evaluations", []) or []
 
             acct_lower = str(acct_num).strip().lower()
-            touched = 0
+            matched_ev = None
+            force_fields = []
             for ev in evaluations:
                 if ev.get("_deleted"):
                     continue
@@ -6531,15 +6657,32 @@ class TradeOpssAIApp:
                 a0 = self._cell(ev.get("Account #")).lower()
                 if acct_lower not in (a1, a0):
                     continue
+                matched_ev = ev
                 cur = self._cell(ev.get(field_name))
-                # Only mark cells that still hold a day-name token. Skip empty
-                # cells and skip cells that already contain a real value.
-                if self._parse_day_token(cur) is None:
-                    continue
-                ev[field_name] = "$0.00"
-                touched += 1
+                if self._parse_day_token(cur) is not None:
+                    ev[field_name] = "$0.00"
+                    force_fields.append(field_name)
 
-            if touched == 0:
+                resolved_firm = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
+                phase = current_phase
+                if not phase:
+                    phase, _ = self._detect_eval_phase(ev)
+                next_field = self._resolve_next_hedge_field(
+                    ev, resolved_firm, phase, field_name,
+                )
+                if next_field:
+                    next_label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+                    cur_next = self._cell(ev.get(next_field))
+                    if (
+                        cur_next in ("", "—", "-")
+                        or self._parse_day_token(cur_next) is not None
+                    ):
+                        ev[next_field] = next_label
+                        if next_field not in force_fields:
+                            force_fields.append(next_field)
+                break
+
+            if not matched_ev or not force_fields:
                 return False
 
             payload = {
@@ -6547,12 +6690,12 @@ class TradeOpssAIApp:
                 "evaluations": evaluations,
                 "statistics": {},
                 "dropdown_options": {},
-                "force_fields": [field_name],
+                "force_fields": force_fields,
             }
             resp = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30,
             )
             ok = resp.status_code == 200
@@ -6561,11 +6704,12 @@ class TradeOpssAIApp:
             except Exception:
                 pass
             if ok:
-                self.root.after(0, lambda an=acct_num, f=field_name:
-                    self.log(f"🗓 Day cell marked $0.00 on dashboard: {an} / {f}"))
+                summary = ", ".join(force_fields)
+                self.root.after(0, lambda an=acct_num, s=summary:
+                    self.log(f"🗓 Dashboard updated: {an} — {s}"))
             else:
                 self.root.after(0, lambda an=acct_num, f=field_name:
-                    self.log(f"⚠ Day-cell mark push rejected: {an} / {f}", "WARN"))
+                    self.log(f"⚠ Day-cell push rejected: {an} / {f}", "WARN"))
             return ok
         except Exception as e:
             try:
@@ -6589,7 +6733,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=10
             )
             if r.status_code != 200:
@@ -6638,7 +6782,7 @@ class TradeOpssAIApp:
                     r = requests.post(
                         f"{dashboard_url}/api/client/data",
                         json={"email": email},
-                        headers={"Content-Type": "application/json"},
+                        headers=_companion_request_headers(),
                         timeout=15
                     )
                     if r.status_code != 429:
@@ -7578,7 +7722,11 @@ class TradeOpssAIApp:
                 # same trade can't fire twice.
                 if day_field:
                     try:
-                        self._mark_day_cell_traded_on_dashboard(acct_num, day_field)
+                        self._mark_day_cell_traded_on_dashboard(
+                            acct_num, day_field,
+                            firm_code=firm_code,
+                            current_phase=row_data.get("current_phase"),
+                        )
                     except Exception:
                         pass
 
@@ -9435,7 +9583,11 @@ class TradeOpssAIApp:
                     # the next scan, so the same trade can't fire twice.
                     if day_field:
                         try:
-                            self._mark_day_cell_traded_on_dashboard(acct_num, day_field)
+                            self._mark_day_cell_traded_on_dashboard(
+                                acct_num, day_field,
+                                firm_code=firm_code,
+                                current_phase=row_data.get("current_phase"),
+                            )
                         except Exception:
                             pass
 
@@ -10974,7 +11126,7 @@ class TradeOpssAIApp:
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=15)
             if r.status_code != 200:
                 self.root.after(0, lambda s=r.status_code:
@@ -11128,6 +11280,8 @@ class TradeOpssAIApp:
         if not any_changed:
             return
 
+        self._scrub_failed_row_day_placeholders(all_evals)
+
         payload = {
             "email": email,
             "evaluations": all_evals,
@@ -11139,7 +11293,7 @@ class TradeOpssAIApp:
             resp = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=_companion_request_headers(),
                 timeout=30)
             if resp.status_code == 200:
                 rj = resp.json()
@@ -11409,6 +11563,8 @@ class TradeOpssAIApp:
 
             self.root.after(0, lambda c=status_updates, b=breached_count:
                 self.log(f"🌐 {firm_name}: {c} status update(s) ({b} breached) — pushing to dashboard..."))
+
+            self._scrub_failed_row_day_placeholders(all_evals)
 
             # Push to dashboard
             email = self.client_email_entry.get().strip()
