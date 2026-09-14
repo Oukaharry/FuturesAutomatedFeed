@@ -5409,17 +5409,6 @@ def _companion_access_denied(client_id, identity=None):
     }), 403
 
 
-def _required_companion_version():
-    """TradeOpssAI version gate target; empty string disables the gate."""
-    try:
-        cfg = current_app.config.get('REQUIRED_COMPANION_VERSION')
-        if cfg is not None:
-            return str(cfg).strip()
-    except RuntimeError:
-        pass
-    return os.getenv('REQUIRED_COMPANION_VERSION', '').strip()
-
-
 def _extract_companion_version(data=None):
     payload = data if isinstance(data, dict) else (request.get_json(silent=True) or {})
     return (
@@ -5428,27 +5417,6 @@ def _extract_companion_version(data=None):
         or payload.get('version')
         or ''
     ).strip()
-
-
-def _companion_version_denied(data=None):
-    """403 when companion version missing or not equal to REQUIRED_COMPANION_VERSION."""
-    required = _required_companion_version()
-    if not required:
-        return None
-    version = _extract_companion_version(data)
-    if not version:
-        return jsonify({
-            "status": "error",
-            "message": "TradeOpssAI client required (missing X-Companion-Version)",
-            "required_version": required,
-        }), 403
-    if version != required:
-        return jsonify({
-            "status": "error",
-            "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
-            "required_version": required,
-        }), 403
-    return None
 
 
 def _perform_client_email_auth(email: str, *, actor: str = 'client'):
@@ -5515,16 +5483,11 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
-    Requires X-Companion-Version matching REQUIRED_COMPANION_VERSION on the server.
     """
     try:
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
-
-        denied = _companion_version_denied(data)
-        if denied:
-            return denied
 
         email = data.get('email', '').strip().lower()
         if not email:
@@ -5550,10 +5513,6 @@ def api_client_data():
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
-
-        denied = _companion_version_denied(data)
-        if denied:
-            return denied
 
         email = (data.get('email') or '').strip().lower()
         if not email:
@@ -5779,10 +5738,6 @@ def api_client_push():
     
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
-
-    denied = _companion_version_denied(data)
-    if denied:
-        return denied
     
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -6236,10 +6191,6 @@ def api_migrate_sheet():
     
     if not sheet_url:
         return jsonify({"status": "error", "message": "Google Sheet URL required"}), 400
-
-    denied = _companion_version_denied(data)
-    if denied:
-        return denied
     
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -8654,10 +8605,6 @@ def api_push_hedging_review():
 
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
-
-    denied = _companion_version_denied(data)
-    if denied:
-        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:
@@ -12777,10 +12724,6 @@ def import_csv_companion():
     email = (request.form.get('email') or '').strip().lower()
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
-
-    denied = _companion_version_denied({"email": email})
-    if denied:
-        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:
