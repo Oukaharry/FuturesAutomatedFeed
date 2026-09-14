@@ -53,7 +53,8 @@ def stage_trader_app(trader_release: bool) -> str:
             count=1,
             flags=re.MULTILINE,
         )
-        if n != 1:
+        if n == 0 and not re.search(
+                r'^RELEASE_DISABLE_ML\s*=\s*True\b', content, flags=re.MULTILINE):
             raise RuntimeError('Could not patch RELEASE_DISABLE_ML in trader_app.py')
     os.makedirs(STAGE_DIR, exist_ok=True)
     staged = os.path.join(STAGE_DIR, 'trader_app.py')
