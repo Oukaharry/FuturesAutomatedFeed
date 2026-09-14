@@ -20,8 +20,9 @@ class Config:
     # Application
     APP_NAME = 'MT5 Hedging Dashboard'
     APP_VERSION = '1.0.1'
-    # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
-    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.11.16')
+    # Empty = companion version gate off (older exes allowed). Set to trader_app
+    # APP_VERSION when shipping a mandatory TradeOpssAI release.
+    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '')
     
     # Session Configuration
     SESSION_TYPE = 'filesystem'  # Options: 'filesystem', 'redis', 'sqlalchemy'

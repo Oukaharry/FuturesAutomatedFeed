@@ -5410,14 +5410,14 @@ def _companion_access_denied(client_id, identity=None):
 
 
 def _required_companion_version():
-    """Server-side TradeOpssAI version gate (sync with trader_app APP_VERSION)."""
+    """TradeOpssAI version gate target; empty string disables the gate."""
     try:
         cfg = current_app.config.get('REQUIRED_COMPANION_VERSION')
-        if cfg:
+        if cfg is not None:
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return os.getenv('REQUIRED_COMPANION_VERSION', '1.11.16').strip()
+    return os.getenv('REQUIRED_COMPANION_VERSION', '').strip()
 
 
 def _extract_companion_version(data=None):
@@ -5432,8 +5432,10 @@ def _extract_companion_version(data=None):
 
 def _companion_version_denied(data=None):
     """403 when companion version missing or not equal to REQUIRED_COMPANION_VERSION."""
-    version = _extract_companion_version(data)
     required = _required_companion_version()
+    if not required:
+        return None
+    version = _extract_companion_version(data)
     if not version:
         return jsonify({
             "status": "error",
