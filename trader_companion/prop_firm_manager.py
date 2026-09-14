@@ -4,6 +4,8 @@
 import logging
 import datetime
 import copy
+import math
+import random
 
 # ── Kenya / East Africa Time (UTC+3) ──────────────────────────────────
 # Daily-rollover decisions (the per-account direction lock below) need to
@@ -87,6 +89,12 @@ class PropFirmManager:
 
         # Per-account daily direction locks: {account_number: {"date": date, "direction": "BUY"/"SELL"}}
         self._account_direction_locks: Dict[str, Dict] = {}
+
+        # Per-account randomized settings: persistent values (like base farm SL or
+        # FT1 target) are stored once per account, while time-varying values are
+        # re-drawn at trade/time-of-day and never persisted as the base.
+        self._account_random_state: Dict[str, Dict[str, float]] = {}
+        self._daily_random_state: Dict[str, float] = {}
 
         # Prop firm blueprints - $50k account configurations only core challange with the flex addon
         self.firm_blueprints = {
@@ -2101,8 +2109,9 @@ class PropFirmManager:
         }
 
         # FundedNext Rapid Daily, $50k Tradovate plan. $4,000 first funded
-        # target, no hedge, no reactivation. All trades use 2 NQ minis
-        # ($10/tick). Evaluation goal $53,000; each funded cycle requests a
+        # target, no hedge, no reactivation. Funded trades use 4 MNQ micros
+        # ($2/tick), keeping the $1,000 daily-loss limit at 496 ticks.
+        # Evaluation goal $53,000; each funded cycle requests a
         # $1,200 gross payout at eligible EOD. A recovery attempt follows any
         # non-fatal stop loss; a second/third loss (per cycle) reaches that
         # cycle's hard floor and ends the account (no funded reactivation).
@@ -2140,59 +2149,59 @@ class PropFirmManager:
                 }},
                 # Funded Cycle 1 — goal $54,000 (start $50,000)
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade1_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Cycle 2 — goal $53,300; 3 escalating attempts
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 50, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2_recovery1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2_recovery2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 250, "tradovate_sl_ticks": 70,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Cycles 3-5 — goal $53,300 each; same structure repeats
                 "funded_trade3": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade3_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2257,8 +2266,8 @@ class PropFirmManager:
                 # Funded Trade 1C — Cleanup; TP recomputed from live balance,
                 # values below are the $55,050 example from the spec.
                 "funded_trade1_cleanup": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 95,
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Qualifying Days — need 5 days at $200+ before any payout
@@ -2430,7 +2439,7 @@ class PropFirmManager:
                 # Farming — post-TP buffer, run until 5 winning days are logged
                 "farming": {"50k": {
                     "tradovate_symbol": "NQU6", "tradovate_qty": 1,
-                    "tradovate_tp_ticks": 31, "tradovate_sl_ticks": 200,
+                    "tradovate_tp_ticks": 32, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Live Session 1 — post-Payout-5 promotion, single attempt
@@ -3811,7 +3820,8 @@ class PropFirmManager:
 
     def calculate_funded_sl(self, config: Dict, current_balance: float,
                             threshold: float, trade_index: int,
-                            tick_value: float = 5.0) -> Dict:
+                            tick_value: float = 5.0,
+                            sl_mode: Optional[str] = None) -> Dict:
         """Funded-account SL rule (REPLACES midnight-floor + TMDL for funded).
 
         Applies to every firm's Funded and Double Dip phases:
@@ -3834,6 +3844,8 @@ class PropFirmManager:
             threshold: Static drawdown threshold in dollars.
             trade_index: 1-based trade number within the phase.
             tick_value: $/tick.
+            sl_mode: Optional funded SL mode supplied by the app. The classic
+                balance-minus-floor calculation remains the default.
 
         Returns:
             Adjusted config copy. No-op if qty/tick invalid.
@@ -3871,6 +3883,202 @@ class PropFirmManager:
             f"MT5 TP {int(orig_mt5_tp)}→{new_mt5_tp}pts"
         )
         return adjusted
+
+    def _random_state_value(self, account_key: str, key: str, lo: float, hi: float,
+                           persist: bool = True):
+        """Return a stable per-account value, re-drawn only when the caller asks."""
+        account_id = str(account_key or "default")
+        state = self._account_random_state.setdefault(account_id, {})
+        if persist:
+            state.setdefault(key, random.uniform(lo, hi))
+            return state[key]
+        return random.uniform(lo, hi)
+
+    def _draw_uniform(self, lo: float, hi: float) -> float:
+        """Continuous uniform draw, converted to integer ticks later."""
+        return random.uniform(float(lo), float(hi))
+
+    def randomize_trade_config(self, firm_code: str, phase_key: str, config: Dict,
+                               account_key: Optional[str] = None,
+                               balance: float = 50000.0) -> Dict:
+        """Apply anti-correlation randomization for supported firm blueprints.
+
+        Rules implemented from the Slack spec discussions and the propagated
+        blueprint decisions for Tradeify Select, FTMO Futures Pro, and Blue
+        Guardian Reserve. The randomization remains conservative: hard-room
+        stops, payout caps, and rule-driven values are never randomized away
+        from the firm's constraints.
+        """
+        if not config or not isinstance(config, dict):
+            return config
+
+        cfg = config.copy()
+        firm = str(firm_code or "").strip()
+        phase = str(phase_key or "").lower()
+        symbol = str(cfg.get("tradovate_symbol") or cfg.get("topstepx_symbol") or "")
+        is_farming = ("farming" in phase) or ("MNQ" in symbol.upper())
+
+        def clamp(val, lo, hi):
+            return max(lo, min(hi, val))
+
+        if firm in ("FundedNext Rapid Daily", "FundedNext Rapid Daily 50K"):
+            # Challenge trades remain exactly as defined by the blueprint.
+            if not phase.startswith("funded_trade"):
+                return cfg
+
+            account_id = str(account_key or "default")
+            state = self._account_random_state.setdefault(account_id, {})
+            friction = 8.80
+            tick_value = 2.0
+            sl_ticks = 496
+
+            if phase.startswith("funded_trade1"):
+                # $54,650 through below $55,250 in 300 whole-tick values.
+                if "rapid_daily_ft1_target_ticks" not in state:
+                    state["rapid_daily_ft1_target_ticks"] = random.randrange(27325, 27625)
+                target_ticks = int(state["rapid_daily_ft1_target_ticks"])
+                tp_ticks = math.floor(
+                    (target_ticks * tick_value - 50000.0 + friction) / tick_value)
+                draw_name = "T1"
+            else:
+                # $53,150 through below $53,450 in 150 whole-tick values.
+                target_ticks = random.randrange(26575, 26725)
+                while target_ticks % 100 == 0:
+                    target_ticks = random.randrange(26575, 26725)
+                target_dollars = target_ticks * tick_value
+                tp_ticks = math.floor(max(target_dollars - balance, 263.80) / tick_value)
+                draw_name = "T2+"
+
+            cfg["tradovate_tp_ticks"] = max(1, min(600, int(tp_ticks)))
+            cfg["tradovate_sl_ticks"] = sl_ticks
+            cfg.setdefault("_randomization", {}).update({
+                "policy": "fundednext_rapid_daily",
+                "draw": draw_name,
+                "account_key": account_id,
+                "target_ticks": target_ticks,
+                "friction_dollars": friction,
+            })
+            self.logger.info(
+                f"[Rapid Daily randomization] account={account_id} trade={phase} "
+                f"draw={draw_name} target_ticks={target_ticks} balance=${balance:,.2f} "
+                f"TP={cfg['tradovate_tp_ticks']}t SL={sl_ticks}t")
+            return cfg
+
+        if firm in ("Tradeify Select", "Tradeify Select 50K"):
+            if phase.startswith("funded_trade1"):
+                target = self._draw_uniform(54500, 56000)
+                tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(15, min(600, tp))
+                cfg["tradovate_sl_ticks"] = 200
+            elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
+                target = self._draw_uniform(54500, 57500)
+                tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(15, min(600, tp))
+                room = max(0.0, balance - 50100.0)
+                cfg["tradovate_sl_ticks"] = min(600, max(10, int(math.floor(room / 10.0))))
+            elif is_farming:
+                cfg["tradovate_tp_ticks"] = 154
+                base = self._random_state_value(account_key, "tradeify_select_farm_sl_base", 470, 580)
+                jitter = random.uniform(-20.0, 20.0)
+                sl = clamp(base + jitter, 450.0, 600.0)
+                room_cap = math.floor((balance - 50100.0) / 4.0)
+                cfg["tradovate_sl_ticks"] = min(int(math.floor(sl)), max(0, room_cap))
+            return cfg
+
+        if firm in ("FTMO Futures Pro", "FTMO Pro"):
+            if phase.startswith("funded_trade1"):
+                target = self._draw_uniform(5000, 6000)
+                tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                cfg["tradovate_sl_ticks"] = 95
+            elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
+                target = self._draw_uniform(54500, 57000)
+                tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                room = max(0.0, balance - 50050.0)
+                cfg["tradovate_sl_ticks"] = min(95, max(20, int(math.floor(room / 10.0))))
+            elif is_farming:
+                cfg["tradovate_tp_ticks"] = 138
+                # FTMO Pro farming SLs are intentionally kept inside a tighter
+                # account-based corridor so they remain varied without drifting
+                # into the full-loss/high-risk band. Persist once per account.
+                base = self._random_state_value(account_key, "ftmo_farm_sl_base", 100.0, 390.0)
+                jitter = random.uniform(-15.0, 15.0)
+                sl = clamp(base + jitter, 100.0, 390.0)
+                cfg["tradovate_sl_ticks"] = int(math.floor(sl))
+            return cfg
+
+        if firm in ("Blue Guardian Reserve", "Blue Guardian"):
+            if "challenge_trade" in phase:
+                return cfg
+            elif phase.startswith("funded_trade1"):
+                target = self._draw_uniform(54250, 56000)
+                tp = int(math.floor((target - 50000.0) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                cfg["tradovate_sl_ticks"] = 200
+            elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
+                target = self._draw_uniform(53500, 55000)
+                tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                room = max(0.0, balance - 50100.0)
+                cfg["tradovate_sl_ticks"] = min(600, max(10, int(math.floor(room / 10.0))))
+            elif is_farming:
+                cfg["tradovate_tp_ticks"] = 31
+                base = self._random_state_value(account_key, "bgr_farm_sl_base", 160, 320)
+                jitter = random.uniform(-15.0, 15.0)
+                sl = clamp(base + jitter, 100.0, 390.0)
+                cfg["tradovate_sl_ticks"] = int(math.floor(sl))
+            elif phase.startswith("live_trade"):
+                cfg["tradovate_tp_ticks"] = 100
+                room = max(0.0, balance - 50100.0)
+                cfg["tradovate_sl_ticks"] = min(600, max(10, int(math.floor(room / 10.0))))
+            return cfg
+
+        # Remaining firms use a conservative generic policy. Funded phases
+        # intentionally stay unchanged here because the shared app path
+        # applies each firm's live balance and hard-floor rule afterward.
+        if phase.startswith("challenge"):
+            return cfg
+        if phase.startswith(("funded", "payout", "doubledip")):
+            return cfg
+
+        original_tp = float(cfg.get("tradovate_tp_ticks", 0) or cfg.get("topstepx_tp_ticks", 0) or 0)
+        original_sl = float(cfg.get("tradovate_sl_ticks", 0) or cfg.get("topstepx_sl_ticks", 0) or 0)
+        if original_tp <= 0 and original_sl <= 0:
+            return cfg
+
+        account_id = str(account_key or "default")
+        phase_id = phase.replace(" ", "_") or "trade"
+        is_farming_phase = is_farming or "qualifying" in phase or "live_trade" in phase
+        tp_low, tp_high = ((0.94, 1.06) if is_farming_phase else (0.92, 1.08))
+        sl_low, sl_high = ((0.90, 1.10) if is_farming_phase else (0.94, 1.06))
+
+        if original_tp > 0 and not cfg.get("disable_tp_adjustment"):
+            tp_factor = self._random_state_value(
+                account_id, f"generic_{phase_id}_tp_factor", tp_low, tp_high)
+            new_tp = max(5, int(round(original_tp * tp_factor)))
+            if "tradovate_tp_ticks" in cfg:
+                cfg["tradovate_tp_ticks"] = new_tp
+            elif "topstepx_tp_ticks" in cfg:
+                cfg["topstepx_tp_ticks"] = new_tp
+
+        if original_sl > 0:
+            sl_factor = self._random_state_value(
+                account_id, f"generic_{phase_id}_sl_factor", sl_low, sl_high)
+            new_sl = max(10, int(round(original_sl * sl_factor)))
+            if "tradovate_sl_ticks" in cfg:
+                cfg["tradovate_sl_ticks"] = new_sl
+            elif "topstepx_sl_ticks" in cfg:
+                cfg["topstepx_sl_ticks"] = new_sl
+
+        cfg.setdefault("_randomization", {})
+        cfg["_randomization"].update({
+            "policy": "generic_per_account",
+            "firm": firm,
+            "phase": phase,
+            "account_key": account_id,
+        })
+        return cfg
 
     def get_lock_level(self, prop_firm: str, other_broker: Optional[str] = None) -> float:
         """Public: the flat lock-level floor for a firm.

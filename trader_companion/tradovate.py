@@ -264,6 +264,14 @@ class TradovateAccount:
         """Initialize Chrome WebDriver with crash-resistant options"""
         chrome_options = Options()
 
+        # Diagnostic opt-in: capture websocket traffic (see ws_sniffer.py) to
+        # find Tradovate's own quote/chart message format. Off by default —
+        # performance logging adds overhead and log volume.
+        if os.getenv("TRADOVATE_WS_SNIFF") == "1":
+            from trader_companion.ws_sniffer import enable_network_logging
+            enable_network_logging(chrome_options)
+            logging.info("[WSSniff] Performance/network logging ENABLED for this session")
+
         # PERSISTENCE: Use a stable per-account Chrome profile so cookies, localStorage
         # and Tradovate onboarding state survive between launches. Without this, every
         # login starts with a throwaway profile, so Tradovate treats the connector as a
@@ -408,6 +416,22 @@ class TradovateAccount:
         except Exception as e:
             logging.error(f"Failed to initialize Chrome WebDriver: {e}")
             raise Exception(f"ChromeDriver initialization failed: {e}")
+
+    def sniff_websocket_frames(self, duration_sec=90, out_path=None, text_filter=None):
+        """Diagnostic: capture this tab's live websocket traffic to a JSONL file.
+
+        Requires TRADOVATE_WS_SNIFF=1 set before this account's Chrome was
+        launched (enables performance logging at startup). Used to discover
+        Tradovate's own quote/chart message format for a future price feed.
+        """
+        from trader_companion.ws_sniffer import capture_websocket_frames
+        out_path = out_path or f"ws_capture_{self.username}_{int(time.time())}.jsonl"
+        count, urls = capture_websocket_frames(
+            self.driver, out_path, duration_sec=duration_sec, text_filter=text_filter)
+        logging.info(f"[WSSniff] Captured {count} frame(s) across {len(urls)} socket(s) -> {out_path}")
+        for u in urls:
+            logging.info(f"[WSSniff]   socket: {u}")
+        return out_path, count, urls
 
     def _validate_blueprint_parameters(self, symbol, qty, tp=None, sl=None, prop_firm=None, phase=None, account_size=None, strict_mode=True):
         """
