@@ -4902,12 +4902,18 @@ class TradeOpssAIApp:
     _FIRM_MAP = {
         "My Funded Futures": "MFFU_Flex",
         "MFFU": "MFFU",
+        "MFFU Rapid EOD": "MFFU Rapid EOD",
+        "MFFU Rapid EOD 50K": "MFFU Rapid EOD",
+        "Rapid EOD": "MFFU Rapid EOD",
         "Funding Ticks": "FundingTicks",
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
         "Funded Next Flex": "Funded Next Flex",
         "FundedNextFlex": "Funded Next Flex",
         "TopStep": "TopStep",
+        "TopStep 50K XFA": "TopStep 50K XFA",
+        "TopStep XFA": "TopStep 50K XFA",
+        "TopStep_XFA": "TopStep 50K XFA",
         "TopStep RTP": "TopStep RTP",
         "TopStep_RTP": "TopStep RTP",
         "TradeDay": "TradeDay",
@@ -7658,7 +7664,17 @@ class TradeOpssAIApp:
                     # to the profit trade 1 would have produced.
                     is_rapid_daily = str(firm_code or "").strip() in (
                         "FundedNext Rapid Daily", "FundedNext Rapid Daily 50K")
-                    if trade_index >= 2 and not is_rapid_daily:
+                    is_bg_reserve = str(firm_code or "").strip() in (
+                        "Blue Guardian Reserve", "Blue Guardian Reserve 50K",
+                        "Blue Guardian", "BGR")
+                    is_lucid = str(firm_code or "").strip() == "Lucid"
+                    is_mffu_rapid_eod = str(firm_code or "").strip() == "MFFU Rapid EOD"
+                    is_topstep_xfa = str(firm_code or "").strip() == "TopStep 50K XFA"
+                    is_reserve_ft2_plus = (
+                        (is_bg_reserve or is_lucid) and 2 <= trade_index <= 5)
+                    is_spec_funded = (
+                        is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa)
+                    if trade_index >= 2 and not is_rapid_daily and not is_spec_funded:
                         cycle_goal, goal_source = self._funded_cycle_goal_dollars(
                             firm_code, current_phase, phase_key, acct_size, config)
                         if cycle_goal is not None:
@@ -7688,6 +7704,19 @@ class TradeOpssAIApp:
                               status="rapid_daily_rule", balance=balance,
                               trade_index=trade_index, sl_after=496,
                               tp_after=config.get("tradovate_tp_ticks"))
+                    elif is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa:
+                        randomization = config.get("_randomization") or {}
+                        self.log(
+                            f"🎯 {firm_code} FT{trade_index} rule {acct_num}: "
+                            f"target=${randomization.get('target_dollars', '?')} "
+                            f"balance=${balance:,.2f} → "
+                            f"TP={config.get('tradovate_tp_ticks')}t "
+                            f"SL={config.get('tradovate_sl_ticks')}t")
+                        audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                              status="reserve_ft2_5_rule", balance=balance,
+                              trade_index=trade_index, sl_after=config.get('tradovate_sl_ticks'),
+                              tp_after=config.get('tradovate_tp_ticks'),
+                              target_dollars=randomization.get("target_dollars"))
                     else:
                         # Trade 2+ risks only the remaining buffer above the
                         # cycle hard floor/min-equity. Trade 1 keeps the fixed

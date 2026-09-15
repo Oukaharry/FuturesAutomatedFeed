@@ -9,6 +9,12 @@
 **/__pycache__/
 **/*.pyc
 
+# Local test scripts and generated simulation fixtures
+tests/
+
+# macOS metadata
+.DS_Store
+
 # Virtual environments
 venv/
 .venv/

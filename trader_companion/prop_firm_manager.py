@@ -53,6 +53,9 @@ class PropFirmManager:
     DETECTED_TO_BLUEPRINT = {
         "MFFU": "MFFU_Flex",
         "MFFU_Flex": "MFFU_Flex",
+        "MFFU Rapid EOD": "MFFU Rapid EOD",
+        "MFFU_Rapid_EOD": "MFFU Rapid EOD",
+        "MFFU Rapid EOD 50K": "MFFU Rapid EOD",
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
         "Funded Next Flex": "Funded Next Flex",
@@ -60,6 +63,9 @@ class PropFirmManager:
         "FundingTicks": "FundingTicks",
         "Trade Day": "TradeDay",
         "TopStep": "TopStep",
+        "TopStep 50K XFA": "TopStep 50K XFA",
+        "TopStep XFA": "TopStep 50K XFA",
+        "TopStep_XFA": "TopStep 50K XFA",
         "TopStep RTP": "TopStep RTP",
         "TopStep_RTP": "TopStep RTP",
         "Apex": "Apex",
@@ -95,6 +101,10 @@ class PropFirmManager:
         # re-drawn at trade/time-of-day and never persisted as the base.
         self._account_random_state: Dict[str, Dict[str, float]] = {}
         self._daily_random_state: Dict[str, float] = {}
+        self._lucid_funded_tp_owners: Dict[int, str] = {}
+        self._mffu_rapid_eod_tp_owners: Dict[int, str] = {}
+        self._topstep_xfa_tp_owners: Dict[int, str] = {}
+        self._funded_tp_owners: Dict[str, Dict[int, str]] = {}
 
         # Prop firm blueprints - $50k account configurations only core challange with the flex addon
         self.firm_blueprints = {
@@ -807,6 +817,17 @@ class PropFirmManager:
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 140,
                             "tradovate_sl_ticks": 155,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 34,
+                            "mt5_sl_points": 39
+                        }
+                    },
+                    "funded_trade5": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 140,
+                            "tradovate_sl_ticks": 150,
                             "mt5_volume": 0,
                             "mt5_tp_points": 34,
                             "mt5_sl_points": 39
@@ -2109,8 +2130,9 @@ class PropFirmManager:
         }
 
         # FundedNext Rapid Daily, $50k Tradovate plan. $4,000 first funded
-        # target, no hedge, no reactivation. Funded trades use 4 MNQ micros
-        # ($2/tick), keeping the $1,000 daily-loss limit at 496 ticks.
+        # target, no hedge, no reactivation. Funded trades use 2 NQ minis
+        # ($10/tick for the position), keeping the $1,000 daily-loss limit
+        # at 100 ticks.
         # Evaluation goal $53,000; each funded cycle requests a
         # $1,200 gross payout at eligible EOD. A recovery attempt follows any
         # non-fatal stop loss; a second/third loss (per cycle) reaches that
@@ -2134,6 +2156,10 @@ class PropFirmManager:
                 "cycle1_hard_floor": 48000,
                 "cycle2_5_hard_floor": 50100,
                 "payout_request_gross": 1200,
+                "payout_receive_before_provider_fees": 1080,
+                "payout1_retained_balance": 52800,
+                "position_contracts": 2,
+                "position_symbol": "NQU6",
             },
             "strategy_configs": {
                 # Evaluation Phase — goal $53,000 (start $50,000)
@@ -2149,12 +2175,12 @@ class PropFirmManager:
                 }},
                 # Funded Cycle 1 — goal $54,000 (start $50,000)
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade1_recovery": {"50k": {
-                    "tradovate_symbol": "MNQU6", "tradovate_qty": 4,
+                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2453,6 +2479,47 @@ class PropFirmManager:
 
         # Every prop supports 50k, 100k, and 150k blueprints. Farming keeps
         # its 50k lot sizes; all other phases scale lots by account size.
+        rapid_eod = copy.deepcopy(self.firm_blueprints["MFFU_Flex"])
+        rapid_eod["name"] = "MFFU Rapid EOD 50K"
+        rapid_eod["trading_phases"] = ["Challenge Phase", "Funded Phase", "Farming Phase"]
+        rapid_eod_configs = rapid_eod["strategy_configs"]
+        for phase_key, phase_config in rapid_eod_configs.items():
+            base = phase_config.get("50k")
+            if not isinstance(base, dict):
+                continue
+            base["tradovate_qty"] = 3
+            base["tradovate_sl_ticks"] = 133
+        for phase_key in ("challenge_trade1", "challenge_trade2", "challenge_trade3", "challenge_trade4"):
+            if phase_key in rapid_eod_configs:
+                rapid_eod_configs[phase_key]["50k"]["tradovate_tp_ticks"] = 51
+        rapid_eod_configs["funded_trade1"]["50k"]["tradovate_tp_ticks"] = 320
+        for phase_key in ("funded_trade2", "funded_trade3", "funded_trade4"):
+            rapid_eod_configs[phase_key]["50k"]["tradovate_tp_ticks"] = 267
+        rapid_eod_configs["funded_trade5"] = copy.deepcopy(rapid_eod_configs["funded_trade4"])
+        self.firm_blueprints["MFFU Rapid EOD"] = rapid_eod
+
+        xfa = copy.deepcopy(self.firm_blueprints["TopStep"])
+        xfa["name"] = "TopStep 50K XFA"
+        xfa["trading_phases"] = ["Challenge Phase", "Funded Phase", "Farming Phase"]
+        xfa_configs = xfa["strategy_configs"]
+        for phase_key, phase_config in xfa_configs.items():
+            base = phase_config.get("50k")
+            if not isinstance(base, dict):
+                continue
+            base["topstepx_qty"] = 2
+        for phase_key in ("challenge_trade1", "challenge_trade2"):
+            xfa_configs[phase_key]["50k"]["topstepx_tp_ticks"] = 152
+            xfa_configs[phase_key]["50k"]["topstepx_sl_ticks"] = 200
+        xfa_configs["funded_trade1"]["50k"]["topstepx_tp_ticks"] = 400
+        xfa_configs["funded_trade1"]["50k"]["topstepx_sl_ticks"] = 200
+        for phase_key in ("funded_trade2", "funded_trade3", "funded_trade4"):
+            xfa_configs[phase_key]["50k"]["topstepx_tp_ticks"] = 400
+            xfa_configs[phase_key]["50k"]["topstepx_sl_ticks"] = 600
+        xfa_configs["funded_trade5"] = copy.deepcopy(xfa_configs["funded_trade4"])
+        xfa_configs["farming"]["50k"]["topstepx_tp_ticks"] = 154
+        xfa_configs["farming"]["50k"]["topstepx_sl_ticks"] = 600
+        self.firm_blueprints["TopStep 50K XFA"] = xfa
+
         for firm_info in self.firm_blueprints.values():
             firm_info["account_sizes"] = ["$50,000", "$100,000", "$150,000"]
             for phase_key, size_map in firm_info.get("strategy_configs", {}).items():
@@ -2547,6 +2614,11 @@ class PropFirmManager:
         elif firm_code in ("FundedNext Rapid Daily", "FundedNext Rapid Daily 50K",
                            "Funded Next Rapid Daily", "FN Rapid Daily", "Rapid Daily"):
             normalized_code = "FundedNext Rapid Daily"
+        elif firm_code in ("MFFU Rapid EOD", "MFFU_Rapid_EOD", "MFFU Rapid EOD 50K",
+                           "Rapid EOD", "MFFU Rapid"):
+            normalized_code = "MFFU Rapid EOD"
+        elif firm_code in ("TopStep 50K XFA", "TopStep XFA", "TopStep_XFA", "Topstep XFA"):
+            normalized_code = "TopStep 50K XFA"
         elif firm_code in ("Tradeify Select", "Tradeify Select 50K",
                            "Tradeify (50% Add-On)"):
             normalized_code = "Tradeify Select"
@@ -2978,6 +3050,11 @@ class PropFirmManager:
             "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
             "Farming":    ["farming"],
         },
+        "MFFU Rapid EOD": {
+            "Challenge":  ["challenge_trade1", "challenge_trade2", "challenge_trade3", "challenge_trade4"],
+            "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4", "funded_trade5"],
+            "Farming":    ["farming"],
+        },
         "Funded Next": {
             "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
@@ -3000,6 +3077,11 @@ class PropFirmManager:
                            "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
             "Farming":    ["farming"],
         },
+        "TopStep 50K XFA": {
+            "Challenge":  ["challenge_trade1", "challenge_trade2"],
+            "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4", "funded_trade5"],
+            "Farming":    ["farming"],
+        },
         "TopStep RTP": {
             "Challenge":  ["challenge_trade1", "challenge_trade2"],
             "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
@@ -3007,7 +3089,7 @@ class PropFirmManager:
         },
         "Lucid": {
             "Challenge": ["challenge_trade1", "challenge_trade2"],
-            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4", "funded_trade5"],
             "Farming":   ["farming"],
         },
         "TradeDay": {
@@ -3929,25 +4011,34 @@ class PropFirmManager:
             account_id = str(account_key or "default")
             state = self._account_random_state.setdefault(account_id, {})
             friction = 8.80
-            tick_value = 2.0
-            sl_ticks = 496
+            tick_value = 10.0
+            sl_ticks = 100
+            cfg["tradovate_symbol"] = "NQU6"
+            cfg["tradovate_qty"] = 2
 
             if phase.startswith("funded_trade1"):
-                # $54,650 through below $55,250 in 300 whole-tick values.
+                # Updated blueprint: $4,000-$5,000 funded profit target.
                 if "rapid_daily_ft1_target_ticks" not in state:
-                    state["rapid_daily_ft1_target_ticks"] = random.randrange(27325, 27625)
+                    state["rapid_daily_ft1_target_ticks"] = random.randrange(400, 501)
                 target_ticks = int(state["rapid_daily_ft1_target_ticks"])
-                tp_ticks = math.floor(
-                    (target_ticks * tick_value - 50000.0 + friction) / tick_value)
+                tp_ticks = target_ticks
                 draw_name = "T1"
             else:
-                # $53,150 through below $53,450 in 150 whole-tick values.
-                target_ticks = random.randrange(26575, 26725)
-                while target_ticks % 100 == 0:
-                    target_ticks = random.randrange(26575, 26725)
-                target_dollars = target_ticks * tick_value
-                tp_ticks = math.floor(max(target_dollars - balance, 263.80) / tick_value)
+                # Recovery/follow-up target: fresh $4,000-$5,000 profit draw.
+                target_ticks = random.randrange(400, 501)
+                tp_ticks = target_ticks
                 draw_name = "T2+"
+
+            owner_map = self._funded_tp_owners.setdefault(firm, {})
+            while owner_map.get(int(tp_ticks)) not in (None, account_id):
+                if draw_name == "T1":
+                    state["rapid_daily_ft1_target_ticks"] = random.randrange(400, 501)
+                    target_ticks = int(state["rapid_daily_ft1_target_ticks"])
+                    tp_ticks = target_ticks
+                else:
+                    target_ticks = random.randrange(400, 501)
+                    tp_ticks = target_ticks
+            owner_map[int(tp_ticks)] = account_id
 
             cfg["tradovate_tp_ticks"] = max(1, min(600, int(tp_ticks)))
             cfg["tradovate_sl_ticks"] = sl_ticks
@@ -3964,16 +4055,159 @@ class PropFirmManager:
                 f"TP={cfg['tradovate_tp_ticks']}t SL={sl_ticks}t")
             return cfg
 
+        if firm == "MFFU Rapid EOD":
+            if phase.startswith("challenge_trade"):
+                cfg["tradovate_qty"] = 3
+                cfg["tradovate_tp_ticks"] = 51
+                cfg["tradovate_sl_ticks"] = 133
+                return cfg
+            if phase.startswith("funded_trade1"):
+                account_id = str(account_key or "default")
+                state = self._account_random_state.setdefault(account_id, {})
+                if "mffu_rapid_eod_ft1_ticks" not in state:
+                    draw = random.randint(305, 335)
+                    while draw % 100 == 0:
+                        draw = random.randint(305, 335)
+                    state["mffu_rapid_eod_ft1_ticks"] = draw
+                draw = int(state["mffu_rapid_eod_ft1_ticks"])
+                owner = self._mffu_rapid_eod_tp_owners.get(draw)
+                while owner is not None and owner != account_id:
+                    draw = random.randint(305, 335)
+                    while draw % 100 == 0 or (
+                            draw in self._mffu_rapid_eod_tp_owners and
+                            self._mffu_rapid_eod_tp_owners[draw] != account_id):
+                        draw = random.randint(305, 335)
+                    state["mffu_rapid_eod_ft1_ticks"] = draw
+                    owner = self._mffu_rapid_eod_tp_owners.get(draw)
+                self._mffu_rapid_eod_tp_owners[draw] = account_id
+                cfg["tradovate_qty"] = 3
+                cfg["tradovate_tp_ticks"] = draw
+                cfg["tradovate_sl_ticks"] = 133
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "mffu_rapid_eod",
+                    "draw": "T1",
+                    "target_ticks": draw,
+                })
+                return cfg
+            if phase.startswith("funded_trade"):
+                account_id = str(account_key or "default")
+                draw = random.randint(267, 450)
+                while draw % 100 == 0 or (
+                        draw in self._mffu_rapid_eod_tp_owners and
+                        self._mffu_rapid_eod_tp_owners[draw] != account_id):
+                    draw = random.randint(267, 450)
+                self._mffu_rapid_eod_tp_owners[draw] = account_id
+                cfg["tradovate_qty"] = 3
+                cfg["tradovate_tp_ticks"] = min(599, draw)
+                cfg["tradovate_sl_ticks"] = 133
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "mffu_rapid_eod",
+                    "draw": "T2+",
+                    "target_ticks": draw,
+                })
+                return cfg
+            if is_farming:
+                cfg["tradovate_qty"] = 1
+                cfg["tradovate_tp_ticks"] = 31
+                cfg["tradovate_sl_ticks"] = 133
+            return cfg
+
+        if firm in ("TopStep 50K XFA", "TopStep XFA", "TopStep_XFA"):
+            if phase.startswith("challenge_trade"):
+                cfg["topstepx_qty"] = 2
+                cfg["topstepx_tp_ticks"] = 152
+                cfg["topstepx_sl_ticks"] = 200
+                return cfg
+            if phase.startswith("funded_trade1"):
+                account_id = str(account_key or "default")
+                state = self._account_random_state.setdefault(account_id, {})
+                if "topstep_xfa_ft1_target_ticks" not in state:
+                    draw = random.randint(400, 500)
+                    while draw % 100 == 0:
+                        draw = random.randint(400, 500)
+                    state["topstep_xfa_ft1_target_ticks"] = draw
+                target_ticks = int(state["topstep_xfa_ft1_target_ticks"])
+                tp_ticks = min(599, int(math.floor(
+                    (target_ticks * 10.0 + 18.0) / 10.0)))
+                owner = self._topstep_xfa_tp_owners.get(tp_ticks)
+                while owner is not None and owner != account_id:
+                    target_ticks = random.randint(400, 500)
+                    while target_ticks % 100 == 0:
+                        target_ticks = random.randint(400, 500)
+                    tp_ticks = min(599, int(math.floor(
+                        (target_ticks * 10.0 + 18.0) / 10.0)))
+                    owner = self._topstep_xfa_tp_owners.get(tp_ticks)
+                    state["topstep_xfa_ft1_target_ticks"] = target_ticks
+                self._topstep_xfa_tp_owners[tp_ticks] = account_id
+                cfg["topstepx_qty"] = 2
+                cfg["topstepx_tp_ticks"] = tp_ticks
+                cfg["topstepx_sl_ticks"] = 200
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "topstep_xfa_dll_off",
+                    "draw": "T1",
+                    "target_ticks": target_ticks,
+                    "friction_dollars": 18.0,
+                })
+                return cfg
+            if phase.startswith("funded_trade"):
+                account_id = str(account_key or "default")
+                draw = random.randint(400, 500)
+                while draw % 100 == 0:
+                    draw = random.randint(400, 500)
+                balance = float(balance or 0.0)
+                tp_ticks = int(math.floor((draw * 10.0 - balance + 18.0) / 10.0))
+                while tp_ticks > 0 and tp_ticks <= 600 and (
+                        tp_ticks in self._topstep_xfa_tp_owners and
+                        self._topstep_xfa_tp_owners[tp_ticks] != account_id):
+                    draw = random.randint(400, 500)
+                    while draw % 100 == 0:
+                        draw = random.randint(400, 500)
+                    tp_ticks = int(math.floor((draw * 10.0 - balance + 18.0) / 10.0))
+                if tp_ticks > 0:
+                    tp_ticks = min(600, tp_ticks)
+                    self._topstep_xfa_tp_owners[tp_ticks] = account_id
+                cfg["topstepx_qty"] = 2
+                cfg["topstepx_tp_ticks"] = max(0, min(600, tp_ticks))
+                cfg["topstepx_sl_ticks"] = min(600, max(0, int(math.floor(balance / 10.0))))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "topstep_xfa_dll_off",
+                    "draw": "T2+",
+                    "target_ticks": draw,
+                    "balance": balance,
+                    "friction_dollars": 18.0,
+                })
+                return cfg
+            if is_farming:
+                cfg["topstepx_qty"] = 2
+                cfg["topstepx_tp_ticks"] = 154
+                base = self._random_state_value(account_key, "topstep_xfa_farm_sl_base", 520, 580)
+                cfg["topstepx_sl_ticks"] = int(math.floor(clamp(
+                    base + random.uniform(-20.0, 20.0), 450.0, 600.0)))
+            return cfg
+
         if firm in ("Tradeify Select", "Tradeify Select 50K"):
             if phase.startswith("funded_trade1"):
                 target = self._draw_uniform(54500, 56000)
                 tp = int(math.floor((target - balance) / 10.0))
+                draw_name = "T1"
+                account_id = str(account_key or "default")
+                owner_map = self._funded_tp_owners.setdefault(firm, {})
+                while owner_map.get(tp) not in (None, account_id):
+                    target = self._draw_uniform(54500, 56000)
+                    tp = int(math.floor((target - balance) / 10.0))
                 cfg["tradovate_tp_ticks"] = max(15, min(600, tp))
+                owner_map[cfg["tradovate_tp_ticks"]] = account_id
                 cfg["tradovate_sl_ticks"] = 200
             elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
                 target = self._draw_uniform(54500, 57500)
                 tp = int(math.floor((target - balance) / 10.0))
+                account_id = str(account_key or "default")
+                owner_map = self._funded_tp_owners.setdefault(firm, {})
+                while owner_map.get(max(15, min(600, tp))) not in (None, account_id):
+                    target = self._draw_uniform(54500, 57500)
+                    tp = int(math.floor((target - balance) / 10.0))
                 cfg["tradovate_tp_ticks"] = max(15, min(600, tp))
+                owner_map[cfg["tradovate_tp_ticks"]] = account_id
                 room = max(0.0, balance - 50100.0)
                 cfg["tradovate_sl_ticks"] = min(600, max(10, int(math.floor(room / 10.0))))
             elif is_farming:
@@ -3987,25 +4221,136 @@ class PropFirmManager:
 
         if firm in ("FTMO Futures Pro", "FTMO Pro"):
             if phase.startswith("funded_trade1"):
-                target = self._draw_uniform(5000, 6000)
-                tp = int(math.floor((target - balance) / 10.0))
+                # FT1 target is profit dollars above the $50K balance.
+                # With 2 NQ contracts, one combined tick is $10, so
+                # $5,000-$6,000 maps to 500-600 TP ticks.
+                target_profit = self._draw_uniform(5000, 6000)
+                tp = int(math.floor(target_profit / 10.0))
+                account_id = str(account_key or "default")
+                owner_map = self._funded_tp_owners.setdefault(firm, {})
+                while owner_map.get(max(80, min(600, tp))) not in (None, account_id):
+                    target_profit = self._draw_uniform(5000, 6000)
+                    tp = int(math.floor(target_profit / 10.0))
                 cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                owner_map[cfg["tradovate_tp_ticks"]] = account_id
                 cfg["tradovate_sl_ticks"] = 95
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "ftmo_futures_pro",
+                    "draw": "FT1_PROFIT_DOLLARS",
+                    "target_profit_dollars": target_profit,
+                })
             elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
+                # FT2+ draws an absolute balance target for every trade and
+                # adjusts TP to the live balance at order time.
                 target = self._draw_uniform(54500, 57000)
                 tp = int(math.floor((target - balance) / 10.0))
-                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                account_id = str(account_key or "default")
+                owner_map = self._funded_tp_owners.setdefault(firm, {})
+                while owner_map.get(max(0, min(600, tp))) not in (None, account_id):
+                    target = self._draw_uniform(54500, 57000)
+                    tp = int(math.floor((target - balance) / 10.0))
+                cfg["tradovate_tp_ticks"] = max(0, min(600, tp))
+                owner_map[cfg["tradovate_tp_ticks"]] = account_id
                 room = max(0.0, balance - 50050.0)
-                cfg["tradovate_sl_ticks"] = min(95, max(20, int(math.floor(room / 10.0))))
+                cfg["tradovate_sl_ticks"] = min(95, int(math.floor(room / 10.0)))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "ftmo_futures_pro",
+                    "draw": "FT2_PLUS_TARGET_BALANCE",
+                    "target_dollars": target,
+                    "balance": balance,
+                })
             elif is_farming:
+                # $750-$870 on 3 MNQ ($1.50/tick) = 500-580 ticks;
+                # $30 daily jitter = +/-20 ticks, capped at 600 ticks.
                 cfg["tradovate_tp_ticks"] = 138
-                # FTMO Pro farming SLs are intentionally kept inside a tighter
-                # account-based corridor so they remain varied without drifting
-                # into the full-loss/high-risk band. Persist once per account.
-                base = self._random_state_value(account_key, "ftmo_farm_sl_base", 100.0, 390.0)
-                jitter = random.uniform(-15.0, 15.0)
-                sl = clamp(base + jitter, 100.0, 390.0)
+                cfg["tradovate_qty"] = 3
+                base = self._random_state_value(account_key, "ftmo_farm_sl_base", 500.0, 580.0)
+                jitter = random.uniform(-20.0, 20.0)
+                sl = clamp(base + jitter, 480.0, 600.0)
                 cfg["tradovate_sl_ticks"] = int(math.floor(sl))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "ftmo_futures_pro",
+                    "farm_sl_base": base,
+                    "farm_sl_jitter": jitter,
+                })
+            return cfg
+
+        if firm == "Lucid":
+            if phase.startswith("challenge_trade"):
+                account_id = str(account_key or "default")
+                state = self._account_random_state.setdefault(account_id, {})
+                qty = int(state.setdefault("lucid_eval_qty", random.choice((1, 2))))
+                cfg["tradovate_qty"] = qty
+                cfg["tradovate_symbol"] = "NQU6"
+                cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
+                cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
+            elif phase.startswith("funded_trade1"):
+                account_id = str(account_key or "default")
+                target = self._random_state_value(
+                    account_key, "lucid_ft1_target_dollars", 53000, 54000)
+                cfg["tradovate_qty"] = 2
+                cfg["tradovate_symbol"] = "NQU6"
+                tp = max(1, min(600, int(math.floor((target - 50000.0 + 17.0) / 10.0))))
+                owner = self._lucid_funded_tp_owners.get(tp)
+                while owner is not None and owner != account_id:
+                    target = self._random_state_value(
+                        account_key, "lucid_ft1_target_dollars", 53000, 54000,
+                        persist=False)
+                    self._account_random_state[account_id][
+                        "lucid_ft1_target_dollars"] = target
+                    tp = max(1, min(600, int(math.floor((target - 50000.0 + 17.0) / 10.0))))
+                    owner = self._lucid_funded_tp_owners.get(tp)
+                self._lucid_funded_tp_owners[tp] = account_id
+                cfg["tradovate_tp_ticks"] = tp
+                cfg["tradovate_sl_ticks"] = 200
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "lucid_flex_50k",
+                    "draw": "FT1",
+                    "target_dollars": target,
+                    "friction_dollars": 17.0,
+                })
+            elif phase.startswith("funded_trade"):
+                account_id = str(account_key or "default")
+                cycle_start = float(cfg.get("cycle_start", balance))
+                offset = self._draw_uniform(1300, 1700)
+                target = cycle_start + offset
+                cfg["tradovate_qty"] = 2
+                cfg["tradovate_symbol"] = "NQU6"
+                tp = max(0, min(600, int(math.floor((target - balance + 17.0) / 10.0))))
+                owner = self._lucid_funded_tp_owners.get(tp)
+                while owner is not None and owner != account_id:
+                    offset = self._draw_uniform(1300, 1700)
+                    target = cycle_start + offset
+                    tp = max(0, min(600, int(math.floor((target - balance + 17.0) / 10.0))))
+                    owner = self._lucid_funded_tp_owners.get(tp)
+                self._lucid_funded_tp_owners[tp] = account_id
+                cfg["tradovate_tp_ticks"] = tp
+                cfg["tradovate_sl_ticks"] = min(
+                    600, max(0, int(math.floor((balance - 50100.0) / 10.0))))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "lucid_flex_50k",
+                    "draw": "FT2_PLUS_OFFSET",
+                    "offset_dollars": offset,
+                    "target_dollars": target,
+                    "cycle_start": cycle_start,
+                    "friction_dollars": 17.0,
+                    "balance": balance,
+                })
+            elif is_farming:
+                account_id = str(account_key or "default")
+                cfg["tradovate_qty"] = 1
+                cfg["tradovate_symbol"] = "MNQU6"
+                cfg["tradovate_qty"] = 2
+                cfg["tradovate_tp_ticks"] = 156
+                base = self._random_state_value(account_key, "lucid_farm_sl_base", 500, 580)
+                jitter = random.uniform(-20.0, 20.0)
+                sl = clamp(base + jitter, 450.0, 600.0)
+                cfg["tradovate_sl_ticks"] = int(math.floor(sl))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "lucid_flex_50k",
+                    "farm_sl_base": base,
+                    "farm_sl_jitter": jitter,
+                })
             return cfg
 
         if firm in ("Blue Guardian Reserve", "Blue Guardian"):
@@ -4022,6 +4367,11 @@ class PropFirmManager:
                 cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
                 room = max(0.0, balance - 50100.0)
                 cfg["tradovate_sl_ticks"] = min(600, max(10, int(math.floor(room / 10.0))))
+                cfg.setdefault("_randomization", {}).update({
+                    "policy": "blue_guardian_reserve_funded_auto_adjust",
+                    "target_dollars": target,
+                    "balance": balance,
+                })
             elif is_farming:
                 cfg["tradovate_tp_ticks"] = 31
                 base = self._random_state_value(account_key, "bgr_farm_sl_base", 160, 320)
@@ -4039,7 +4389,7 @@ class PropFirmManager:
         # applies each firm's live balance and hard-floor rule afterward.
         if phase.startswith("challenge"):
             return cfg
-        if phase.startswith(("funded", "payout", "doubledip")):
+        if phase.startswith(("payout", "doubledip")):
             return cfg
 
         original_tp = float(cfg.get("tradovate_tp_ticks", 0) or cfg.get("topstepx_tp_ticks", 0) or 0)
@@ -4061,6 +4411,22 @@ class PropFirmManager:
                 cfg["tradovate_tp_ticks"] = new_tp
             elif "topstepx_tp_ticks" in cfg:
                 cfg["topstepx_tp_ticks"] = new_tp
+
+            if phase.startswith("funded_trade"):
+                owner_map = self._funded_tp_owners.setdefault(firm, {})
+                owner = owner_map.get(new_tp)
+                if owner not in (None, account_id):
+                    candidate = new_tp
+                    while owner_map.get(candidate) not in (None, account_id):
+                        candidate += 1
+                        if candidate > 600:
+                            candidate = 1
+                    new_tp = candidate
+                    if "tradovate_tp_ticks" in cfg:
+                        cfg["tradovate_tp_ticks"] = new_tp
+                    elif "topstepx_tp_ticks" in cfg:
+                        cfg["topstepx_tp_ticks"] = new_tp
+                owner_map[new_tp] = account_id
 
         if original_sl > 0:
             sl_factor = self._random_state_value(
