@@ -1,0 +1,2864 @@
+{
+  "seed": 20260927,
+  "firm": "GoatFunded",
+  "account_size": "$50,000",
+  "simulation_type": "configuration-focused lifecycle",
+  "summary": {
+    "Accounts": 20,
+    "Events": 262,
+    "Seed": 20260927
+  },
+  "accounts": [
+    {
+      "account": "GOATFUNDED-001",
+      "status": "failed",
+      "final_balance": 52189.25,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "GOATFUNDED-002",
+      "status": "failed",
+      "final_balance": 47990.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-003",
+      "status": "failed",
+      "final_balance": 47975.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-004",
+      "status": "failed",
+      "final_balance": 48125.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "status": "failed",
+      "final_balance": 50646.5,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "status": "failed",
+      "final_balance": 51023.0,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "status": "ok",
+      "final_balance": 54090.6875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "GOATFUNDED-008",
+      "status": "failed",
+      "final_balance": 48080.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-009",
+      "status": "failed",
+      "final_balance": 48125.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "status": "failed",
+      "final_balance": 50680.625,
+      "reason": "FD4 loss"
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "status": "failed",
+      "final_balance": 50167.25,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "GOATFUNDED-012",
+      "status": "failed",
+      "final_balance": 47915.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "status": "failed",
+      "final_balance": 51876.5,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "status": "ok",
+      "final_balance": 52809.6875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "status": "failed",
+      "final_balance": 51063.5,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "status": "ok",
+      "final_balance": 53368.4375,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "GOATFUNDED-017",
+      "status": "failed",
+      "final_balance": 48050.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "status": "ok",
+      "final_balance": 52982.1875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "GOATFUNDED-019",
+      "status": "failed",
+      "final_balance": 47930.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "status": "failed",
+      "final_balance": 50744.0,
+      "reason": "FD4 loss"
+    }
+  ],
+  "events": [
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 532,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57980.0
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57980.0,
+      "tp_ticks": 216,
+      "sl_ticks": 549,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 57156.5
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57156.5,
+      "tp_ticks": 216,
+      "sl_ticks": 549,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57480.5
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57480.5,
+      "tp_ticks": 216,
+      "sl_ticks": 549,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57804.5
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57804.5,
+      "tp_ticks": 216,
+      "sl_ticks": 549,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58128.5
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "event": "PAYOUT FD1",
+      "balance": 58128.5,
+      "payout_amount": 4064.25,
+      "retained_balance": 54064.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-001",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54064.25,
+      "tp_ticks": 129,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 52189.25
+    },
+    {
+      "account": "GOATFUNDED-002",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-002",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-002",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-002",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 488,
+      "sl_ticks": 134,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 47990.0
+    },
+    {
+      "account": "GOATFUNDED-003",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-003",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-003",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-003",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 531,
+      "sl_ticks": 135,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 47975.0
+    },
+    {
+      "account": "GOATFUNDED-004",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-004",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-004",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-004",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 476,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 48125.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 500,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57500.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57500.0,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57822.5
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57822.5,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58145.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58145.0,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58467.5
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58467.5,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58790.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "event": "PAYOUT FD1",
+      "balance": 58790.0,
+      "payout_amount": 4395.0,
+      "retained_balance": 54395.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54395.0,
+      "tp_ticks": 131,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56360.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56360.0,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56682.5
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56682.5,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57005.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57005.0,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 56144.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56144.0,
+      "tp_ticks": 215,
+      "sl_ticks": 574,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55283.0
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "event": "PAYOUT FD2",
+      "balance": 55283.0,
+      "payout_amount": 2641.5,
+      "retained_balance": 52641.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-005",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52641.5,
+      "tp_ticks": 126,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 50646.5
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 464,
+      "sl_ticks": 139,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56960.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56960.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57251.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57251.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57542.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57542.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57833.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57833.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58124.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "event": "PAYOUT FD1",
+      "balance": 58124.0,
+      "payout_amount": 4062.0,
+      "retained_balance": 54062.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54062.0,
+      "tp_ticks": 123,
+      "sl_ticks": 137,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55907.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55907.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56198.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56198.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56489.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56489.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56780.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56780.0,
+      "tp_ticks": 194,
+      "sl_ticks": 616,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55856.0
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "event": "PAYOUT FD2",
+      "balance": 55856.0,
+      "payout_amount": 2928.0,
+      "retained_balance": 52928.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-006",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52928.0,
+      "tp_ticks": 143,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 51023.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 466,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56990.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56990.0,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 56121.5
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56121.5,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56426.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56426.0,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56730.5
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56730.5,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57035.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "event": "PAYOUT FD1",
+      "balance": 57035.0,
+      "payout_amount": 3517.5,
+      "retained_balance": 53517.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53517.5,
+      "tp_ticks": 137,
+      "sl_ticks": 132,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55572.5
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55572.5,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55877.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55877.0,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56181.5
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56181.5,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56486.0
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56486.0,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55617.5
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "event": "PAYOUT FD2",
+      "balance": 55617.5,
+      "payout_amount": 2808.75,
+      "retained_balance": 52808.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52808.75,
+      "tp_ticks": 144,
+      "sl_ticks": 134,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54968.75
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54968.75,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55273.25
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55273.25,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55577.75
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55577.75,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55882.25
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55882.25,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56186.75
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "event": "PAYOUT FD3",
+      "balance": 56186.75,
+      "payout_amount": 3093.375,
+      "retained_balance": 53093.375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53093.375,
+      "tp_ticks": 258,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56963.375
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56963.375,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57267.875
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57267.875,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57572.375
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57572.375,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57876.875
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57876.875,
+      "tp_ticks": 203,
+      "sl_ticks": 579,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58181.375
+    },
+    {
+      "account": "GOATFUNDED-007",
+      "event": "PAYOUT FD4",
+      "balance": 58181.375,
+      "payout_amount": 4090.6875,
+      "retained_balance": 54090.6875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-008",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-008",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-008",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-008",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 477,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 48080.0
+    },
+    {
+      "account": "GOATFUNDED-009",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-009",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-009",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-009",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 514,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 48125.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 480,
+      "sl_ticks": 134,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57200.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57200.0,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57498.5
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57498.5,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57797.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57797.0,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58095.5
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58095.5,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58394.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "event": "PAYOUT FD1",
+      "balance": 58394.0,
+      "payout_amount": 4197.0,
+      "retained_balance": 54197.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54197.0,
+      "tp_ticks": 130,
+      "sl_ticks": 140,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56147.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56147.0,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56445.5
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56445.5,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55548.5
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55548.5,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55847.0
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55847.0,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56145.5
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "event": "PAYOUT FD2",
+      "balance": 56145.5,
+      "payout_amount": 3072.75,
+      "retained_balance": 53072.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53072.75,
+      "tp_ticks": 140,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55172.75
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55172.75,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55471.25
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55471.25,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 54574.25
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54574.25,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54872.75
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54872.75,
+      "tp_ticks": 199,
+      "sl_ticks": 598,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55171.25
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "event": "PAYOUT FD3",
+      "balance": 55171.25,
+      "payout_amount": 2585.625,
+      "retained_balance": 52585.625,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-010",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52585.625,
+      "tp_ticks": 281,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 50680.625
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 512,
+      "sl_ticks": 129,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57680.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57680.0,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57990.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57990.5,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58301.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58301.0,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58611.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58611.5,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58922.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "event": "PAYOUT FD1",
+      "balance": 58922.0,
+      "payout_amount": 4461.0,
+      "retained_balance": 54461.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54461.0,
+      "tp_ticks": 145,
+      "sl_ticks": 130,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56636.0
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56636.0,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56946.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56946.5,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55992.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55992.5,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55038.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55038.5,
+      "tp_ticks": 207,
+      "sl_ticks": 636,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 54084.5
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "event": "PAYOUT FD2",
+      "balance": 54084.5,
+      "payout_amount": 2042.25,
+      "retained_balance": 52042.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-011",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52042.25,
+      "tp_ticks": 138,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 50167.25
+    },
+    {
+      "account": "GOATFUNDED-012",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-012",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-012",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-012",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 471,
+      "sl_ticks": 139,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 47915.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 502,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57530.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57530.0,
+      "tp_ticks": 200,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 56693.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56693.0,
+      "tp_ticks": 200,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56993.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56993.0,
+      "tp_ticks": 200,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57293.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57293.0,
+      "tp_ticks": 200,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57593.0
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "event": "PAYOUT FD1",
+      "balance": 57593.0,
+      "payout_amount": 3796.5,
+      "retained_balance": 53796.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-013",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53796.5,
+      "tp_ticks": 135,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 51876.5
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 503,
+      "sl_ticks": 139,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57545.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57545.0,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57854.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57854.0,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58163.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58163.0,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58472.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58472.0,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58781.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "event": "PAYOUT FD1",
+      "balance": 58781.0,
+      "payout_amount": 4390.5,
+      "retained_balance": 54390.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54390.5,
+      "tp_ticks": 146,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56580.5
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56580.5,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55592.0
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55592.0,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 54603.5
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54603.5,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54912.5
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54912.5,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55221.5
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "event": "PAYOUT FD2",
+      "balance": 55221.5,
+      "payout_amount": 2610.75,
+      "retained_balance": 52610.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52610.75,
+      "tp_ticks": 136,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54650.75
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54650.75,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 53662.25
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 53662.25,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53971.25
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 53971.25,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54280.25
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54280.25,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 53291.75
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "event": "PAYOUT FD3",
+      "balance": 53291.75,
+      "payout_amount": 1645.875,
+      "retained_balance": 51645.875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 51645.875,
+      "tp_ticks": 269,
+      "sl_ticks": 130,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55680.875
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55680.875,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55989.875
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55989.875,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56298.875
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56298.875,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56607.875
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56607.875,
+      "tp_ticks": 206,
+      "sl_ticks": 659,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55619.375
+    },
+    {
+      "account": "GOATFUNDED-014",
+      "event": "PAYOUT FD4",
+      "balance": 55619.375,
+      "payout_amount": 2809.6875,
+      "retained_balance": 52809.6875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 479,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57185.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57185.0,
+      "tp_ticks": 212,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 56348.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56348.0,
+      "tp_ticks": 212,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55511.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55511.0,
+      "tp_ticks": 212,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55829.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55829.0,
+      "tp_ticks": 212,
+      "sl_ticks": 558,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56147.0
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "event": "PAYOUT FD1",
+      "balance": 56147.0,
+      "payout_amount": 3073.5,
+      "retained_balance": 53073.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-015",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53073.5,
+      "tp_ticks": 147,
+      "sl_ticks": 134,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 51063.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 475,
+      "sl_ticks": 140,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57125.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57125.0,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57435.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57435.5,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57746.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57746.0,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58056.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58056.5,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58367.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "event": "PAYOUT FD1",
+      "balance": 58367.0,
+      "payout_amount": 4183.5,
+      "retained_balance": 54183.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54183.5,
+      "tp_ticks": 133,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56178.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56178.5,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56489.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56489.0,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56799.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56799.5,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57110.0
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57110.0,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57420.5
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "event": "PAYOUT FD2",
+      "balance": 57420.5,
+      "payout_amount": 3710.25,
+      "retained_balance": 53710.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53710.25,
+      "tp_ticks": 127,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55615.25
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55615.25,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55925.75
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55925.75,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56236.25
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56236.25,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56546.75
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56546.75,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55664.75
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "event": "PAYOUT FD3",
+      "balance": 55664.75,
+      "payout_amount": 2832.375,
+      "retained_balance": 52832.375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52832.375,
+      "tp_ticks": 257,
+      "sl_ticks": 138,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56687.375
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56687.375,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55805.375
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55805.375,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56115.875
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56115.875,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56426.375
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56426.375,
+      "tp_ticks": 207,
+      "sl_ticks": 588,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56736.875
+    },
+    {
+      "account": "GOATFUNDED-016",
+      "event": "PAYOUT FD4",
+      "balance": 56736.875,
+      "payout_amount": 3368.4375,
+      "retained_balance": 53368.4375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-017",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-017",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-017",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-017",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 485,
+      "sl_ticks": 130,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 48050.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 463,
+      "sl_ticks": 140,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56945.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56945.0,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57246.5
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57246.5,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57548.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57548.0,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57849.5
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57849.5,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58151.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "event": "PAYOUT FD1",
+      "balance": 58151.0,
+      "payout_amount": 4075.5,
+      "retained_balance": 54075.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 54075.5,
+      "tp_ticks": 124,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55935.5
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55935.5,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56237.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56237.0,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56538.5
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56538.5,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56840.0
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56840.0,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57141.5
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "event": "PAYOUT FD2",
+      "balance": 57141.5,
+      "payout_amount": 3570.75,
+      "retained_balance": 53570.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53570.75,
+      "tp_ticks": 124,
+      "sl_ticks": 130,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55430.75
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55430.75,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55732.25
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55732.25,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56033.75
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56033.75,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56335.25
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56335.25,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56636.75
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "event": "PAYOUT FD3",
+      "balance": 56636.75,
+      "payout_amount": 3318.375,
+      "retained_balance": 53318.375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53318.375,
+      "tp_ticks": 260,
+      "sl_ticks": 137,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57218.375
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57218.375,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 56289.875
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56289.875,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55361.375
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55361.375,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55662.875
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55662.875,
+      "tp_ticks": 201,
+      "sl_ticks": 619,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55964.375
+    },
+    {
+      "account": "GOATFUNDED-018",
+      "event": "PAYOUT FD4",
+      "balance": 55964.375,
+      "payout_amount": 2982.1875,
+      "retained_balance": 52982.1875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-019",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-019",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-019",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-019",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 504,
+      "sl_ticks": 138,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 47930.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 51515.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51515.0,
+      "tp_ticks": 101,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 53030.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "event": "FUNDING RESET",
+      "balance": 53030.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 517,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57755.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57755.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58079.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58079.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58403.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58403.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58727.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58727.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 57848.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "event": "PAYOUT FD1",
+      "balance": 57848.0,
+      "payout_amount": 3924.0,
+      "retained_balance": 53924.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53924.0,
+      "tp_ticks": 134,
+      "sl_ticks": 138,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55934.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55934.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56258.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56258.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 56582.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56582.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 55703.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55703.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 54824.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "event": "PAYOUT FD2",
+      "balance": 54824.0,
+      "payout_amount": 2412.0,
+      "retained_balance": 52412.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52412.0,
+      "tp_ticks": 128,
+      "sl_ticks": 132,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54332.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54332.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54656.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54656.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 54980.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54980.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55304.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55304.0,
+      "tp_ticks": 216,
+      "sl_ticks": 586,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 55628.0
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "event": "PAYOUT FD3",
+      "balance": 55628.0,
+      "payout_amount": 2814.0,
+      "retained_balance": 52814.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "GOATFUNDED-020",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52814.0,
+      "tp_ticks": 275,
+      "sl_ticks": 138,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 50744.0
+    }
+  ]
+}

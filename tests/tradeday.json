@@ -1,0 +1,2853 @@
+{
+  "seed": 20260920,
+  "firm": "TradeDay",
+  "account_size": "$50,000",
+  "simulation_type": "configuration-focused lifecycle",
+  "summary": {
+    "Accounts": 20,
+    "Events": 261,
+    "Seed": 20260920
+  },
+  "accounts": [
+    {
+      "account": "TRADEDAY-001",
+      "status": "failed",
+      "final_balance": 47950.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-002",
+      "status": "ok",
+      "final_balance": 54155.125,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "status": "ok",
+      "final_balance": 54857.1875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "TRADEDAY-004",
+      "status": "failed",
+      "final_balance": 47920.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-005",
+      "status": "failed",
+      "final_balance": 47970.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-006",
+      "status": "ok",
+      "final_balance": 54469.75,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "TRADEDAY-007",
+      "status": "failed",
+      "final_balance": 51008.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "TRADEDAY-008",
+      "status": "ok",
+      "final_balance": 54287.8125,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "TRADEDAY-009",
+      "status": "failed",
+      "final_balance": 47900.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-010",
+      "status": "failed",
+      "final_balance": 51371.25,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "TRADEDAY-011",
+      "status": "failed",
+      "final_balance": 51590.5,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "TRADEDAY-012",
+      "status": "ok",
+      "final_balance": 54858.625,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "TRADEDAY-013",
+      "status": "failed",
+      "final_balance": 50419.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "TRADEDAY-014",
+      "status": "failed",
+      "final_balance": 51705.75,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "TRADEDAY-015",
+      "status": "failed",
+      "final_balance": 50852.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "TRADEDAY-016",
+      "status": "failed",
+      "final_balance": 48090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-017",
+      "status": "failed",
+      "final_balance": 50727.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "TRADEDAY-018",
+      "status": "failed",
+      "final_balance": 50029.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "TRADEDAY-019",
+      "status": "failed",
+      "final_balance": 48060.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "TRADEDAY-020",
+      "status": "failed",
+      "final_balance": 48070.0,
+      "reason": "FD1 loss"
+    }
+  ],
+  "events": [
+    {
+      "account": "TRADEDAY-001",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-001",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-001",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-001",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 507,
+      "sl_ticks": 205,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 47950.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 470,
+      "sl_ticks": 210,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54700.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54700.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54902.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54902.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55104.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55104.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55306.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55306.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55508.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "event": "PAYOUT FD1",
+      "balance": 55508.0,
+      "payout_amount": 2754.0,
+      "retained_balance": 52754.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52754.0,
+      "tp_ticks": 529,
+      "sl_ticks": 191,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58044.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58044.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58246.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58246.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58448.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58448.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57879.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57879.0,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58081.0
+    },
+    {
+      "account": "TRADEDAY-002",
+      "event": "PAYOUT FD2",
+      "balance": 58081.0,
+      "payout_amount": 4040.5,
+      "retained_balance": 54040.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54040.5,
+      "tp_ticks": 502,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59060.5
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 59060.5,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59262.5
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59262.5,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58693.5
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58693.5,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58895.5
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58895.5,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58326.5
+    },
+    {
+      "account": "TRADEDAY-002",
+      "event": "PAYOUT FD3",
+      "balance": 58326.5,
+      "payout_amount": 4163.25,
+      "retained_balance": 54163.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 54163.25,
+      "tp_ticks": 274,
+      "sl_ticks": 129,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58273.25
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58273.25,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58475.25
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58475.25,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58677.25
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58677.25,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58879.25
+    },
+    {
+      "account": "TRADEDAY-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58879.25,
+      "tp_ticks": 202,
+      "sl_ticks": 569,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58310.25
+    },
+    {
+      "account": "TRADEDAY-002",
+      "event": "PAYOUT FD4",
+      "balance": 58310.25,
+      "payout_amount": 4155.125,
+      "retained_balance": 54155.125,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 532,
+      "sl_ticks": 190,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55320.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55320.0,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55512.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55512.0,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55704.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55704.0,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55896.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55896.0,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55323.0
+    },
+    {
+      "account": "TRADEDAY-003",
+      "event": "PAYOUT FD1",
+      "balance": 55323.0,
+      "payout_amount": 2661.5,
+      "retained_balance": 52661.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52661.5,
+      "tp_ticks": 476,
+      "sl_ticks": 205,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57421.5
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57421.5,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57613.5
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57613.5,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57805.5
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57805.5,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57997.5
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57997.5,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58189.5
+    },
+    {
+      "account": "TRADEDAY-003",
+      "event": "PAYOUT FD2",
+      "balance": 58189.5,
+      "payout_amount": 4094.75,
+      "retained_balance": 54094.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54094.75,
+      "tp_ticks": 499,
+      "sl_ticks": 208,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59084.75
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 59084.75,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59276.75
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59276.75,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59468.75
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59468.75,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59660.75
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59660.75,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59852.75
+    },
+    {
+      "account": "TRADEDAY-003",
+      "event": "PAYOUT FD3",
+      "balance": 59852.75,
+      "payout_amount": 4926.375,
+      "retained_balance": 54926.375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 54926.375,
+      "tp_ticks": 268,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58946.375
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58946.375,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59138.375
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59138.375,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59330.375
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59330.375,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59522.375
+    },
+    {
+      "account": "TRADEDAY-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59522.375,
+      "tp_ticks": 192,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59714.375
+    },
+    {
+      "account": "TRADEDAY-003",
+      "event": "PAYOUT FD4",
+      "balance": 59714.375,
+      "payout_amount": 4857.1875,
+      "retained_balance": 54857.1875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-004",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-004",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-004",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-004",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 523,
+      "sl_ticks": 208,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 47920.0
+    },
+    {
+      "account": "TRADEDAY-005",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-005",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-005",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-005",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 486,
+      "sl_ticks": 203,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 47970.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 500,
+      "sl_ticks": 188,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55000.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55000.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55209.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55209.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54630.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54630.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54839.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54839.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55048.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "event": "PAYOUT FD1",
+      "balance": 55048.0,
+      "payout_amount": 2524.0,
+      "retained_balance": 52524.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52524.0,
+      "tp_ticks": 509,
+      "sl_ticks": 193,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57614.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57614.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57823.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57823.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58032.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58032.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58241.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58241.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58450.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "event": "PAYOUT FD2",
+      "balance": 58450.0,
+      "payout_amount": 4225.0,
+      "retained_balance": 54225.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54225.0,
+      "tp_ticks": 508,
+      "sl_ticks": 189,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59305.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 59305.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59514.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59514.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59723.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59723.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59932.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59932.0,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 59353.0
+    },
+    {
+      "account": "TRADEDAY-006",
+      "event": "PAYOUT FD3",
+      "balance": 59353.0,
+      "payout_amount": 4676.5,
+      "retained_balance": 54676.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 54676.5,
+      "tp_ticks": 281,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58891.5
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58891.5,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58312.5
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58312.5,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58521.5
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58521.5,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58730.5
+    },
+    {
+      "account": "TRADEDAY-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58730.5,
+      "tp_ticks": 209,
+      "sl_ticks": 579,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58939.5
+    },
+    {
+      "account": "TRADEDAY-006",
+      "event": "PAYOUT FD4",
+      "balance": 58939.5,
+      "payout_amount": 4469.75,
+      "retained_balance": 54469.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 530,
+      "sl_ticks": 202,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55300.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55300.0,
+      "tp_ticks": 214,
+      "sl_ticks": 547,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55514.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55514.0,
+      "tp_ticks": 214,
+      "sl_ticks": 547,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55728.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55728.0,
+      "tp_ticks": 214,
+      "sl_ticks": 547,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55942.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55942.0,
+      "tp_ticks": 214,
+      "sl_ticks": 547,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56156.0
+    },
+    {
+      "account": "TRADEDAY-007",
+      "event": "PAYOUT FD1",
+      "balance": 56156.0,
+      "payout_amount": 3078.0,
+      "retained_balance": 53078.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-007",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53078.0,
+      "tp_ticks": 501,
+      "sl_ticks": 207,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51008.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 503,
+      "sl_ticks": 203,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55030.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55030.0,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55232.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55232.0,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54659.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54659.0,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54861.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54861.0,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55063.0
+    },
+    {
+      "account": "TRADEDAY-008",
+      "event": "PAYOUT FD1",
+      "balance": 55063.0,
+      "payout_amount": 2531.5,
+      "retained_balance": 52531.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52531.5,
+      "tp_ticks": 473,
+      "sl_ticks": 207,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57261.5
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57261.5,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57463.5
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57463.5,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57665.5
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57665.5,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57867.5
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57867.5,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57294.5
+    },
+    {
+      "account": "TRADEDAY-008",
+      "event": "PAYOUT FD2",
+      "balance": 57294.5,
+      "payout_amount": 3647.25,
+      "retained_balance": 53647.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53647.25,
+      "tp_ticks": 477,
+      "sl_ticks": 201,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58417.25
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58417.25,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58619.25
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58619.25,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58046.25
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58046.25,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58248.25
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58248.25,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57675.25
+    },
+    {
+      "account": "TRADEDAY-008",
+      "event": "PAYOUT FD3",
+      "balance": 57675.25,
+      "payout_amount": 3837.625,
+      "retained_balance": 53837.625,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53837.625,
+      "tp_ticks": 262,
+      "sl_ticks": 128,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57767.625
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57767.625,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57969.625
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57969.625,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58171.625
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58171.625,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58373.625
+    },
+    {
+      "account": "TRADEDAY-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58373.625,
+      "tp_ticks": 202,
+      "sl_ticks": 573,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58575.625
+    },
+    {
+      "account": "TRADEDAY-008",
+      "event": "PAYOUT FD4",
+      "balance": 58575.625,
+      "payout_amount": 4287.8125,
+      "retained_balance": 54287.8125,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-009",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-009",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-009",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-009",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 492,
+      "sl_ticks": 210,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 47900.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 504,
+      "sl_ticks": 201,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55040.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55040.0,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55240.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55240.0,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55440.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55440.0,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54881.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54881.0,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55081.0
+    },
+    {
+      "account": "TRADEDAY-010",
+      "event": "PAYOUT FD1",
+      "balance": 55081.0,
+      "payout_amount": 2540.5,
+      "retained_balance": 52540.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52540.5,
+      "tp_ticks": 474,
+      "sl_ticks": 189,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57280.5
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57280.5,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57480.5
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57480.5,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56921.5
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56921.5,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57121.5
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57121.5,
+      "tp_ticks": 200,
+      "sl_ticks": 559,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56562.5
+    },
+    {
+      "account": "TRADEDAY-010",
+      "event": "PAYOUT FD2",
+      "balance": 56562.5,
+      "payout_amount": 3281.25,
+      "retained_balance": 53281.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-010",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53281.25,
+      "tp_ticks": 461,
+      "sl_ticks": 191,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51371.25
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 471,
+      "sl_ticks": 191,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54710.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54710.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54916.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54916.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54282.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54282.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54488.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54488.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54694.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "event": "PAYOUT FD1",
+      "balance": 54694.0,
+      "payout_amount": 2347.0,
+      "retained_balance": 52347.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52347.0,
+      "tp_ticks": 505,
+      "sl_ticks": 193,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57397.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57397.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57603.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57603.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56969.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56969.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57175.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57175.0,
+      "tp_ticks": 206,
+      "sl_ticks": 634,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57381.0
+    },
+    {
+      "account": "TRADEDAY-011",
+      "event": "PAYOUT FD2",
+      "balance": 57381.0,
+      "payout_amount": 3690.5,
+      "retained_balance": 53690.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-011",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53690.5,
+      "tp_ticks": 520,
+      "sl_ticks": 210,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51590.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 506,
+      "sl_ticks": 206,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55060.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55060.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55270.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55270.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55480.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55480.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54908.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54908.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55118.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "event": "PAYOUT FD1",
+      "balance": 55118.0,
+      "payout_amount": 2559.0,
+      "retained_balance": 52559.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52559.0,
+      "tp_ticks": 533,
+      "sl_ticks": 192,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57889.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57889.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58099.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58099.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58309.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58309.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58519.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58519.0,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58729.0
+    },
+    {
+      "account": "TRADEDAY-012",
+      "event": "PAYOUT FD2",
+      "balance": 58729.0,
+      "payout_amount": 4364.5,
+      "retained_balance": 54364.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54364.5,
+      "tp_ticks": 472,
+      "sl_ticks": 207,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59084.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 59084.5,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59294.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59294.5,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59504.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59504.5,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59714.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59714.5,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59924.5
+    },
+    {
+      "account": "TRADEDAY-012",
+      "event": "PAYOUT FD3",
+      "balance": 59924.5,
+      "payout_amount": 4962.25,
+      "retained_balance": 54962.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 54962.25,
+      "tp_ticks": 261,
+      "sl_ticks": 134,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58877.25
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58877.25,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59087.25
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 59087.25,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59297.25
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59297.25,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59507.25
+    },
+    {
+      "account": "TRADEDAY-012",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59507.25,
+      "tp_ticks": 210,
+      "sl_ticks": 572,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59717.25
+    },
+    {
+      "account": "TRADEDAY-012",
+      "event": "PAYOUT FD4",
+      "balance": 59717.25,
+      "payout_amount": 4858.625,
+      "retained_balance": 54858.625,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 493,
+      "sl_ticks": 189,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54930.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54930.0,
+      "tp_ticks": 207,
+      "sl_ticks": 653,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55137.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55137.0,
+      "tp_ticks": 207,
+      "sl_ticks": 653,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54484.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54484.0,
+      "tp_ticks": 207,
+      "sl_ticks": 653,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54691.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54691.0,
+      "tp_ticks": 207,
+      "sl_ticks": 653,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54898.0
+    },
+    {
+      "account": "TRADEDAY-013",
+      "event": "PAYOUT FD1",
+      "balance": 54898.0,
+      "payout_amount": 2449.0,
+      "retained_balance": 52449.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-013",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52449.0,
+      "tp_ticks": 510,
+      "sl_ticks": 203,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50419.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 485,
+      "sl_ticks": 191,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54850.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54850.0,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55058.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55058.0,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55266.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55266.0,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55474.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55474.0,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54861.0
+    },
+    {
+      "account": "TRADEDAY-014",
+      "event": "PAYOUT FD1",
+      "balance": 54861.0,
+      "payout_amount": 2430.5,
+      "retained_balance": 52430.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52430.5,
+      "tp_ticks": 475,
+      "sl_ticks": 194,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57180.5
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57180.5,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56567.5
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56567.5,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56775.5
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56775.5,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56983.5
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56983.5,
+      "tp_ticks": 208,
+      "sl_ticks": 613,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57191.5
+    },
+    {
+      "account": "TRADEDAY-014",
+      "event": "PAYOUT FD2",
+      "balance": 57191.5,
+      "payout_amount": 3595.75,
+      "retained_balance": 53595.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-014",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53595.75,
+      "tp_ticks": 465,
+      "sl_ticks": 189,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51705.75
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 478,
+      "sl_ticks": 209,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54780.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54780.0,
+      "tp_ticks": 196,
+      "sl_ticks": 570,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54976.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54976.0,
+      "tp_ticks": 196,
+      "sl_ticks": 570,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55172.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55172.0,
+      "tp_ticks": 196,
+      "sl_ticks": 570,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55368.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55368.0,
+      "tp_ticks": 196,
+      "sl_ticks": 570,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55564.0
+    },
+    {
+      "account": "TRADEDAY-015",
+      "event": "PAYOUT FD1",
+      "balance": 55564.0,
+      "payout_amount": 2782.0,
+      "retained_balance": 52782.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-015",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52782.0,
+      "tp_ticks": 511,
+      "sl_ticks": 193,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50852.0
+    },
+    {
+      "account": "TRADEDAY-016",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-016",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-016",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-016",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 463,
+      "sl_ticks": 191,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48090.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 479,
+      "sl_ticks": 204,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54790.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54790.0,
+      "tp_ticks": 211,
+      "sl_ticks": 646,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55001.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55001.0,
+      "tp_ticks": 211,
+      "sl_ticks": 646,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55212.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55212.0,
+      "tp_ticks": 211,
+      "sl_ticks": 646,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55423.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55423.0,
+      "tp_ticks": 211,
+      "sl_ticks": 646,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55634.0
+    },
+    {
+      "account": "TRADEDAY-017",
+      "event": "PAYOUT FD1",
+      "balance": 55634.0,
+      "payout_amount": 2817.0,
+      "retained_balance": 52817.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-017",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52817.0,
+      "tp_ticks": 479,
+      "sl_ticks": 209,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50727.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 480,
+      "sl_ticks": 199,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54800.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54800.0,
+      "tp_ticks": 199,
+      "sl_ticks": 580,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54220.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54220.0,
+      "tp_ticks": 199,
+      "sl_ticks": 580,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54419.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54419.0,
+      "tp_ticks": 199,
+      "sl_ticks": 580,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54618.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54618.0,
+      "tp_ticks": 199,
+      "sl_ticks": 580,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54038.0
+    },
+    {
+      "account": "TRADEDAY-018",
+      "event": "PAYOUT FD1",
+      "balance": 54038.0,
+      "payout_amount": 2019.0,
+      "retained_balance": 52019.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "TRADEDAY-018",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52019.0,
+      "tp_ticks": 483,
+      "sl_ticks": 199,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50029.0
+    },
+    {
+      "account": "TRADEDAY-019",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-019",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-019",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-019",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 481,
+      "sl_ticks": 194,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48060.0
+    },
+    {
+      "account": "TRADEDAY-020",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 50620.0
+    },
+    {
+      "account": "TRADEDAY-020",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 50620.0,
+      "tp_ticks": 62,
+      "sl_ticks": 200,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51240.0
+    },
+    {
+      "account": "TRADEDAY-020",
+      "event": "FUNDING RESET",
+      "balance": 51240.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "TRADEDAY-020",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 487,
+      "sl_ticks": 193,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48070.0
+    }
+  ]
+}

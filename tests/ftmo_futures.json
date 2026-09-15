@@ -1,0 +1,2905 @@
+{
+  "seed": 20260929,
+  "firm": "FTMO Futures",
+  "account_size": "$50,000",
+  "simulation_type": "configuration-focused lifecycle",
+  "summary": {
+    "Accounts": 20,
+    "Events": 266,
+    "Seed": 20260929
+  },
+  "accounts": [
+    {
+      "account": "FTMO-FUTURES-001",
+      "status": "failed",
+      "final_balance": 52314.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "status": "failed",
+      "final_balance": 51743.0,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "status": "failed",
+      "final_balance": 52330.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-004",
+      "status": "failed",
+      "final_balance": 49090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-005",
+      "status": "failed",
+      "final_balance": 49040.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-006",
+      "status": "failed",
+      "final_balance": 49090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "status": "ok",
+      "final_balance": 54705.6875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "status": "ok",
+      "final_balance": 53824.25,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "FTMO-FUTURES-009",
+      "status": "failed",
+      "final_balance": 49090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "status": "ok",
+      "final_balance": 53871.875,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "status": "ok",
+      "final_balance": 53924.5,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "FTMO-FUTURES-012",
+      "status": "failed",
+      "final_balance": 49090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-013",
+      "status": "failed",
+      "final_balance": 49040.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-014",
+      "status": "failed",
+      "final_balance": 49050.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "status": "failed",
+      "final_balance": 52337.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "status": "failed",
+      "final_balance": 51568.0,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "status": "ok",
+      "final_balance": 53968.25,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "status": "failed",
+      "final_balance": 52490.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-019",
+      "status": "failed",
+      "final_balance": 49090.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "status": "ok",
+      "final_balance": 53130.875,
+      "reason": "completed configuration chain"
+    }
+  ],
+  "events": [
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 590,
+      "sl_ticks": 98,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55900.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55900.0,
+      "tp_ticks": 157,
+      "sl_ticks": 558,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56057.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56057.0,
+      "tp_ticks": 157,
+      "sl_ticks": 558,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56214.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56214.0,
+      "tp_ticks": 157,
+      "sl_ticks": 558,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56371.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56371.0,
+      "tp_ticks": 157,
+      "sl_ticks": 558,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56528.0
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "event": "PAYOUT FD1",
+      "balance": 56528.0,
+      "payout_amount": 3264.0,
+      "retained_balance": 53264.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-001",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53264.0,
+      "tp_ticks": 495,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 52314.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 648,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56480.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56480.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55829.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55829.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55986.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55986.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56143.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56143.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55492.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "event": "PAYOUT FD1",
+      "balance": 55492.0,
+      "payout_amount": 2746.0,
+      "retained_balance": 52746.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52746.0,
+      "tp_ticks": 500,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57746.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57746.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57095.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57095.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57252.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57252.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57409.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57409.0,
+      "tp_ticks": 157,
+      "sl_ticks": 651,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57566.0
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "event": "PAYOUT FD2",
+      "balance": 57566.0,
+      "payout_amount": 3783.0,
+      "retained_balance": 53783.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-002",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53783.0,
+      "tp_ticks": 264,
+      "sl_ticks": 136,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 51743.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 608,
+      "sl_ticks": 90,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56080.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56080.0,
+      "tp_ticks": 150,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56230.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56230.0,
+      "tp_ticks": 150,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56380.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56380.0,
+      "tp_ticks": 150,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56530.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56530.0,
+      "tp_ticks": 150,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56680.0
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "event": "PAYOUT FD1",
+      "balance": 56680.0,
+      "payout_amount": 3340.0,
+      "retained_balance": 53340.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-003",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53340.0,
+      "tp_ticks": 477,
+      "sl_ticks": 101,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 52330.0
+    },
+    {
+      "account": "FTMO-FUTURES-004",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-004",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-004",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-004",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 554,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49090.0
+    },
+    {
+      "account": "FTMO-FUTURES-005",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-005",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-005",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-005",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 566,
+      "sl_ticks": 96,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49040.0
+    },
+    {
+      "account": "FTMO-FUTURES-006",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-006",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-006",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-006",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 570,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49090.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 640,
+      "sl_ticks": 90,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56400.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56400.0,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56548.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56548.0,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56696.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56696.0,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56115.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56115.0,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56263.0
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "event": "PAYOUT FD1",
+      "balance": 56263.0,
+      "payout_amount": 3131.5,
+      "retained_balance": 53131.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53131.5,
+      "tp_ticks": 502,
+      "sl_ticks": 93,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58151.5
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58151.5,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58299.5
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58299.5,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58447.5
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58447.5,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58595.5
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58595.5,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58743.5
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "event": "PAYOUT FD2",
+      "balance": 58743.5,
+      "payout_amount": 4371.75,
+      "retained_balance": 54371.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54371.75,
+      "tp_ticks": 273,
+      "sl_ticks": 140,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58466.75
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58466.75,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58614.75
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58614.75,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58762.75
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58762.75,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58910.75
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58910.75,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59058.75
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "event": "PAYOUT FD3",
+      "balance": 59058.75,
+      "payout_amount": 4529.375,
+      "retained_balance": 54529.375,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 54529.375,
+      "tp_ticks": 286,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58819.375
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58819.375,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58967.375
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58967.375,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59115.375
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 59115.375,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59263.375
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 59263.375,
+      "tp_ticks": 148,
+      "sl_ticks": 581,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 59411.375
+    },
+    {
+      "account": "FTMO-FUTURES-007",
+      "event": "PAYOUT FD4",
+      "balance": 59411.375,
+      "payout_amount": 4705.6875,
+      "retained_balance": 54705.6875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 639,
+      "sl_ticks": 98,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56390.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56390.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56536.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56536.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56682.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56682.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56828.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56828.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56974.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "event": "PAYOUT FD1",
+      "balance": 56974.0,
+      "payout_amount": 3487.0,
+      "retained_balance": 53487.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53487.0,
+      "tp_ticks": 489,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58377.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58377.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58523.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58523.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57980.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57980.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58126.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58126.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58272.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "event": "PAYOUT FD2",
+      "balance": 58272.0,
+      "payout_amount": 4136.0,
+      "retained_balance": 54136.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54136.0,
+      "tp_ticks": 263,
+      "sl_ticks": 131,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58081.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58081.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58227.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58227.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57684.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57684.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57141.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57141.0,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57287.0
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "event": "PAYOUT FD3",
+      "balance": 57287.0,
+      "payout_amount": 3643.5,
+      "retained_balance": 53643.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53643.5,
+      "tp_ticks": 274,
+      "sl_ticks": 127,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57753.5
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57753.5,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57210.5
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57210.5,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57356.5
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57356.5,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57502.5
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57502.5,
+      "tp_ticks": 146,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57648.5
+    },
+    {
+      "account": "FTMO-FUTURES-008",
+      "event": "PAYOUT FD4",
+      "balance": 57648.5,
+      "payout_amount": 3824.25,
+      "retained_balance": 53824.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-009",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-009",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-009",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-009",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 618,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49090.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 563,
+      "sl_ticks": 98,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55630.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55630.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55784.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55784.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55938.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55938.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56092.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56092.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56246.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "event": "PAYOUT FD1",
+      "balance": 56246.0,
+      "payout_amount": 3123.0,
+      "retained_balance": 53123.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53123.0,
+      "tp_ticks": 506,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58183.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58183.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58337.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58337.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57771.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57771.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57205.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57205.0,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57359.0
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "event": "PAYOUT FD2",
+      "balance": 57359.0,
+      "payout_amount": 3679.5,
+      "retained_balance": 53679.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53679.5,
+      "tp_ticks": 276,
+      "sl_ticks": 132,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57819.5
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57819.5,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57973.5
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57973.5,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58127.5
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58127.5,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58281.5
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58281.5,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57715.5
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "event": "PAYOUT FD3",
+      "balance": 57715.5,
+      "payout_amount": 3857.75,
+      "retained_balance": 53857.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53857.75,
+      "tp_ticks": 266,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57847.75
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57847.75,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58001.75
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58001.75,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58155.75
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58155.75,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58309.75
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58309.75,
+      "tp_ticks": 154,
+      "sl_ticks": 566,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57743.75
+    },
+    {
+      "account": "FTMO-FUTURES-010",
+      "event": "PAYOUT FD4",
+      "balance": 57743.75,
+      "payout_amount": 3871.875,
+      "retained_balance": 53871.875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 646,
+      "sl_ticks": 93,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56460.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56460.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56618.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56618.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56068.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56068.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55518.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55518.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55676.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "event": "PAYOUT FD1",
+      "balance": 55676.0,
+      "payout_amount": 2838.0,
+      "retained_balance": 52838.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52838.0,
+      "tp_ticks": 536,
+      "sl_ticks": 89,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58198.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58198.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58356.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58356.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57806.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57806.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57964.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57964.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58122.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "event": "PAYOUT FD2",
+      "balance": 58122.0,
+      "payout_amount": 4061.0,
+      "retained_balance": 54061.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54061.0,
+      "tp_ticks": 261,
+      "sl_ticks": 130,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57976.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57976.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58134.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58134.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57584.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57584.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57742.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57742.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57900.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "event": "PAYOUT FD3",
+      "balance": 57900.0,
+      "payout_amount": 3950.0,
+      "retained_balance": 53950.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53950.0,
+      "tp_ticks": 265,
+      "sl_ticks": 125,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57925.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57925.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58083.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58083.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58241.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58241.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58399.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58399.0,
+      "tp_ticks": 158,
+      "sl_ticks": 550,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57849.0
+    },
+    {
+      "account": "FTMO-FUTURES-011",
+      "event": "PAYOUT FD4",
+      "balance": 57849.0,
+      "payout_amount": 3924.5,
+      "retained_balance": 53924.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-012",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-012",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-012",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-012",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 633,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49090.0
+    },
+    {
+      "account": "FTMO-FUTURES-013",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-013",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-013",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-013",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 583,
+      "sl_ticks": 96,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49040.0
+    },
+    {
+      "account": "FTMO-FUTURES-014",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-014",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-014",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-014",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 1,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49050.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 597,
+      "sl_ticks": 94,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55970.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55970.0,
+      "tp_ticks": 146,
+      "sl_ticks": 587,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56116.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56116.0,
+      "tp_ticks": 146,
+      "sl_ticks": 587,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56262.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56262.0,
+      "tp_ticks": 146,
+      "sl_ticks": 587,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56408.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56408.0,
+      "tp_ticks": 146,
+      "sl_ticks": 587,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56554.0
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "event": "PAYOUT FD1",
+      "balance": 56554.0,
+      "payout_amount": 3277.0,
+      "retained_balance": 53277.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-015",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53277.0,
+      "tp_ticks": 488,
+      "sl_ticks": 94,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 52337.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 584,
+      "sl_ticks": 90,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55840.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55840.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55297.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55297.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54754.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54754.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54912.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54912.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55070.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "event": "PAYOUT FD1",
+      "balance": 55070.0,
+      "payout_amount": 2535.0,
+      "retained_balance": 52535.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52535.0,
+      "tp_ticks": 472,
+      "sl_ticks": 98,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57255.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57255.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57413.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57413.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56870.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56870.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57028.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57028.0,
+      "tp_ticks": 158,
+      "sl_ticks": 543,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57186.0
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "event": "PAYOUT FD2",
+      "balance": 57186.0,
+      "payout_amount": 3593.0,
+      "retained_balance": 53593.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-016",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53593.0,
+      "tp_ticks": 278,
+      "sl_ticks": 135,
+      "qty": 3,
+      "outcome": "LOSS",
+      "next_balance": 51568.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 647,
+      "sl_ticks": 96,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56470.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56470.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56632.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56632.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56092.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56092.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56254.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56254.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56416.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "event": "PAYOUT FD1",
+      "balance": 56416.0,
+      "payout_amount": 3208.0,
+      "retained_balance": 53208.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53208.0,
+      "tp_ticks": 503,
+      "sl_ticks": 95,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58238.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58238.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58400.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58400.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58562.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 58562.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 58022.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 58022.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58184.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "event": "PAYOUT FD2",
+      "balance": 58184.0,
+      "payout_amount": 4092.0,
+      "retained_balance": 54092.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 54092.0,
+      "tp_ticks": 267,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 58097.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58097.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57557.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57557.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57719.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57719.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57179.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57179.0,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57341.0
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "event": "PAYOUT FD3",
+      "balance": 57341.0,
+      "payout_amount": 3670.5,
+      "retained_balance": 53670.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53670.5,
+      "tp_ticks": 288,
+      "sl_ticks": 131,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57990.5
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57990.5,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57450.5
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57450.5,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57612.5
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57612.5,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57774.5
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57774.5,
+      "tp_ticks": 162,
+      "sl_ticks": 540,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57936.5
+    },
+    {
+      "account": "FTMO-FUTURES-017",
+      "event": "PAYOUT FD4",
+      "balance": 57936.5,
+      "payout_amount": 3968.25,
+      "retained_balance": 53968.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 628,
+      "sl_ticks": 97,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56280.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56280.0,
+      "tp_ticks": 160,
+      "sl_ticks": 642,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56440.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56440.0,
+      "tp_ticks": 160,
+      "sl_ticks": 642,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56600.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56600.0,
+      "tp_ticks": 160,
+      "sl_ticks": 642,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56760.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56760.0,
+      "tp_ticks": 160,
+      "sl_ticks": 642,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56920.0
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "event": "PAYOUT FD1",
+      "balance": 56920.0,
+      "payout_amount": 3460.0,
+      "retained_balance": 53460.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-018",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53460.0,
+      "tp_ticks": 537,
+      "sl_ticks": 97,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 52490.0
+    },
+    {
+      "account": "FTMO-FUTURES-019",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-019",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-019",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-019",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 553,
+      "sl_ticks": 91,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49090.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 302,
+      "sl_ticks": 190,
+      "qty": 1,
+      "outcome": "WIN",
+      "next_balance": 51510.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51510.0,
+      "tp_ticks": 52,
+      "sl_ticks": 133,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 52290.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "event": "FUNDING RESET",
+      "balance": 52290.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 629,
+      "sl_ticks": 96,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56290.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56290.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56447.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56447.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56604.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56604.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56761.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56761.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56918.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "event": "PAYOUT FD1",
+      "balance": 56918.0,
+      "payout_amount": 3459.0,
+      "retained_balance": 53459.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53459.0,
+      "tp_ticks": 475,
+      "sl_ticks": 92,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58209.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 58209.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 58366.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 58366.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57751.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57751.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57136.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 57136.0,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57293.0
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "event": "PAYOUT FD2",
+      "balance": 57293.0,
+      "payout_amount": 3646.5,
+      "retained_balance": 53646.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 53646.5,
+      "tp_ticks": 275,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57771.5
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57771.5,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 57156.5
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 57156.5,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57313.5
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 57313.5,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56698.5
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56698.5,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56855.5
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "event": "PAYOUT FD3",
+      "balance": 56855.5,
+      "payout_amount": 3427.75,
+      "retained_balance": 53427.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 53427.75,
+      "tp_ticks": 250,
+      "sl_ticks": 126,
+      "qty": 3,
+      "outcome": "WIN",
+      "next_balance": 57177.75
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 57177.75,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56562.75
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56562.75,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56719.75
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56719.75,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56104.75
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56104.75,
+      "tp_ticks": 157,
+      "sl_ticks": 615,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56261.75
+    },
+    {
+      "account": "FTMO-FUTURES-020",
+      "event": "PAYOUT FD4",
+      "balance": 56261.75,
+      "payout_amount": 3130.875,
+      "retained_balance": 53130.875,
+      "outcome": "PAYOUT"
+    }
+  ]
+}

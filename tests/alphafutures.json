@@ -1,0 +1,2508 @@
+{
+  "seed": 20260921,
+  "firm": "AlphaFutures",
+  "account_size": "$50,000",
+  "simulation_type": "configuration-focused lifecycle",
+  "summary": {
+    "Accounts": 20,
+    "Events": 228,
+    "Seed": 20260921
+  },
+  "accounts": [
+    {
+      "account": "ALPHAFUTURES-001",
+      "status": "failed",
+      "final_balance": 48350.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "status": "failed",
+      "final_balance": 50516.5,
+      "reason": "FD4 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "status": "failed",
+      "final_balance": 51721.0,
+      "reason": "FD2 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-004",
+      "status": "failed",
+      "final_balance": 48230.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "status": "ok",
+      "final_balance": 51807.0625,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "status": "ok",
+      "final_balance": 52228.5,
+      "reason": "completed configuration chain"
+    },
+    {
+      "account": "ALPHAFUTURES-007",
+      "status": "failed",
+      "final_balance": 48260.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "status": "failed",
+      "final_balance": 50256.0,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "status": "failed",
+      "final_balance": 50908.0,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "status": "failed",
+      "final_balance": 50836.875,
+      "reason": "FD4 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-011",
+      "status": "failed",
+      "final_balance": 48180.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-012",
+      "status": "failed",
+      "final_balance": 48310.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-013",
+      "status": "failed",
+      "final_balance": 48180.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-014",
+      "status": "failed",
+      "final_balance": 48330.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-015",
+      "status": "failed",
+      "final_balance": 48310.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-016",
+      "status": "failed",
+      "final_balance": 48320.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "status": "failed",
+      "final_balance": 49820.25,
+      "reason": "FD3 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-018",
+      "status": "failed",
+      "final_balance": 48180.0,
+      "reason": "FD1 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "status": "failed",
+      "final_balance": 50083.5,
+      "reason": "FD4 loss"
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "status": "failed",
+      "final_balance": 51099.5,
+      "reason": "FD2 loss"
+    }
+  ],
+  "events": [
+    {
+      "account": "ALPHAFUTURES-001",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-001",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-001",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-001",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 636,
+      "sl_ticks": 165,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48350.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 559,
+      "sl_ticks": 165,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55590.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55590.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55799.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55799.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55214.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55214.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55423.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55423.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55632.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "event": "PAYOUT FD1",
+      "balance": 55632.0,
+      "payout_amount": 2816.0,
+      "retained_balance": 52816.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52816.0,
+      "tp_ticks": 101,
+      "sl_ticks": 183,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53826.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 53826.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54035.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54035.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54244.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54244.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54453.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54453.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54662.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "event": "PAYOUT FD2",
+      "balance": 54662.0,
+      "payout_amount": 2331.0,
+      "retained_balance": 52331.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52331.0,
+      "tp_ticks": 202,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54351.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54351.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53766.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 53766.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53975.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 53975.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54184.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54184.0,
+      "tp_ticks": 209,
+      "sl_ticks": 585,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54393.0
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "event": "PAYOUT FD3",
+      "balance": 54393.0,
+      "payout_amount": 2196.5,
+      "retained_balance": 52196.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-002",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52196.5,
+      "tp_ticks": 200,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50516.5
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 623,
+      "sl_ticks": 179,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56230.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56230.0,
+      "tp_ticks": 208,
+      "sl_ticks": 604,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56438.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56438.0,
+      "tp_ticks": 208,
+      "sl_ticks": 604,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56646.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56646.0,
+      "tp_ticks": 208,
+      "sl_ticks": 604,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56854.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56854.0,
+      "tp_ticks": 208,
+      "sl_ticks": 604,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57062.0
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "event": "PAYOUT FD1",
+      "balance": 57062.0,
+      "payout_amount": 3531.0,
+      "retained_balance": 53531.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-003",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53531.0,
+      "tp_ticks": 104,
+      "sl_ticks": 181,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51721.0
+    },
+    {
+      "account": "ALPHAFUTURES-004",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-004",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-004",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-004",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 613,
+      "sl_ticks": 177,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48230.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 579,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55790.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55790.0,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55985.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55985.0,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55423.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55423.0,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55618.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55618.0,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55813.0
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "event": "PAYOUT FD1",
+      "balance": 55813.0,
+      "payout_amount": 2906.5,
+      "retained_balance": 52906.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52906.5,
+      "tp_ticks": 94,
+      "sl_ticks": 184,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53846.5
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 53846.5,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54041.5
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54041.5,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54236.5
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54236.5,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54431.5
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54431.5,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54626.5
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "event": "PAYOUT FD2",
+      "balance": 54626.5,
+      "payout_amount": 2313.25,
+      "retained_balance": 52313.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52313.25,
+      "tp_ticks": 216,
+      "sl_ticks": 165,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54473.25
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54473.25,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54668.25
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54668.25,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54863.25
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54863.25,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55058.25
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55058.25,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54496.25
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "event": "PAYOUT FD3",
+      "balance": 54496.25,
+      "payout_amount": 2248.125,
+      "retained_balance": 52248.125,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52248.125,
+      "tp_ticks": 210,
+      "sl_ticks": 176,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54348.125
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54348.125,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53786.125
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 53786.125,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53981.125
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 53981.125,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53419.125
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 53419.125,
+      "tp_ticks": 195,
+      "sl_ticks": 562,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53614.125
+    },
+    {
+      "account": "ALPHAFUTURES-005",
+      "event": "PAYOUT FD4",
+      "balance": 53614.125,
+      "payout_amount": 1807.0625,
+      "retained_balance": 51807.0625,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 624,
+      "sl_ticks": 182,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56240.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56240.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56439.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56439.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56638.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56638.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56837.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56837.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 57036.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "event": "PAYOUT FD1",
+      "balance": 57036.0,
+      "payout_amount": 3518.0,
+      "retained_balance": 53518.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53518.0,
+      "tp_ticks": 97,
+      "sl_ticks": 184,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54488.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54488.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54687.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54687.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54886.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54886.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55085.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55085.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55284.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "event": "PAYOUT FD2",
+      "balance": 55284.0,
+      "payout_amount": 2642.0,
+      "retained_balance": 52642.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52642.0,
+      "tp_ticks": 211,
+      "sl_ticks": 180,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54752.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54752.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54951.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54951.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55150.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55150.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55349.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55349.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54786.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "event": "PAYOUT FD3",
+      "balance": 54786.0,
+      "payout_amount": 2393.0,
+      "retained_balance": 52393.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52393.0,
+      "tp_ticks": 203,
+      "sl_ticks": 174,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54423.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54423.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54622.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54622.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54821.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54821.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55020.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55020.0,
+      "tp_ticks": 199,
+      "sl_ticks": 563,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 54457.0
+    },
+    {
+      "account": "ALPHAFUTURES-006",
+      "event": "PAYOUT FD4",
+      "balance": 54457.0,
+      "payout_amount": 2228.5,
+      "retained_balance": 52228.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-007",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-007",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-007",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-007",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 578,
+      "sl_ticks": 174,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48260.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 612,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56120.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56120.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56329.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56329.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55710.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 55710.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55919.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 55919.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56128.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "event": "PAYOUT FD1",
+      "balance": 56128.0,
+      "payout_amount": 3064.0,
+      "retained_balance": 53064.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53064.0,
+      "tp_ticks": 102,
+      "sl_ticks": 173,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54084.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54084.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54293.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54293.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54502.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54502.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53883.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 53883.0,
+      "tp_ticks": 209,
+      "sl_ticks": 619,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54092.0
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "event": "PAYOUT FD2",
+      "balance": 54092.0,
+      "payout_amount": 2046.0,
+      "retained_balance": 52046.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-008",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52046.0,
+      "tp_ticks": 197,
+      "sl_ticks": 179,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50256.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 596,
+      "sl_ticks": 180,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55960.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55960.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56171.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56171.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56382.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56382.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56593.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56593.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56804.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "event": "PAYOUT FD1",
+      "balance": 56804.0,
+      "payout_amount": 3402.0,
+      "retained_balance": 53402.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53402.0,
+      "tp_ticks": 93,
+      "sl_ticks": 183,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54332.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54332.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54543.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54543.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54754.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54754.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54965.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54965.0,
+      "tp_ticks": 211,
+      "sl_ticks": 649,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55176.0
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "event": "PAYOUT FD2",
+      "balance": 55176.0,
+      "payout_amount": 2588.0,
+      "retained_balance": 52588.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-009",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52588.0,
+      "tp_ticks": 205,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50908.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 642,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56420.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56420.0,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56620.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56620.0,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56820.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56820.0,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56275.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56275.0,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56475.0
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "event": "PAYOUT FD1",
+      "balance": 56475.0,
+      "payout_amount": 3237.5,
+      "retained_balance": 53237.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53237.5,
+      "tp_ticks": 103,
+      "sl_ticks": 174,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54267.5
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54267.5,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54467.5
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54467.5,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54667.5
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54667.5,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54867.5
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54867.5,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55067.5
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "event": "PAYOUT FD2",
+      "balance": 55067.5,
+      "payout_amount": 2533.75,
+      "retained_balance": 52533.75,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52533.75,
+      "tp_ticks": 186,
+      "sl_ticks": 176,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54393.75
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54393.75,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54593.75
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54593.75,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54793.75
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54793.75,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54993.75
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54993.75,
+      "tp_ticks": 200,
+      "sl_ticks": 545,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55193.75
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "event": "PAYOUT FD3",
+      "balance": 55193.75,
+      "payout_amount": 2596.875,
+      "retained_balance": 52596.875,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-010",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 52596.875,
+      "tp_ticks": 206,
+      "sl_ticks": 176,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50836.875
+    },
+    {
+      "account": "ALPHAFUTURES-011",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-011",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-011",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-011",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 648,
+      "sl_ticks": 182,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48180.0
+    },
+    {
+      "account": "ALPHAFUTURES-012",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-012",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-012",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-012",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 645,
+      "sl_ticks": 169,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48310.0
+    },
+    {
+      "account": "ALPHAFUTURES-013",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-013",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-013",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-013",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 591,
+      "sl_ticks": 182,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48180.0
+    },
+    {
+      "account": "ALPHAFUTURES-014",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-014",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-014",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-014",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 627,
+      "sl_ticks": 167,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48330.0
+    },
+    {
+      "account": "ALPHAFUTURES-015",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-015",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-015",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-015",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 592,
+      "sl_ticks": 169,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48310.0
+    },
+    {
+      "account": "ALPHAFUTURES-016",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-016",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-016",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-016",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 587,
+      "sl_ticks": 168,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48320.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 625,
+      "sl_ticks": 179,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56250.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 56250.0,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56463.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 56463.0,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56676.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56676.0,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 56028.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56028.0,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56241.0
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "event": "PAYOUT FD1",
+      "balance": 56241.0,
+      "payout_amount": 3120.5,
+      "retained_balance": 53120.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 53120.5,
+      "tp_ticks": 105,
+      "sl_ticks": 173,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54170.5
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54170.5,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54383.5
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54383.5,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54596.5
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54596.5,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53948.5
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 53948.5,
+      "tp_ticks": 213,
+      "sl_ticks": 648,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53300.5
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "event": "PAYOUT FD2",
+      "balance": 53300.5,
+      "payout_amount": 1650.25,
+      "retained_balance": 51650.25,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-017",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 51650.25,
+      "tp_ticks": 201,
+      "sl_ticks": 183,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 49820.25
+    },
+    {
+      "account": "ALPHAFUTURES-018",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-018",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-018",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-018",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 572,
+      "sl_ticks": 182,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 48180.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 561,
+      "sl_ticks": 172,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55610.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55610.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55805.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55805.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56000.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56000.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56195.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56195.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55592.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "event": "PAYOUT FD1",
+      "balance": 55592.0,
+      "payout_amount": 2796.0,
+      "retained_balance": 52796.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52796.0,
+      "tp_ticks": 99,
+      "sl_ticks": 169,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53786.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 53786.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 53981.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 53981.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54176.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 54176.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54371.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54371.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54566.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "event": "PAYOUT FD2",
+      "balance": 54566.0,
+      "payout_amount": 2283.0,
+      "retained_balance": 52283.0,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "funded_trade3",
+      "event": "FD3",
+      "balance": 52283.0,
+      "tp_ticks": 212,
+      "sl_ticks": 183,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54403.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 54403.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54598.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 54598.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53995.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 53995.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 54190.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 54190.0,
+      "tp_ticks": 195,
+      "sl_ticks": 603,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 53587.0
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "event": "PAYOUT FD3",
+      "balance": 53587.0,
+      "payout_amount": 1793.5,
+      "retained_balance": 51793.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-019",
+      "trade": "funded_trade4",
+      "event": "FD4",
+      "balance": 51793.5,
+      "tp_ticks": 185,
+      "sl_ticks": 171,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 50083.5
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "challenge_trade1",
+      "event": "EVAL 1",
+      "balance": 50000.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 51350.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "challenge_trade2",
+      "event": "EVAL 2",
+      "balance": 51350.0,
+      "tp_ticks": 135,
+      "sl_ticks": 175,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 52700.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "event": "FUNDING RESET",
+      "balance": 52700.0,
+      "next_balance": 50000.0,
+      "outcome": "RESET",
+      "detail": "evaluation balance is not carried into funded phase"
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "funded_trade1",
+      "event": "FD1",
+      "balance": 50000.0,
+      "tp_ticks": 576,
+      "sl_ticks": 165,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55760.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "farming_day1",
+      "event": "FARM 1",
+      "balance": 55760.0,
+      "tp_ticks": 211,
+      "sl_ticks": 654,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 55971.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "farming_day2",
+      "event": "FARM 2",
+      "balance": 55971.0,
+      "tp_ticks": 211,
+      "sl_ticks": 654,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56182.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "farming_day3",
+      "event": "FARM 3",
+      "balance": 56182.0,
+      "tp_ticks": 211,
+      "sl_ticks": 654,
+      "qty": 2,
+      "outcome": "WIN",
+      "next_balance": 56393.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "farming_day4",
+      "event": "FARM 4",
+      "balance": 56393.0,
+      "tp_ticks": 211,
+      "sl_ticks": 654,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 55739.0
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "event": "PAYOUT FD1",
+      "balance": 55739.0,
+      "payout_amount": 2869.5,
+      "retained_balance": 52869.5,
+      "outcome": "PAYOUT"
+    },
+    {
+      "account": "ALPHAFUTURES-020",
+      "trade": "funded_trade2",
+      "event": "FD2",
+      "balance": 52869.5,
+      "tp_ticks": 106,
+      "sl_ticks": 177,
+      "qty": 2,
+      "outcome": "LOSS",
+      "next_balance": 51099.5
+    }
+  ]
+}
