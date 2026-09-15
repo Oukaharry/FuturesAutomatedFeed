@@ -11,6 +11,7 @@
 
 # Local test scripts and generated simulation fixtures
 tests/
+tests/test_funded_next_flex_tp_target.py
 
 # macOS metadata
 .DS_Store
