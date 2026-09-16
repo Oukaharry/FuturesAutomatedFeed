@@ -1707,6 +1707,7 @@ class TradeOpssAIApp:
         self._status_poll_active = False   # real-time status polling flag
         self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
         self._cached_acct_mappings = {}    # {firm_name: {acct_key: info}} cached on connect
+        self._last_dashboard_evaluations = []
         self._pending_farming_closes = {}  # Accounts whose companion farming trade is awaiting closure.
         self._farming_close_poll_active = False
 
@@ -6720,6 +6721,7 @@ class TradeOpssAIApp:
                     return
                 data = r.json()
                 evaluations = data.get("evaluations", [])
+                self._last_dashboard_evaluations = list(evaluations)
 
                 # Filter using dashboard's _is_active flag (source of truth)
                 # Falls back to local _is_eval_active() if flag missing
@@ -10041,6 +10043,15 @@ class TradeOpssAIApp:
                     self._check_all_brokers_ready()
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
+                if platform == "Tradovate":
+                    # SCAN can finish before the asynchronous login does. Retry
+                    # unresolved $0.00 farming markers once this account exists.
+                    self.root.after(
+                        0,
+                        lambda: self._resume_pending_farming_closes(
+                            getattr(self, "_last_dashboard_evaluations", [])
+                        ),
+                    )
                 # Release build: no status polling side-effects
                 if not RELEASE_DISABLE_STATUS_POLL:
                     self.root.after(0, self._start_status_polling)

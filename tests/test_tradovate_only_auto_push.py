@@ -58,3 +58,13 @@ def test_scan_resumes_unresolved_farming_zero_marker():
     app._track_farming_close.assert_called_once_with(
         app._broker_connections["Tradeify"]["account"], "FTDFYSLX50969754357"
     )
+
+
+def test_scan_retains_dashboard_rows_for_post_connection_recovery():
+    app = TradeOpssAIApp.__new__(TradeOpssAIApp)
+    app._last_dashboard_evaluations = []
+
+    rows = [{"Account #.1": "FTDFYSLX50969754357", "Hedge Day 1": "$0.00"}]
+    app._last_dashboard_evaluations = list(rows)
+
+    assert app._last_dashboard_evaluations == rows
