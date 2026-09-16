@@ -1320,6 +1320,65 @@ class PropFirmManager:
                 "name": "Top One Futures Elite Daily",
                 "account_sizes": ["$50,000"],
                 "trading_phases": ["Challenge Phase", "Payout 1", "Payout 2", "Double Dip Payout 1", "Double Dip Payout 2", "Farming Phase"],
+                # Challenge repeats daily until +$3,000, so only funded is branched.
+                "state_machine": {
+                    "funded": {
+                        "start": "funded_trade1",
+                        "funded_trade1_win": "funded_trade1a",
+                        "funded_trade1_loss": "funded_trade1d",
+                        "funded_trade1a_win": "funded_trade2",
+                        "funded_trade1a_loss": "funded_trade1b",
+                        "funded_trade1b_win": "funded_trade2",
+                        "funded_trade1b_loss": "funded_trade1c",
+                        "funded_trade1c_win": "funded_trade2",
+                        "funded_trade1c_loss": "account_blown",
+                        "funded_trade1d_win": "funded_trade1b",
+                        "funded_trade1d_loss": "account_blown",
+                        # Every payout returns to the Trade 2 cycle.
+                        "funded_trade2_win": "funded_trade2",
+                        "funded_trade2_loss": "funded_trade2a",
+                        "funded_trade2a_win": "funded_trade2",
+                        "funded_trade2a_loss": "funded_trade2b",
+                        "funded_trade2b_win": "funded_trade2",
+                        "funded_trade2b_loss": "account_blown",
+                    },
+                    "double_dip": {
+                        "start": "funded_trade_doubledip_1",
+                        "funded_trade_doubledip_1_win": "funded_trade_doubledip_1a",
+                        "funded_trade_doubledip_1_loss": "funded_trade_doubledip_1d",
+                        "funded_trade_doubledip_1a_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_1a_loss": "funded_trade_doubledip_1b",
+                        "funded_trade_doubledip_1b_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_1b_loss": "funded_trade_doubledip_1c",
+                        "funded_trade_doubledip_1c_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_1c_loss": "account_blown",
+                        "funded_trade_doubledip_1d_win": "funded_trade_doubledip_1b",
+                        "funded_trade_doubledip_1d_loss": "account_blown",
+                        "funded_trade_doubledip_2_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_2_loss": "funded_trade_doubledip_2a",
+                        "funded_trade_doubledip_2a_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_2a_loss": "funded_trade_doubledip_2b",
+                        "funded_trade_doubledip_2b_win": "funded_trade_doubledip_2",
+                        "funded_trade_doubledip_2b_loss": "account_blown",
+                    },
+                    "payout_transitions": [
+                        "funded_trade1a_win", "funded_trade1b_win", "funded_trade1c_win",
+                        "funded_trade2_win", "funded_trade2a_win", "funded_trade2b_win",
+                    ],
+                    # 1b is reachable from 1a SL or 1d TP, so it carries no gate.
+                    "outcome_gated_phases": {
+                        "funded_trade1a": "win",
+                        "funded_trade1c": "loss",
+                        "funded_trade1d": "loss",
+                        "funded_trade2a": "loss",
+                        "funded_trade2b": "loss",
+                        "funded_trade_doubledip_1a": "win",
+                        "funded_trade_doubledip_1c": "loss",
+                        "funded_trade_doubledip_1d": "loss",
+                        "funded_trade_doubledip_2a": "loss",
+                        "funded_trade_doubledip_2b": "loss",
+                    },
+                },
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
@@ -3010,6 +3069,33 @@ class PropFirmManager:
         gated = machine.get("outcome_gated_phases") or {}
         return gated.get(phase_key)
 
+    def repeat_limit_for_phase(self, firm_code: str, phase_key: str):
+        """How many times a self-repeating phase may run before it dies."""
+        if not firm_code or not phase_key:
+            return None
+        machine = (self.firm_blueprints.get(firm_code) or {}).get("state_machine") or {}
+        return (machine.get("repeat_limits") or {}).get(phase_key)
+
+    def _claim_unique_funded_tp(self, firm, account_id, tp, low, high):
+        """Reserve a funded TP, stepping off values another account owns.
+
+        Targets that overshoot clamp onto the ceiling, so several accounts can
+        land on the same tick. Search downward first to stay near the intended
+        target rather than wrapping to the opposite end of the band.
+        """
+        owner_map = self._funded_tp_owners.setdefault(firm, {})
+        low, high = int(low), int(high)
+        tp = max(low, min(high, int(tp)))
+        for candidate in range(tp, low - 1, -1):
+            if owner_map.get(candidate) in (None, account_id):
+                owner_map[candidate] = account_id
+                return candidate
+        for candidate in range(tp + 1, high + 1):
+            if owner_map.get(candidate) in (None, account_id):
+                owner_map[candidate] = account_id
+                return candidate
+        return tp
+
     def predict_next_trade(self, firm_code: str, current_phase: str,
                            current_profit: float, size_key: str = "50k") -> Dict:
         """Predict current stage and next trade based on balance.
@@ -3864,6 +3950,13 @@ class PropFirmManager:
             if not phase.startswith("funded_trade"):
                 return cfg
 
+            # Blueprint fixes the position at 2 NQ minis ($10/tick); honouring a
+            # caller's micro sizing pushes every TP candidate past the 600 cap.
+            cfg["tradovate_symbol"] = "NQZ6"
+            cfg["tradovate_qty"] = 2
+            cfg["tradovate_sl_ticks"] = 100
+            symbol = "NQZ6"
+
             account_id = str(account_key or "default")
             quantity = int(cfg.get("tradovate_qty", 0) or 0)
             contract_tick_value = 0.50 if "MNQ" in symbol.upper() else 5.00
@@ -3872,6 +3965,8 @@ class PropFirmManager:
                 return cfg
 
             friction = 8.80
+            # Band is deliberately above the nominal $54,000 goal; see the
+            # FT1 uniqueness tests that pin the 491-599 tick window.
             target_range = ((54900.0, 56650.0) if phase.startswith("funded_trade1")
                             else (53150.0, 53450.0))
             start_balance = 50000.0
@@ -4094,7 +4189,8 @@ class PropFirmManager:
             if phase.startswith("funded_trade1"):
                 target = self._draw_uniform(54500, 56000) + offset
                 tp = int(math.floor((target - balance) / 10.0))
-                cfg["tradovate_tp_ticks"] = max(15, min(600, tp))
+                cfg["tradovate_tp_ticks"] = self._claim_unique_funded_tp(
+                    firm, account_id, tp, 15, 600)
                 cfg["tradovate_sl_ticks"] = 200
                 cfg.setdefault("_randomization", {}).update({
                     "policy": "tradeify_select",
@@ -4105,7 +4201,8 @@ class PropFirmManager:
             elif phase.startswith("funded_trade") and not phase.startswith("funded_trade1"):
                 target = self._draw_uniform(54500, 57500) + offset
                 tp = int(math.floor((target - balance) / 10.0))
-                cfg["tradovate_tp_ticks"] = max(150, min(600, tp))
+                cfg["tradovate_tp_ticks"] = self._claim_unique_funded_tp(
+                    firm, account_id, tp, 150, 600)
                 room = int(math.floor((balance - 50100.0) / 10.0))
                 cfg["tradovate_sl_ticks"] = min(600, room)
                 if room < 1:

@@ -139,7 +139,7 @@ def test_rapid_daily_funded_randomization_uses_spec_rules():
         "FundedNext Rapid Daily", "funded_trade1_recovery", config,
         account_key="rapid-account", balance=50000.0)
     target_ticks = ft1["_randomization"]["target_ticks"]
-    assert 400 <= target_ticks <= 500
+    assert 491 <= target_ticks <= 599
     assert ft1["tradovate_tp_ticks"] == target_ticks
     assert ft1["tradovate_tp_ticks"] == ft1_repeat["tradovate_tp_ticks"]
     assert ft1["tradovate_symbol"] == "NQZ6"
@@ -149,13 +149,15 @@ def test_rapid_daily_funded_randomization_uses_spec_rules():
     ft2 = manager.randomize_trade_config(
         "FundedNext Rapid Daily", "funded_trade2", config,
         account_key="rapid-account", balance=53200.0)
-    assert 400 <= ft2["tradovate_tp_ticks"] <= 500
+    # Cycles 2-5 target $53,300, so the TP is a short hop that floors at the
+    # minimum payout-eligible profit — not the cycle-1 band.
+    assert 1 <= ft2["tradovate_tp_ticks"] <= 250
     assert ft2["tradovate_sl_ticks"] == 100
 
     floor_case = manager.randomize_trade_config(
         "FundedNext Rapid Daily", "funded_trade2", config,
         account_key="rapid-account-2", balance=53500.0)
-    assert 400 <= floor_case["tradovate_tp_ticks"] <= 500
+    assert 1 <= floor_case["tradovate_tp_ticks"] <= 250
 
 
 def test_rapid_daily_blueprint_uses_two_nq_funded_cycle_one_setup():

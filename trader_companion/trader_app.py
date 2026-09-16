@@ -4821,6 +4821,26 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_check_positions, daemon=True).start()
 
+    # Statuses a derived verdict may replace; anything else is an admin's call.
+    _DERIVABLE_STATUSES = ("", "-", "—", "in progress", "not started", "active")
+
+    def _apply_status_update(self, ev):
+        """Fill a blank status from broker truth. Returns changed field names."""
+        try:
+            status, reason = self._derive_account_status(ev)
+        except Exception:
+            return []
+        if not status:
+            return []
+        field = "Status P1" if status == "Pass" or not self._has_passed_to_funded(ev) else "Status"
+        if self._cell(ev.get(field)).strip().lower() not in self._DERIVABLE_STATUSES:
+            return []
+        ev[field] = status
+        note_field = f"_derived_{field}"
+        ev[note_field] = reason
+        self.log(f"📌 {self._primary_trade_account(ev)}: {field} → {status} ({reason})")
+        return [field]
+
     def _apply_outcome_corrections(self):
         """Re-home pending placeholders once their trade has resolved.
 
@@ -4846,6 +4866,7 @@ class TradeOpssAIApp:
             for ev in evaluations:
                 if ev.get("_deleted"):
                     continue
+                force_fields.extend(self._apply_status_update(ev))
                 current, corrected = self._reconcile_outcome_placeholder(ev)
                 if not current or not corrected:
                     continue
@@ -5778,6 +5799,13 @@ class TradeOpssAIApp:
             self.log(f"🛑 {account}: {current_key} {outcome} → {next_key} — "
                      f"no further trade queued", "WARN")
             return self._PROGRESSION_STOP
+        if next_key == current_key:
+            limit = (mgr.repeat_limit_for_phase(firm_code, current_key)
+                     if hasattr(mgr, "repeat_limit_for_phase") else None)
+            if limit and self._consecutive_losses(account) >= int(limit):
+                self.log(f"🛑 {account}: {current_key} exhausted its {limit}-attempt "
+                         f"limit — no further trade queued", "WARN")
+                return self._PROGRESSION_STOP
         try:
             next_idx = trade_keys.index(next_key)
         except ValueError:
@@ -5834,6 +5862,33 @@ class TradeOpssAIApp:
         if not target:
             return False
         return self._payout_count(account_number) >= int(target)
+
+    def _consecutive_losses(self, account_number):
+        """Losing resolved days at the tail of the account's history.
+
+        A self-repeating phase reuses one cell, so attempts have to be counted
+        from the broker feed rather than the sheet.
+        """
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return 0
+        entry = self._trade_outcome_history().get(key)
+        if not entry:
+            return 0
+        days = sorted(entry.get("daily_pnl") or [],
+                      key=lambda d: str(d.get("date") or ""), reverse=True)
+        streak = 0
+        for day in days:
+            if not day.get("trades"):
+                continue
+            try:
+                net = float(day.get("net_pnl") or 0)
+            except (TypeError, ValueError):
+                break
+            if net > 0:
+                break
+            streak += 1
+        return streak
 
     def _latest_resolved_outcome(self, account_number):
         """(date, 'win'|'loss') for the most recent day holding a closed trade.

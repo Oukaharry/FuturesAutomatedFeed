@@ -504,6 +504,105 @@ def test_status_is_unknown_without_broker_data():
     assert app._derive_account_status(_evaluation(), FIRM) == (None, None)
 
 
+# --- Top One Elite Daily ------------------------------------------------
+
+TOP_ONE = "Top One Futures"
+
+
+def test_top_one_branch_tree_matches_the_blueprint():
+    mgr = PropFirmManager()
+    expected = {
+        ("funded_trade1", "win"): "funded_trade1a",
+        ("funded_trade1", "loss"): "funded_trade1d",
+        ("funded_trade1a", "win"): "funded_trade2",
+        ("funded_trade1a", "loss"): "funded_trade1b",
+        ("funded_trade1b", "win"): "funded_trade2",
+        ("funded_trade1b", "loss"): "funded_trade1c",
+        ("funded_trade1c", "win"): "funded_trade2",
+        ("funded_trade1c", "loss"): "account_blown",
+        ("funded_trade1d", "win"): "funded_trade1b",
+        ("funded_trade1d", "loss"): "account_blown",
+        ("funded_trade2", "loss"): "funded_trade2a",
+        ("funded_trade2a", "loss"): "funded_trade2b",
+        ("funded_trade2b", "loss"): "account_blown",
+    }
+    for (key, outcome), nxt in expected.items():
+        assert mgr.resolve_next_phase_key(TOP_ONE, key, outcome) == nxt, key
+
+
+def test_top_one_double_dip_mirrors_the_funded_tree():
+    mgr = PropFirmManager()
+    assert mgr.resolve_next_phase_key(
+        TOP_ONE, "funded_trade_doubledip_1", "loss") == "funded_trade_doubledip_1d"
+    assert mgr.resolve_next_phase_key(
+        TOP_ONE, "funded_trade_doubledip_1c", "loss") == "account_blown"
+
+
+def test_top_one_gates_only_unambiguous_phases():
+    mgr = PropFirmManager()
+    assert mgr.required_outcome_for_phase(TOP_ONE, "funded_trade1d") == "loss"
+    assert mgr.required_outcome_for_phase(TOP_ONE, "funded_trade1a") == "win"
+    # 1b is reachable from 1a's stop or 1d's target, so it carries no gate.
+    assert mgr.required_outcome_for_phase(TOP_ONE, "funded_trade1b") is None
+
+
+# --- repeat limits ------------------------------------------------------
+
+
+def test_ftmo_recovery_dies_after_its_second_stop():
+    mgr = PropFirmManager()
+    assert mgr.repeat_limit_for_phase("FTMO Futures Pro", "funded_trade1_recovery") == 2
+    app = _app([
+        {"date": "2026-01-02", "trades": 1, "net_pnl": -475.0},
+        {"date": _today(), "trades": 1, "net_pnl": -475.0},
+    ])
+    assert app._consecutive_losses(ACCOUNT) == 2
+    assert app._resolve_next_hedge_field(
+        _evaluation(), "FTMO Futures Pro", "Funded", "Hedge Result 2.1"
+    ) is None
+
+
+def test_ftmo_recovery_still_repeats_on_the_first_stop():
+    app = _app([
+        {"date": "2026-01-02", "trades": 1, "net_pnl": 3005.0},
+        {"date": _today(), "trades": 1, "net_pnl": -475.0},
+    ])
+    assert app._consecutive_losses(ACCOUNT) == 1
+    assert app._resolve_next_hedge_field(
+        _evaluation(), "FTMO Futures Pro", "Funded", "Hedge Result 2.1"
+    ) == "Hedge Result 2.1"
+
+
+# --- status write-back --------------------------------------------------
+
+
+def test_blank_status_is_filled_from_broker_truth():
+    app = _account(50100.0, _day(-1000.0))
+    ev = _evaluation()
+    ev["Prop Firm"] = FIRM
+    ev["Status"] = ""
+    assert app._apply_status_update(ev) == ["Status"]
+    assert ev["Status"] == "Fail"
+
+
+def test_an_admins_explicit_status_is_never_overwritten():
+    app = _account(50100.0, _day(-1000.0))
+    ev = _evaluation()
+    ev["Prop Firm"] = FIRM
+    ev["Status"] = "Completed"
+    assert app._apply_status_update(ev) == []
+    assert ev["Status"] == "Completed"
+
+
+def test_in_progress_is_treated_as_fillable():
+    app = _account(50100.0, _day(-1000.0))
+    ev = _evaluation()
+    ev["Prop Firm"] = FIRM
+    ev["Status"] = "In Progress"
+    assert app._apply_status_update(ev) == ["Status"]
+    assert ev["Status"] == "Fail"
+
+
 # --- funded column names ------------------------------------------------
 
 # The dashboard's funded columns: 1.1–5.1, then 6 and 7 with no ".1" suffix,
