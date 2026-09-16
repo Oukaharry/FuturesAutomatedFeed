@@ -5892,7 +5892,7 @@ def api_client_push():
     tradovate_farming_days = data.get("tradovate_farming_days", [])
     hedge_match_log = []
     
-    if aggregated_by_comment or mt5_deals:
+    if aggregated_by_comment or mt5_deals or tradovate_farming_days:
         app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals (hedge)")
         if prefer_client_aggregation:
             app.logger.info("⚡ Preferring client-side aggregation for hedge matching")
