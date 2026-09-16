@@ -18,6 +18,7 @@ def test_farming_prop_progress_advances_only_for_profitable_days():
     assert not complete
     assert evaluation["Prop Day 1"] == "210.00"
     assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
+    assert evaluation["Date 8"] == "2026-09-16"
     assert evaluation["Prop Progress 1"] == "2/5"
     assert evaluation["Hedge Day 2"] == "THURSDAY"
 
@@ -69,6 +70,7 @@ def test_tradovate_only_payload_reconciles_farming_without_hedge_deals():
     assert updated[0]["Prop Day 1"] == "999.00"
     assert updated[1]["Prop Day 1"] == "152.40"
     assert updated[1]["_Prop Day 1 Date"] == "2026-09-16"
+    assert updated[1]["Date 8"] == "2026-09-16"
     assert updated[1]["Prop Progress 1"] == "2/5"
     assert updated[1]["Hedge Day 2"] == "THURSDAY"
     assert "Prop Day 2" not in updated[1]

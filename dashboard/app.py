@@ -2192,6 +2192,8 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
         return 0, False
     evaluation[prop_field] = f"{net_pnl:.2f}"
     evaluation[f'_{prop_field} Date'] = date
+    if slot == 1 and not str(evaluation.get('Date 8') or '').strip():
+        evaluation['Date 8'] = date
 
     progress = 1
     for candidate in range(1, slot + 1):
