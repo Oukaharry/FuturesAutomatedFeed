@@ -100,6 +100,8 @@ class PropFirmManager:
         self._lucid_funded_tp_owners: Dict[int, str] = {}
         self._mffu_rapid_eod_tp_owners: Dict[int, str] = {}
         self._topstep_xfa_tp_owners: Dict[int, str] = {}
+        self._ftmo_pro_ft1_tp_owners: Dict[int, str] = {}
+        self._ftmo_pro_farm_base_owners: Dict[int, str] = {}
         self._funded_tp_owners: Dict[str, Dict[int, str]] = {}
 
         # Prop firm blueprints - $50k account configurations only core challange with the flex addon
@@ -1726,6 +1728,51 @@ class PropFirmManager:
                 "position_contracts": 2,
                 "position_symbol": "NQZ6",
             },
+            "state_machine": {
+                "evaluation": {
+                    "start": "challenge_trade1",
+                    "challenge_trade1_win": "funded_trade1",
+                    "challenge_trade1_loss": "challenge_trade1_recovery",
+                    "challenge_trade1_recovery_win": "funded_trade1",
+                    "challenge_trade1_recovery_loss": "evaluation_failed",
+                },
+                "funded": {
+                    "start": "funded_trade1",
+                    "funded_trade1_win": "funded_trade2",
+                    "funded_trade1_loss": "funded_trade1_recovery",
+                    "funded_trade1_recovery_win": "funded_trade2",
+                    "funded_trade1_recovery_loss": "account_blown",
+                    # Cycle 2 gets two recovery legs before the 50,100 floor.
+                    "funded_trade2_win": "funded_trade3",
+                    "funded_trade2_loss": "funded_trade2_recovery1",
+                    "funded_trade2_recovery1_win": "funded_trade3",
+                    "funded_trade2_recovery1_loss": "funded_trade2_recovery2",
+                    "funded_trade2_recovery2_win": "funded_trade3",
+                    "funded_trade2_recovery2_loss": "account_blown",
+                    "funded_trade3_win": "funded_trade4",
+                    "funded_trade3_loss": "funded_trade3_recovery",
+                    "funded_trade3_recovery_win": "funded_trade4",
+                    "funded_trade3_recovery_loss": "account_blown",
+                    "funded_trade4_win": "funded_trade5",
+                    "funded_trade4_loss": "funded_trade4_recovery",
+                    "funded_trade4_recovery_win": "funded_trade5",
+                    "funded_trade4_recovery_loss": "account_blown",
+                    "funded_trade5_win": "payout_complete",
+                    "funded_trade5_loss": "funded_trade5_recovery",
+                    "funded_trade5_recovery_win": "payout_complete",
+                    "funded_trade5_recovery_loss": "account_blown",
+                },
+                # Every recovery leg is only reachable after a stop-out.
+                "outcome_gated_phases": {
+                    "challenge_trade1_recovery": "loss",
+                    "funded_trade1_recovery": "loss",
+                    "funded_trade2_recovery1": "loss",
+                    "funded_trade2_recovery2": "loss",
+                    "funded_trade3_recovery": "loss",
+                    "funded_trade4_recovery": "loss",
+                    "funded_trade5_recovery": "loss",
+                },
+            },
             "strategy_configs": {
                 # Evaluation Phase — goal $53,000 (start $50,000)
                 "challenge_trade1": {"50k": {
@@ -1834,6 +1881,28 @@ class PropFirmManager:
                 "payout_cap_gross": 5000,
                 "payout_net_approx": 4500,
                 "max_concurrent_accounts_per_kyc": 3,
+            },
+            # Evaluation is balance-gated (repeat until $53,000), not
+            # outcome-branched, so only the funded leg is encoded here.
+            "state_machine": {
+                "funded": {
+                    "start": "funded_trade1",
+                    "funded_trade1_win": "qualifying_day",
+                    "funded_trade1_loss": "funded_trade1_recovery",
+                    "funded_trade1_recovery_win": "funded_trade1_cleanup",
+                    # 1R repeats once; the second stop leaves $150 room.
+                    "funded_trade1_recovery_loss": "funded_trade1_recovery",
+                    "funded_trade1_cleanup_win": "qualifying_day",
+                    # Cleanup recomputes TP from the new balance and repeats.
+                    "funded_trade1_cleanup_loss": "funded_trade1_cleanup",
+                },
+                "repeat_limits": {
+                    "funded_trade1_recovery": 2,
+                },
+                "outcome_gated_phases": {
+                    "funded_trade1_recovery": "loss",
+                    "funded_trade1_cleanup": "win",
+                },
             },
             "strategy_configs": {
                 # Evaluation — repeat daily until balance = $53,000
@@ -2064,6 +2133,7 @@ class PropFirmManager:
                 "no_hedge": True,
                 "payout_count": 5,
             },
+            # Transitions transcribed from the MFFU Builder 50K blueprint.
             "state_machine": {
                 "evaluation": {
                     "start": "challenge_trade1",
@@ -2077,6 +2147,47 @@ class PropFirmManager:
                     "payout_target_balance": 54100,
                     "payout_retained_balance": 52100,
                     "payout_count": 5,
+                    "funded_trade1_win": "funded_trade2",
+                    "funded_trade1_loss": "funded_recovery1",
+                    # Trade 2 win banks the first payout and drops into the cycle.
+                    "funded_trade2_win": "cycle_trade_a",
+                    "funded_trade2_loss": "funded_trade3",
+                    "funded_trade3_win": "finishing_trade",
+                    "funded_trade3_loss": "account_blown",
+                    "funded_recovery1_win": "funded_recovery2",
+                    "funded_recovery1_loss": "account_blown",
+                    "funded_recovery2_win": "finishing_trade",
+                    "funded_recovery2_loss": "funded_recovery3",
+                    "funded_recovery3_win": "rebuild_trade",
+                    "funded_recovery3_loss": "account_blown",
+                    "finishing_trade_win": "cycle_trade_a",
+                    "finishing_trade_loss": "rebuild_trade",
+                    "rebuild_trade_win": "cycle_trade_a",
+                    "rebuild_trade_loss": "rebuild_trade2",
+                    "rebuild_trade2_win": "finishing_trade",
+                    "rebuild_trade2_loss": "account_blown",
+                    "cycle_trade_a_win": "cycle_trade_b",
+                    "cycle_trade_a_loss": "cycle_recovery",
+                    # Win banks a payout, loss is a free reset — both repeat A.
+                    "cycle_trade_b_win": "cycle_trade_a",
+                    "cycle_trade_b_loss": "cycle_trade_a",
+                    "cycle_recovery_win": "cycle_trade_a",
+                    "cycle_recovery_loss": "account_blown",
+                },
+                # Wins that bank a payout before moving on.
+                "payout_transitions": [
+                    "funded_trade2_win", "finishing_trade_win",
+                    "rebuild_trade_win", "cycle_trade_b_win",
+                ],
+                # Phases only reachable after the stated outcome.
+                "outcome_gated_phases": {
+                    "challenge_recovery": "loss",
+                    "funded_recovery1": "loss",
+                    "funded_recovery2": "win",
+                    "funded_recovery3": "loss",
+                    "funded_trade3": "loss",
+                    "rebuild_trade2": "loss",
+                    "cycle_recovery": "loss",
                 },
             },
             "strategy_configs": {
@@ -2856,6 +2967,48 @@ class PropFirmManager:
             "Farming": ["farming"],
         },
     }
+
+    # Sinks in a state machine: reached, but never traded out of.
+    TERMINAL_PHASE_KEYS = frozenset({
+        "evaluation_failed", "account_blown", "payout_complete", "cycle_complete",
+    })
+
+    def resolve_next_phase_key(self, firm_code: str, current_key: str,
+                               outcome: str):
+        """Next blueprint key from the firm's outcome state machine.
+
+        Returns None when the firm has no state machine, the outcome is
+        unknown, or the transition is undefined — callers then fall back to
+        positional ordering so the 10 standard firms keep current behaviour.
+        """
+        if not firm_code or not current_key or outcome not in ("win", "loss"):
+            return None
+        machine = (self.firm_blueprints.get(firm_code) or {}).get("state_machine") or {}
+        for group in machine.values():
+            if not isinstance(group, dict):
+                continue
+            nxt = group.get(f"{current_key}_{outcome}")
+            if nxt:
+                return nxt
+        return None
+
+    def is_terminal_phase_key(self, phase_key: str) -> bool:
+        return bool(phase_key) and phase_key in self.TERMINAL_PHASE_KEYS
+
+    def has_state_machine(self, firm_code: str) -> bool:
+        return bool((self.firm_blueprints.get(firm_code) or {}).get("state_machine"))
+
+    def required_outcome_for_phase(self, firm_code: str, phase_key: str):
+        """Outcome the previous trade must have had to enter this phase.
+
+        Recovery legs only exist because the prior trade stopped out; entering
+        one after a win means the positional order picked the wrong cell.
+        """
+        if not firm_code or not phase_key:
+            return None
+        machine = (self.firm_blueprints.get(firm_code) or {}).get("state_machine") or {}
+        gated = machine.get("outcome_gated_phases") or {}
+        return gated.get(phase_key)
 
     def predict_next_trade(self, firm_code: str, current_phase: str,
                            current_profit: float, size_key: str = "50k") -> Dict:
@@ -3682,7 +3835,7 @@ class PropFirmManager:
             phase_id = phase.replace(" ", "_") or "farming"
             factor = self._random_state_value(
                 account_id, f"farming_{firm}_{phase_id}_sl_factor", 0.90, 1.10)
-            cfg[field] = max(10, int(round(original_sl * factor)))
+            cfg[field] = max(10, min(600, int(round(original_sl * factor))))
 
         def has_pre_september_2026_purchase_date(value) -> bool:
             if isinstance(value, datetime.datetime):
@@ -4002,7 +4155,15 @@ class PropFirmManager:
                     state["ftmo_pro_ft1_target_profit_dollars"] = self._draw_uniform(5000, 6000)
                 target_profit = state["ftmo_pro_ft1_target_profit_dollars"]
                 tp = int(math.floor(target_profit / 10.0))
-                cfg["tradovate_tp_ticks"] = max(80, min(600, tp))
+                tp = max(80, min(600, tp))
+                # Two accounts sharing a funded TP is a detection risk.
+                if self._ftmo_pro_ft1_tp_owners.get(tp) not in (None, user_id):
+                    for candidate in range(500, 601):
+                        if self._ftmo_pro_ft1_tp_owners.get(candidate) in (None, user_id):
+                            tp = candidate
+                            break
+                self._ftmo_pro_ft1_tp_owners[tp] = user_id
+                cfg["tradovate_tp_ticks"] = tp
                 cfg["tradovate_sl_ticks"] = 95
                 cfg.setdefault("_randomization", {}).update({
                     "policy": "ftmo_futures_pro",
@@ -4041,6 +4202,13 @@ class PropFirmManager:
                 if "ftmo_pro_farm_sl_base" not in state:
                     state["ftmo_pro_farm_sl_base"] = self._draw_uniform(500, 580)
                 base_sl = int(math.floor(state["ftmo_pro_farm_sl_base"]))
+                if self._ftmo_pro_farm_base_owners.get(base_sl) not in (None, user_id):
+                    for candidate in range(500, 581):
+                        if self._ftmo_pro_farm_base_owners.get(candidate) in (None, user_id):
+                            base_sl = candidate
+                            state["ftmo_pro_farm_sl_base"] = float(base_sl)
+                            break
+                self._ftmo_pro_farm_base_owners[base_sl] = user_id
                 daily_key = f"ftmo_pro_farm_jitter:{user_id}:{_kenya_today().isoformat()}"
                 if daily_key not in self._daily_random_state:
                     self._daily_random_state[daily_key] = self._draw_uniform(-20, 20)
@@ -4118,10 +4286,11 @@ class PropFirmManager:
                 })
             elif is_farming:
                 account_id = str(account_key or "default")
-                cfg["tradovate_qty"] = 1
                 cfg["tradovate_symbol"] = "MNQZ6"
                 cfg["tradovate_qty"] = 2
                 cfg["tradovate_tp_ticks"] = 156
+                # Jitter from the blueprint ceiling, not the caller's SL.
+                cfg["tradovate_sl_ticks"] = 600
                 randomize_farming_sl()
                 cfg.setdefault("_randomization", {}).update({
                     "policy": "lucid_flex_50k",
@@ -4254,6 +4423,16 @@ class PropFirmManager:
             sl_factor = self._random_state_value(
                 account_id, f"generic_{phase_id}_sl_factor", sl_low, sl_high)
             new_sl = max(10, int(round(original_sl * sl_factor)))
+            if "tradovate_sl_ticks" in cfg:
+                cfg["tradovate_sl_ticks"] = new_sl
+            elif "topstepx_sl_ticks" in cfg:
+                cfg["topstepx_sl_ticks"] = new_sl
+
+        if use_funded_next_flex_room_sl:
+            # Distance from the $50,100 hard floor, matching the room-SL rule
+            # already used by Tradeify Select, Lucid and Blue Guardian.
+            room_ticks = int(math.floor((balance - 50100.0) / 10.0))
+            new_sl = max(10, min(600, room_ticks))
             if "tradovate_sl_ticks" in cfg:
                 cfg["tradovate_sl_ticks"] = new_sl
             elif "topstepx_sl_ticks" in cfg:

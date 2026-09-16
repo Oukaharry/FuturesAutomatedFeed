@@ -9,6 +9,23 @@ import re
 
 _HIT_TP_SL_RE = re.compile(r'^hit\s+(?:tp|sl)\d+$', re.IGNORECASE)
 
+# Funded hedge columns. Slots 6 and 7 carry no ".1" suffix. Slots 8+ are
+# overflow columns rendered after the farming block, so every trade in an
+# account's lifetime keeps its own cell without shifting existing columns.
+FUNDED_OVERFLOW_FIRST = 8
+FUNDED_OVERFLOW_LAST = 30
+
+P1_HEDGE_COLS = [f'Hedge Result {i}' for i in range(1, 6)]
+FUNDED_OVERFLOW_COLS = [
+    f'Hedge Result {i}'
+    for i in range(FUNDED_OVERFLOW_FIRST, FUNDED_OVERFLOW_LAST + 1)
+]
+FUNDED_HEDGE_COLS = (
+    [f'Hedge Result {i}.1' for i in range(1, 6)]
+    + ['Hedge Result 6', 'Hedge Result 7']
+    + FUNDED_OVERFLOW_COLS
+)
+
 
 def is_hit_tp_sl_status(status: str) -> bool:
     return bool(_HIT_TP_SL_RE.match(str(status or '').strip()))

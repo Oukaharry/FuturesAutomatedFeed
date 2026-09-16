@@ -1,4 +1,5 @@
 from dashboard.database import get_all_clients
+from dashboard.eval_status import FUNDED_HEDGE_COLS as _FUNDED_HEDGE_COLS
 from utils.data_processor import prop_firm_stats_parent
 import re
 from datetime import datetime, timedelta
@@ -172,10 +173,7 @@ def parse_currency(value_str):
 
 
 P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-FUNDED_HEDGE_COLS = [
-    'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-    'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
-]
+FUNDED_HEDGE_COLS = list(_FUNDED_HEDGE_COLS)
 
 
 def _date_in_range(dt, start_date=None, end_date=None):
@@ -1102,8 +1100,7 @@ def get_cumulative_trading_profit(profile_filter=None):
     
     # Columns definition matching calculate_propfirm_overview
     P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+    FUNDED_HEDGE_COLS = list(_FUNDED_HEDGE_COLS)
 
     for client_id, data in clients_data.items():
         if not data: continue
@@ -1291,8 +1288,7 @@ def calculate_propfirm_overview(profile_filter=None):
     
     # Define columns for calculations
     P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+    FUNDED_HEDGE_COLS = list(_FUNDED_HEDGE_COLS)
     # Hedge Day 1 to 60
     
     for client_id, data in clients_data.items():
@@ -1484,8 +1480,7 @@ def get_cumulative_hedge_data(profile_filter=None):
     events = [] 
     
     P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+    FUNDED_HEDGE_COLS = list(_FUNDED_HEDGE_COLS)
 
     for client_id, data in clients_data.items():
         if not data: continue

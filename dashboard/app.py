@@ -21,7 +21,12 @@ import hashlib
 import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
-from dashboard.eval_status import is_eval_phase_failed, is_funded_phase_ended
+from dashboard.eval_status import (
+    is_eval_phase_failed,
+    is_funded_phase_ended,
+    FUNDED_HEDGE_COLS,
+    FUNDED_OVERFLOW_COLS,
+)
 from dashboard.push_policy import (
     is_client_inactive,
     is_client_push_blocked,
@@ -1940,10 +1945,7 @@ def recalculate_hedge_nets(evaluations):
         # --- Hedge Net.1 (Funded) ---
         status = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
         sum_phase1 = sum(_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
-        sum_funded = sum(_num(ev.get(c)) for c in [
-            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
-            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
-        ])
+        sum_funded = sum(_num(ev.get(c)) for c in FUNDED_HEDGE_COLS)
         fee = _num(ev.get('Fee'))
         activation_fee = _num(ev.get('Activation Fee'))
 
@@ -2016,10 +2018,7 @@ def _dashboard_log_hedge_edit(client_id, user_changed, evaluations):
     if not user_changed:
         return
     hedge_cols = {f'Hedge Result {i}' for i in range(1, 6)}
-    hedge_cols.update({
-        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
-        'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
-    })
+    hedge_cols.update(FUNDED_HEDGE_COLS)
     hedge_cols.update(f'Hedge Day {i}' for i in range(1, 61))
     touched = False
     for idx_str, fields in user_changed.items():
@@ -4786,10 +4785,7 @@ def _build_profit_splits_payload(profile_filter):
     #   Farming Results = SUM(AM:AM, AO:AO, AQ:AQ, ... DA:DA)
     #                   = Hedge Day 1..N only (no HR 6/7, no Farming Net override)
     _P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    _FUNDED_COLS = [
-        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
-        'Hedge Result 6', 'Hedge Result 7',
-    ]
+    _FUNDED_COLS = list(FUNDED_HEDGE_COLS)
     _HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 61)]
 
     def _live_in_progress_net(evaluations):
@@ -7714,8 +7710,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
                         acc_stats["hedge"] += parse_currency(ev.get(col))
                 if ev_status_funded:
-                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    for col in FUNDED_HEDGE_COLS:
                         acc_stats["hedge"] += parse_currency(ev.get(col))
                     for di in range(1, 61):
                         acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
@@ -7802,8 +7797,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
                         pf["hedge"] += parse_currency(ev.get(col))
                 if status_funded_raw:
-                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    for col in FUNDED_HEDGE_COLS:
                         pf["hedge"] += parse_currency(ev.get(col))
                     for di in range(1, 61):
                         pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
@@ -9250,7 +9244,8 @@ def export_client_csv():
         'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     ] + [f'Prop Day {i}' for i in range(1, 61)] \
       + [f'Prop Progress {i}' for i in range(1, 61)] \
-      + [f'Hedge Day {i}' for i in range(1, 61)]
+      + [f'Hedge Day {i}' for i in range(1, 61)] \
+      + list(FUNDED_OVERFLOW_COLS)
 
     # Build column list: dashboard order first, then extras (skip Account Number)
     all_keys = set()
@@ -10060,10 +10055,7 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                     # If any funded hedge result or farming hedge day cell contains a weekday token, suppress the flag.
                     _weekday_ok = False
                     try:
-                        _funded_cols = (
-                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
-                            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
-                        )
+                        _funded_cols = tuple(FUNDED_HEDGE_COLS)
                         _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 61))
                         for _c in (_funded_cols + _farming_cols):
                             _v = str(ev.get(_c, '') or '').strip().lower()
@@ -13116,6 +13108,7 @@ def update_data():
                     'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
                     'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7',
+                    *FUNDED_OVERFLOW_COLS,
                 }
                 # Include farming Hedge Day / Prop Day fields (push-sourced)
                 for _i in range(1, 61):

@@ -4821,6 +4821,63 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_check_positions, daemon=True).start()
 
+    def _apply_outcome_corrections(self):
+        """Re-home pending placeholders once their trade has resolved.
+
+        The placeholder is queued at fill time, before TP/SL is known, so the
+        outcome branch can only be applied on a later pass. Idempotent.
+        """
+        try:
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            if not email or not dashboard_url:
+                return
+            resp = requests.post(
+                f"{dashboard_url}/api/client/data",
+                json={"email": email},
+                headers=_companion_request_headers(),
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return
+            evaluations = (resp.json() or {}).get("evaluations", []) or []
+
+            force_fields = []
+            for ev in evaluations:
+                if ev.get("_deleted"):
+                    continue
+                current, corrected = self._reconcile_outcome_placeholder(ev)
+                if not current or not corrected:
+                    continue
+                label = self._cell(ev.get(current))
+                if self._parse_day_token(label) is None:
+                    continue
+                target = self._cell(ev.get(corrected))
+                if target and self._parse_day_token(target) is None:
+                    continue
+                ev[current] = ""
+                ev[corrected] = label
+                force_fields.extend([current, corrected])
+                self.log(f"↪ {self._primary_trade_account(ev)}: trade resolved — "
+                         f"moved pending {current} → {corrected}")
+
+            if not force_fields:
+                return
+            requests.post(
+                f"{dashboard_url}/api/client/push",
+                json={
+                    "email": email,
+                    "evaluations": evaluations,
+                    "statistics": {},
+                    "dropdown_options": {},
+                    "force_fields": force_fields,
+                },
+                headers=_companion_request_headers(),
+                timeout=30,
+            )
+        except Exception as exc:
+            self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+
     def _run_hourly_farming_refresh_if_due(self):
         """Refresh Tradovate farming history hourly while Auto-Push is enabled."""
         if not self.auto_push_enabled:
@@ -4832,6 +4889,7 @@ class TradeOpssAIApp:
         self._last_hourly_farming_refresh = now
         self.log("🌾 Hourly farming scan — refreshing Tradovate Net P/L")
         self.push_data(full_prop_refresh=True)
+        self._apply_outcome_corrections()
 
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
@@ -5383,8 +5441,8 @@ class TradeOpssAIApp:
         # active day-name placeholder, the row is still in the Funded phase even if
         # farming data (Hedge Day / Prop Day) has already been entered for the account.
         if has_funded_acct and funded_status not in self._FAILED_STATUSES:
-            for i in range(1, 8):
-                val = self._cell(ev.get(f"Hedge Result {i}.1"))
+            for field in self._FUNDED_HEDGE_FIELDS:
+                val = self._cell(ev.get(field))
                 if val and self._parse_day_token(val) is not None:
                     return "Funded", "funded_trade1"
 
@@ -5422,6 +5480,73 @@ class TradeOpssAIApp:
         # Fallback: first 3 letters of detected phase
         cp = str(current_phase or "").strip().upper()
         return (cp[:3] or "PH")
+
+    def _derive_account_status(self, ev, firm_code=None):
+        """('Fail' | 'Pass' | 'Completed' | None, reason) from broker truth.
+
+        SOP 7b: Tradovate balance is the final source of truth; 7c: Completed
+        needs every payout processed AND the account blown.
+        """
+        mgr = self.prop_firm_mgr
+        if not mgr:
+            return None, None
+        firm_code = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
+        if not firm_code:
+            return None, None
+        rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        account = self._primary_trade_account(ev)
+        entry = self._trade_outcome_history().get(str(account or "").strip().lower())
+        if not entry:
+            return None, None
+        try:
+            balance = float(entry.get("balance") or 0)
+        except (TypeError, ValueError):
+            return None, None
+        if balance <= 0:
+            return None, None
+
+        floor = rules.get("funded_cycle_hard_floor") or rules.get("funded_floor")
+        blown = bool(floor) and balance <= float(floor)
+        payouts = self._payout_count(account)
+        target = rules.get("payout_count")
+
+        if blown and target and payouts >= int(target):
+            return "Completed", f"{payouts} payout(s) banked and balance {balance:,.2f} at floor"
+        if blown:
+            return "Fail", f"balance {balance:,.2f} at or below floor {float(floor):,.2f}"
+
+        goal = rules.get("evaluation_goal") or rules.get("first_funded_target")
+        if goal and not self._has_passed_to_funded(ev) and balance >= float(goal):
+            return "Pass", f"balance {balance:,.2f} reached evaluation goal {float(goal):,.2f}"
+        return None, None
+
+    def _outcome_gate_blocks(self, ev, firm_code, phase_key):
+        """True when a phase needs a prior outcome the account did not have.
+
+        Stops the positional fallback from opening a recovery leg after a win.
+        An unverifiable outcome warns rather than blocks, so a dropped broker
+        connection cannot stall trading.
+        """
+        mgr = self.prop_firm_mgr
+        if not mgr or not getattr(mgr, "required_outcome_for_phase", None):
+            return False
+        required = mgr.required_outcome_for_phase(firm_code, phase_key)
+        if not required:
+            return False
+        account = self._primary_trade_account(ev)
+        try:
+            _date, outcome = self._latest_resolved_outcome(account)
+        except Exception:
+            return False
+        if not outcome:
+            self.log(f"⚠ {account}: {phase_key} expects a prior {required} but no "
+                     f"resolved trade was found — verify before trading", "WARN")
+            return False
+        if outcome == required:
+            return False
+        self.log(f"🚫 {account}: {phase_key} requires a prior {required}, last "
+                 f"resolved trade was a {outcome} — skipping", "WARN")
+        return True
 
     def _resolve_phase_key_from_day(self, ev, firm_code, current_phase):
         """Use the day placeholder cell index to determine the correct blueprint key.
@@ -5497,6 +5622,8 @@ class TradeOpssAIApp:
         key_idx = min(day_idx, len(trade_keys) - 1)
         resolved_key = trade_keys[key_idx]
         _acct = self._primary_trade_account(ev)
+        if self._outcome_gate_blocks(ev, firm_code, resolved_key):
+            return None, day_idx, day_name
         self._ai_trace("BLUEPRINT",
                        f"{_acct}: day cell {day_idx + 1} ({day_name}) in "
                        f"'{effective_phase}' [{firm_code}] → blueprint {resolved_key}")
@@ -5562,7 +5689,227 @@ class TradeOpssAIApp:
             return None
         return chain[idx + 1] if idx + 1 < len(chain) else None
 
-    def _resolve_next_hedge_field(self, ev, firm_code, current_phase, traded_field):
+    # Outcome feed cache: { firm_name: (fetched_at_epoch, history_list) }
+    _TRADE_OUTCOME_CACHE_TTL = 300
+
+    # Returned when the state machine ends the run; distinct from "no opinion",
+    # which falls back to positional ordering.
+    _PROGRESSION_STOP = object()
+
+    def _trade_outcome_history(self, force=False):
+        """Per-account all-contract daily P&L, keyed by lowercased account name.
+
+        Uses get_trade_history rather than get_mnq_daily_pnl, which filters to
+        MNQ and would miss every NQ challenge/funded trade.
+        """
+        if not hasattr(self, "_outcome_cache"):
+            self._outcome_cache = {}
+        now = time.time()
+        merged = {}
+        for firm_name, conn in (getattr(self, "_broker_connections", None) or {}).items():
+            account = conn.get("account")
+            if not account or not hasattr(account, "get_trade_history"):
+                continue
+            cached = self._outcome_cache.get(firm_name)
+            if not force and cached and (now - cached[0]) < self._TRADE_OUTCOME_CACHE_TTL:
+                history = cached[1]
+            else:
+                try:
+                    history = account.get_trade_history() or []
+                    self._outcome_cache[firm_name] = (time.time(), history)
+                except Exception as exc:
+                    self.log(f"⚠ {firm_name}: outcome history fetch failed: {exc}", "WARN")
+                    history = cached[1] if cached else []
+            for entry in history or []:
+                name = str(entry.get("account_name") or "").strip()
+                if name:
+                    merged[name.lower()] = entry
+        return merged
+
+    def _resolve_trade_outcome(self, account_number, on_date=None):
+        """'win' / 'loss' for a resolved trade, or None when still unresolved.
+
+        Returning None keeps callers on positional ordering rather than
+        guessing a branch. A payout withdrawal carries a non-trade
+        cashChangeType, so it never reaches net_pnl and cannot fake a loss.
+        """
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return None
+        entry = self._trade_outcome_history().get(key)
+        if not entry:
+            return None
+        target = on_date or kenya_today().strftime("%Y-%m-%d")
+        for day in entry.get("daily_pnl") or []:
+            if str(day.get("date")) != str(target):
+                continue
+            if not day.get("trades"):
+                return None
+            try:
+                net = float(day.get("net_pnl") or 0)
+            except (TypeError, ValueError):
+                return None
+            return "win" if net > 0 else "loss"
+        return None
+
+    def _state_machine_next_field(self, ev, firm_code, traded_idx,
+                                  trade_keys, fields, outcome=None):
+        """Next field per the firm's outcome state machine, else None."""
+        mgr = self.prop_firm_mgr
+        if not mgr or not hasattr(mgr, "resolve_next_phase_key"):
+            return None
+        if not trade_keys or traded_idx is None or traded_idx >= len(trade_keys):
+            return None
+        current_key = trade_keys[traded_idx]
+        account = self._primary_trade_account(ev)
+        if not outcome:
+            try:
+                outcome = self._resolve_trade_outcome(account)
+            except Exception as exc:
+                # Never let an outcome lookup stall progression; positional still works.
+                self.log(f"⚠ {account}: outcome lookup failed ({exc}) — using trade order", "WARN")
+                return None
+        if not outcome:
+            return None
+        next_key = mgr.resolve_next_phase_key(firm_code, current_key, outcome)
+        if not next_key:
+            return None
+        if mgr.is_terminal_phase_key(next_key):
+            self.log(f"🛑 {account}: {current_key} {outcome} → {next_key} — "
+                     f"no further trade queued", "WARN")
+            return self._PROGRESSION_STOP
+        try:
+            next_idx = trade_keys.index(next_key)
+        except ValueError:
+            return None
+        if next_idx >= len(fields):
+            return None
+        self._ai_trace("BLUEPRINT",
+                       f"{account}: {current_key} {outcome} → {next_key} "
+                       f"→ {fields[next_idx]}")
+        return fields[next_idx]
+
+    # Balance/P&L drift below this is fees and rounding, not a withdrawal.
+    _PAYOUT_MIN_AMOUNT = 1.0
+
+    def _detect_payouts(self, account_number):
+        """[(date, amount)] for balance drops that trading P&L does not explain.
+
+        A withdrawal shows up as the balance falling below the prior day with
+        no matching loss; a losing day moves balance and P&L together.
+        """
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return []
+        entry = self._trade_outcome_history().get(key)
+        if not entry:
+            return []
+        days = sorted(entry.get("daily_pnl") or [],
+                      key=lambda d: str(d.get("date") or ""))
+        payouts = []
+        prev_balance = None
+        for day in days:
+            try:
+                balance = float(day.get("balance_eod") or 0)
+                net = float(day.get("net_pnl") or 0)
+            except (TypeError, ValueError):
+                continue
+            if prev_balance is not None:
+                unexplained = (balance - prev_balance) - net
+                if unexplained <= -self._PAYOUT_MIN_AMOUNT:
+                    payouts.append((str(day.get("date")), round(-unexplained, 2)))
+            prev_balance = balance
+        return payouts
+
+    def _payout_count(self, account_number):
+        return len(self._detect_payouts(account_number))
+
+    def _payout_target_reached(self, account_number, firm_code):
+        """True once the firm's configured payout count has been banked."""
+        mgr = self.prop_firm_mgr
+        if not mgr or not firm_code:
+            return False
+        rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        target = rules.get("payout_count")
+        if not target:
+            return False
+        return self._payout_count(account_number) >= int(target)
+
+    def _latest_resolved_outcome(self, account_number):
+        """(date, 'win'|'loss') for the most recent day holding a closed trade.
+
+        These firms allow one resolved trade per day, so the latest resolved
+        day is the outcome of the trade that queued the pending placeholder.
+        """
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return None, None
+        entry = self._trade_outcome_history().get(key)
+        if not entry:
+            return None, None
+        days = sorted(entry.get("daily_pnl") or [],
+                      key=lambda d: str(d.get("date") or ""), reverse=True)
+        for day in days:
+            if not day.get("trades"):
+                continue
+            try:
+                net = float(day.get("net_pnl") or 0)
+            except (TypeError, ValueError):
+                continue
+            return str(day.get("date")), ("win" if net > 0 else "loss")
+        return None, None
+
+    def _locate_progression_cells(self, ev):
+        """(traded_field, traded_phase, placeholder_field) for a row.
+
+        Walks Challenge → Funded → Farming in order and stops at the first
+        weekday placeholder, so the traded cell returned is the one that
+        queued it.
+        """
+        traded_field = None
+        traded_phase = None
+        for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
+            for field in field_list:
+                val = self._cell(ev.get(field))
+                if not val:
+                    continue
+                if self._parse_day_token(val) is not None:
+                    return traded_field, traded_phase, field
+                traded_field = field
+                traded_phase = phase_name
+        return traded_field, traded_phase, None
+
+    def _reconcile_outcome_placeholder(self, ev, firm_code=None, phase=None):
+        """Where a pending placeholder belongs once its trade has resolved.
+
+        Returns (current_field, corrected_field), or (None, None) when the
+        trade is unresolved or the placeholder is already correct.
+        """
+        traded_field, traded_phase, placeholder = self._locate_progression_cells(ev)
+        if not traded_field or not placeholder:
+            return None, None
+        account = self._primary_trade_account(ev)
+        _date, outcome = self._latest_resolved_outcome(account)
+        if not outcome:
+            return None, None
+        firm_code = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
+        if not firm_code:
+            return None, None
+        # Only re-home placeholders the outcome branch actually governs.
+        mgr = self.prop_firm_mgr
+        if not mgr or not getattr(mgr, "has_state_machine", None):
+            return None, None
+        if not mgr.has_state_machine(firm_code):
+            return None, None
+        corrected = self._resolve_next_hedge_field(
+            ev, firm_code, phase or traded_phase, traded_field, outcome=outcome,
+        )
+        if not corrected or corrected == placeholder:
+            return None, None
+        return placeholder, corrected
+
+    def _resolve_next_hedge_field(self, ev, firm_code, current_phase, traded_field,
+                                  outcome=None):
         """Next hedge column after a completed trade (same phase or next blueprint phase)."""
         if not traded_field or not firm_code:
             return None
@@ -5590,6 +5937,17 @@ class TradeOpssAIApp:
                 or firm_orders.get("Qualifying Days", [])
                 or firm_orders.get("Min Trading Days", []))
         farming_fields = phase_to_fields.get("Farming", [])
+        # Outcome branch first: a losing funded trade must route to recovery
+        # rather than earn a qualifying-day placeholder. Firms without a state
+        # machine return None here and keep the original behaviour below.
+        sm_field = self._state_machine_next_field(
+            ev, firm_code, traded_idx, trade_keys, fields, outcome=outcome,
+        )
+        if sm_field is self._PROGRESSION_STOP:
+            return None
+        if sm_field is not None:
+            return sm_field
+
         if traded_phase == "Funded" and farming_keys:
             # A funded entry earns its qualifying-day placeholder immediately.
             # Fail-status handling removes it later when the funded entry loses.
@@ -5641,14 +5999,24 @@ class TradeOpssAIApp:
                 return cls._DAY_ABBREVS[tok]
         return None
 
+    # Dashboard funded hedge columns. Slots 6 and 7 carry no ".1" suffix —
+    # "Hedge Result 6.1"/"7.1" exist nowhere on the dashboard. Slots 8+ are
+    # overflow columns rendered after the farming block so each trade in an
+    # account's lifetime keeps its own cell.
+    _FUNDED_HEDGE_FIELDS = (
+        [f"Hedge Result {i}.1" for i in range(1, 6)]
+        + ["Hedge Result 6", "Hedge Result 7"]
+        + [f"Hedge Result {i}" for i in range(8, 31)]
+    )
+
     def _get_phase_fields(self, current_phase):
         """Return the ordered list of eval field names for a phase."""
         if current_phase == "Challenge":
             return [f"Hedge Result {i}" for i in range(1, 6)]
         elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
-            return [f"Hedge Result {i}.1" for i in range(1, 8)]
+            return list(self._FUNDED_HEDGE_FIELDS)
         elif current_phase == "Double Dip":
-            return [f"Hedge Result {i}.1" for i in range(1, 8)]
+            return list(self._FUNDED_HEDGE_FIELDS)
         elif current_phase == "Farming":
             return [f"Hedge Day {i}" for i in range(1, 61)]
         return []
@@ -5656,7 +6024,7 @@ class TradeOpssAIApp:
     # All possible field sets for day placeholder scanning (phase → fields)
     _ALL_PHASE_FIELD_SETS = [
         ("Challenge",  [f"Hedge Result {i}" for i in range(1, 6)]),
-        ("Funded",     [f"Hedge Result {i}.1" for i in range(1, 8)]),
+        ("Funded",     list(_FUNDED_HEDGE_FIELDS)),
         ("Farming",    [f"Hedge Day {i}" for i in range(1, 61)]),
     ]
 
@@ -5767,7 +6135,7 @@ class TradeOpssAIApp:
         if phase_display == "Farming":
             fields = [f"Hedge Day {i}" for i in range(1, 35)]
         else:
-            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+            fields = list(self._FUNDED_HEDGE_FIELDS)
         
         placeholders = 0
         results = 0
@@ -6434,11 +6802,11 @@ class TradeOpssAIApp:
         if current_phase == "Challenge":
             fields = [f"Hedge Result {i}" for i in range(1, 6)]
         elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
-            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+            fields = list(self._FUNDED_HEDGE_FIELDS)
         elif current_phase == "Farming":
             fields = [f"Hedge Day {i}" for i in range(1, 61)]
         elif current_phase == "Double Dip":
-            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+            fields = list(self._FUNDED_HEDGE_FIELDS)
 
         for f in fields:
             val = ev.get(f, None)

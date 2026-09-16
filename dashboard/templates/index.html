@@ -2764,10 +2764,23 @@
                             <th class="sub-header-purple">Prop Day 58</th><th class="sub-header-purple">Prop Progress 58</th><th class="sub-header-purple">Hedge Day 58</th>
                             <th class="sub-header-purple">Prop Day 59</th><th class="sub-header-purple">Prop Progress 59</th><th class="sub-header-purple">Hedge Day 59</th>
                             <th class="sub-header-purple">Prop Day 60</th><th class="sub-header-purple">Prop Progress 60</th><th class="sub-header-purple">Hedge Day 60</th>
+
+                            <!-- FUNDED OVERFLOW: trades 8+ get their own cell so the
+                                 lifetime trade count stays exact. Appended here rather
+                                 than after Hedge Result 7 so no existing column index
+                                 or sheet column letter shifts. -->
+                            <th class="sub-header-orange">Hedge Result 8</th><th class="sub-header-orange">Hedge Result 9</th><th class="sub-header-orange">Hedge Result 10</th>
+                            <th class="sub-header-orange">Hedge Result 11</th><th class="sub-header-orange">Hedge Result 12</th><th class="sub-header-orange">Hedge Result 13</th>
+                            <th class="sub-header-orange">Hedge Result 14</th><th class="sub-header-orange">Hedge Result 15</th><th class="sub-header-orange">Hedge Result 16</th>
+                            <th class="sub-header-orange">Hedge Result 17</th><th class="sub-header-orange">Hedge Result 18</th><th class="sub-header-orange">Hedge Result 19</th>
+                            <th class="sub-header-orange">Hedge Result 20</th><th class="sub-header-orange">Hedge Result 21</th><th class="sub-header-orange">Hedge Result 22</th>
+                            <th class="sub-header-orange">Hedge Result 23</th><th class="sub-header-orange">Hedge Result 24</th><th class="sub-header-orange">Hedge Result 25</th>
+                            <th class="sub-header-orange">Hedge Result 26</th><th class="sub-header-orange">Hedge Result 27</th><th class="sub-header-orange">Hedge Result 28</th>
+                            <th class="sub-header-orange">Hedge Result 29</th><th class="sub-header-orange">Hedge Result 30</th>
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
-                        <tr class="eval-spinner-row"><td colspan="225"><div class="spinner-inner">
+                        <tr class="eval-spinner-row"><td colspan="248"><div class="spinner-inner">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             Loading evaluations&hellip;
                         </div></td></tr>
@@ -4435,6 +4448,7 @@
             ['Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1',
              'Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'
             ].forEach(k => fd += _numVal(ev[k]));
+            for (let i = 8; i <= 30; i++) fd += _numVal(ev['Hedge Result ' + i]);
             if (status === 'Completed') {
                 let pay = 0; for (let i = 1; i <= 8; i++) pay += _numVal(ev['Payout ' + i]);
                 let days = 0; for (let i = 1; i <= 60; i++) days += _numVal(ev['Hedge Day ' + i]);
@@ -4971,6 +4985,7 @@
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 8')), 'date', index, 'Date 8', SHEET_EDIT_LOCKED), 'Date 8')}
 
                         ${generateDayColumns(ev, cell, index, currentRowNum, SHEET_EDIT_LOCKED)}
+                        ${generateFundedOverflowColumns(ev, cell, index, SHEET_EDIT_LOCKED)}
                     `;
                     fragment.appendChild(row);
                     rowsBuilt++;
@@ -5276,6 +5291,13 @@
                     return getColLetter(46 + (day-1)*2);
                 }
             }
+            // Funded overflow trades follow the farming block (Hedge Day 60 = 164).
+            if (key.startsWith('Hedge Result ')) {
+                const n = parseInt(key.replace('Hedge Result ', ''));
+                if (!isNaN(n) && n >= FUNDED_OVERFLOW_FIRST) {
+                    return getColLetter(165 + (n - FUNDED_OVERFLOW_FIRST));
+                }
+            }
             return null;
         }
 
@@ -5287,6 +5309,28 @@
                 n = Math.floor(n / 26);
             }
             return string;
+        }
+
+        // Funded trades past the 7 fixed columns. Rendered after the farming
+        // block so no existing column index or sheet column letter shifts.
+        const FUNDED_OVERFLOW_FIRST = 8;
+        const FUNDED_OVERFLOW_LAST = 30;
+
+        function fundedOverflowKeys() {
+            const keys = [];
+            for (let i = FUNDED_OVERFLOW_FIRST; i <= FUNDED_OVERFLOW_LAST; i++) {
+                keys.push('Hedge Result ' + i);
+            }
+            return keys;
+        }
+
+        function generateFundedOverflowColumns(ev, cell, index, readOnly=false) {
+            let html = '';
+            for (const key of fundedOverflowKeys()) {
+                const val = (ev[key] === null || ev[key] === undefined) ? '' : ev[key];
+                html += cell(getInputHtml(val, 'text', index, key, readOnly), key);
+            }
+            return html;
         }
 
         function generateDayColumns(ev, cell, index, currentRowNum, readOnly=false){
@@ -5594,6 +5638,7 @@
                     ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
                      'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
                      'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
+                    for (let i=FUNDED_OVERFLOW_FIRST;i<=FUNDED_OVERFLOW_LAST;i++) f.hedge += pc(ev['Hedge Result '+i]);
                     for (let i=1;i<=60;i++) f.farming += pc(ev['Hedge Day '+i]);
                 }
                 for (let i=1;i<=9;i++) {
@@ -5784,7 +5829,7 @@
                         const FUNDED_COLS = [
                             'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
                             'Hedge Result 6', 'Hedge Result 7'
-                        ];
+                        ].concat(fundedOverflowKeys());
                         const statusHas = (low, keys) => keys.some((k) => low.includes(k));
 
                         let cfPay = 0, cfFees = 0, cfHedge = 0, cfFarm = 0;
