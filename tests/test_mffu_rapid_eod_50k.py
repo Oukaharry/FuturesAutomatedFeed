@@ -48,6 +48,37 @@ def test_mffu_rapid_eod_ft2_plus_is_fresh_and_bounded():
     assert len(set(draws)) > 1
 
 
+def test_mffu_rapid_eod_farming_keeps_blueprint_tp_and_randomizes_sl():
+    manager = PropFirmManager()
+    config = {
+        "tradovate_symbol": "MNQZ6",
+        "tradovate_qty": 2,
+        "tradovate_tp_ticks": 154,
+        "tradovate_sl_ticks": 133,
+    }
+    result = manager.randomize_trade_config(
+        "MFFU Rapid EOD", "farming", config,
+        account_key="mffu-farming", balance=52100.0)
+
+    assert result["tradovate_tp_ticks"] == 154
+    assert 120 <= result["tradovate_sl_ticks"] <= 146
+
+
+def test_mffu_rapid_eod_restarts_ft1_range_when_exhausted():
+    manager = PropFirmManager()
+    for ticks in range(305, 336):
+        manager._mffu_rapid_eod_tp_owners[ticks] = "prior-cycle"
+
+    result = manager.randomize_trade_config(
+        "MFFU Rapid EOD", "funded_trade1", _config(),
+        account_key="new-cycle", balance=50000.0)
+
+    selected = result["tradovate_tp_ticks"]
+    assert 305 <= selected <= 335
+    assert all(owner == "new-cycle"
+               for owner in manager._mffu_rapid_eod_tp_owners.values())
+
+
 def test_mffu_rapid_eod_payout_withdraws_half_and_retains_the_other_half():
     payout, retained = _calculate_payout(
         balance=50000.0 + 305 * 15.0,

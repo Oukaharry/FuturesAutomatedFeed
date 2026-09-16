@@ -17,7 +17,7 @@ STARTING_BALANCE = 50000.0
 NQ_TICK_DOLLARS = 10.0
 PAYOUT_REQUEST = 1200.0
 RETAINED_BALANCE = 52800.0
-LATER_CYCLE_RETAINED_BALANCE = 50100.0
+LATER_CYCLE_RETAINED_BALANCE = 52100.0
 
 
 def _config():
@@ -133,7 +133,7 @@ def run_simulation(account_count=20, seed=20260915, json_path=None):
                         "trade": phase,
                         "event": f"FD{cycle}" if attempt_number == 0 else f"FD{cycle} RECOVERY {attempt_number}",
                         "balance": balance,
-                        "target_profit_ticks": result["_randomization"]["target_ticks"],
+                        "target_profit_ticks": tp,
                         "tp_ticks": tp,
                         "sl_ticks": sl,
                         "qty": int(result["tradovate_qty"]),

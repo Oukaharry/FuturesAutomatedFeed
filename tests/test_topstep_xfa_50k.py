@@ -6,7 +6,7 @@ from tests.simulate_topstep_xfa_50k import run_simulation
 
 def _config():
     return {
-        "topstepx_symbol": "NQZ26",
+        "topstepx_symbol": "NQU26",
         "topstepx_qty": 2,
         "topstepx_tp_ticks": 400,
         "topstepx_sl_ticks": 200,
@@ -47,6 +47,35 @@ def test_topstep_xfa_ft2_and_farming_rules():
     assert farm["topstepx_qty"] == 2
     assert farm["topstepx_tp_ticks"] == 154
     assert 450 <= farm["topstepx_sl_ticks"] <= 600
+
+
+def test_topstep_xfa_ft2_uses_full_balance_room_and_blocks_past_target():
+    manager = PropFirmManager()
+    ft2 = manager.randomize_trade_config(
+        "TopStep XFA", "funded_trade2", _config(),
+        account_key="xfa-room", balance=3500.0)
+    past_target = manager.randomize_trade_config(
+        "TopStep XFA", "funded_trade2", _config(),
+        account_key="xfa-past-target", balance=6000.0)
+
+    assert 0 < ft2["topstepx_tp_ticks"] <= 152
+    assert ft2["topstepx_sl_ticks"] == 350
+    assert past_target["topstepx_tp_ticks"] == 0
+    assert "skip" in past_target["_skip_order_reason"].lower()
+
+
+def test_topstep_xfa_restarts_tp_cycle_when_exhausted():
+    manager = PropFirmManager()
+    for ticks in range(401, 502):
+        manager._topstep_xfa_tp_owners[ticks] = "prior-cycle"
+
+    result = manager.randomize_trade_config(
+        "TopStep 50K XFA", "funded_trade1", _config(),
+        account_key="new-cycle", balance=0.0)
+
+    selected = result["topstepx_tp_ticks"]
+    assert 401 <= selected <= 501
+    assert manager._topstep_xfa_tp_owners == {selected: "new-cycle"}
 
 
 def test_topstep_xfa_json_has_no_cross_account_funded_tp_reuse(tmp_path):

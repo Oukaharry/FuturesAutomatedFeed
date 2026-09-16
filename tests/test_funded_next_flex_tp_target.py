@@ -74,10 +74,10 @@ def test_remaining_prop_firms_use_stable_farming_randomization():
         "tradovate_sl_ticks": 150,
     }
     remaining_firms = (
-        "MFFU_Flex", "Funded Next", "TopStep", "TopStep RTP",
+        "MFFU_Flex", "Funded Next", "FundingTicks", "TopStep", "TopStep RTP",
         "TradeDay", "AlphaFutures", "Tradeify", "Apex",
-        "Top One Futures", "Funded Futures Family",
-        "Funded Next Flex", "FTMO Futures Pro",
+        "Top One Futures", "Funded Futures Family", "GoatFunded",
+        "Funded Next Flex", "FTMO Futures",
     )
 
     for firm in remaining_firms:
@@ -91,6 +91,31 @@ def test_remaining_prop_firms_use_stable_farming_randomization():
         assert second["tradovate_sl_ticks"] == first["tradovate_sl_ticks"]
         assert config["tradovate_tp_ticks"] == 200
         assert config["tradovate_sl_ticks"] == 150
+
+
+def test_funded_next_flex_ft2_plus_sl_uses_50100_equity_floor():
+    manager = PropFirmManager()
+    config = {
+        "tradovate_symbol": "NQZ6",
+        "tradovate_qty": 14,
+        "tradovate_tp_ticks": 150,
+        "tradovate_sl_ticks": 150,
+    }
+
+    near_floor = manager.randomize_trade_config(
+        "Funded Next Flex", "funded_trade2", config,
+        account_key="fn-flex-near-floor", balance=50100.0)
+    mid_balance = manager.randomize_trade_config(
+        "Funded Next Flex", "funded_trade3", config,
+        account_key="fn-flex-mid-balance", balance=52000.0)
+    high_balance = manager.randomize_trade_config(
+        "Funded Next Flex", "funded_trade4", config,
+        account_key="fn-flex-high-balance", balance=60000.0)
+
+    assert near_floor["tradovate_sl_ticks"] == 10
+    assert mid_balance["tradovate_sl_ticks"] == 190
+    assert high_balance["tradovate_sl_ticks"] == 600
+    assert near_floor["_randomization"]["policy"] == "funded_next_flex_room_sl"
 
 
 def test_rapid_daily_funded_randomization_uses_spec_rules():
@@ -262,7 +287,7 @@ def test_mffu_rapid_eod_uses_spec_ranges_and_fixed_stops():
 def test_topstep_xfa_uses_spec_ranges_and_fixed_stops():
     manager = PropFirmManager()
     config = {
-        "topstepx_symbol": "NQZ26",
+        "topstepx_symbol": "NQU26",
         "topstepx_qty": 2,
         "topstepx_tp_ticks": 400,
         "topstepx_sl_ticks": 200,

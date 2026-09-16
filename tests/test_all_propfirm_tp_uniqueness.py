@@ -37,7 +37,7 @@ CONFIGS = {
 }
 
 
-def test_fundednext_rapid_daily_ft1_cap_is_shared_by_design():
+def test_fundednext_rapid_daily_ft1_targets_are_unique_and_avoid_round_hundreds():
     random.seed(20260915)
     manager = PropFirmManager()
     config = {
@@ -53,8 +53,10 @@ def test_fundednext_rapid_daily_ft1_cap_is_shared_by_design():
         "FundedNext Rapid Daily", "funded_trade1", config,
         account_key="fundednext-002", balance=50000.0)
 
-    assert first["tradovate_tp_ticks"] == 600
-    assert second["tradovate_tp_ticks"] == 600
+    for result in (first, second):
+        assert 491 <= result["tradovate_tp_ticks"] <= 599
+        assert result["tradovate_tp_ticks"] % 100 != 0
+    assert first["tradovate_tp_ticks"] != second["tradovate_tp_ticks"]
 
 
 def test_ftmo_futures_pro_ft1_floor_is_shared_by_current_rule():
