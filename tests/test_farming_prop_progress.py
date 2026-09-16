@@ -47,7 +47,10 @@ def test_fifth_profitable_farming_day_queues_funded_trade_two():
 
 
 def test_tradovate_only_payload_reconciles_farming_without_hedge_deals():
-    evaluations = [{"Account #.1": "FTDFYSLX50914913722"}, {"Account #.1": "FTDFYSLX50969754357"}]
+    evaluations = [
+        {"Account #.1": "FTDFYSLX50914913722", "Status": "In Progress"},
+        {"Account #.1": "FTDFYSLX50969754357", "Status": "In Progress"},
+    ]
 
     updated, log, sessions = update_evaluations_from_aggregated_data(
         evaluations,
@@ -75,3 +78,25 @@ def test_tradovate_only_payload_reconciles_farming_without_hedge_deals():
     assert updated[1]["Hedge Day 2"] == "THURSDAY"
     assert "Prop Day 2" not in updated[1]
     assert any("Tradovate farming reconciliation" in entry for entry in log)
+
+
+def test_tradovate_farming_does_not_use_unstarted_challenge_account():
+    evaluations = [{
+        "Account #": "FUNDEDNEXT-DEAD-12345",
+        "Account #.1": "",
+        "Status": "Not Started",
+    }]
+
+    updated, log, sessions = update_evaluations_from_aggregated_data(
+        evaluations,
+        raw_deals=[],
+        tradovate_farming_days=[{
+            "account_name": "FUNDEDNEXT-DEAD-12345",
+            "mnq_daily_pnl": [{"date": "2026-09-16", "net_pnl": 152.40}],
+        }],
+    )
+
+    assert sessions is None
+    assert "Prop Day 1" not in updated[0]
+    assert "Prop Progress 1" not in updated[0]
+    assert not any("Tradovate farming reconciliation" in entry for entry in log)

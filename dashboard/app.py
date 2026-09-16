@@ -2253,26 +2253,34 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
 
 def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match_log):
     """Apply Tradovate farming history even when an MT5 hedge payload is empty."""
+    placeholder_accounts = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
     reconciled_accounts = set()
     for row_index, evaluation in enumerate(evaluations or []):
         if not isinstance(evaluation, dict) or evaluation.get('_deleted'):
             continue
-        for account_number in (evaluation.get('Account #.1'), evaluation.get('Account #')):
-            account_key = str(account_number or '').strip()
-            if not account_key:
-                continue
-            daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
-            if not daily_pnl or account_key in reconciled_accounts:
-                continue
-            written, complete = _write_farming_prop_days_and_progress(
-                evaluation, daily_pnl, row_index + 2, match_log)
-            if written:
-                match_log.append(
-                    f"✅ 🌾 Row {row_index + 2} | Tradovate farming reconciliation: "
-                    f"{written} Prop Day(s), {'5/5 complete' if complete else 'next day queued'}"
-                )
-            reconciled_accounts.add(account_key)
-            break
+        account_key = str(evaluation.get('Account #.1') or '').strip()
+        funded_status = str(
+            evaluation.get('Status') or evaluation.get('Status Funded') or ''
+        ).strip()
+        if (
+            not account_key
+            or account_key.lower() in placeholder_accounts
+            or not funded_status
+            or funded_status.lower() == 'not started'
+            or is_funded_phase_ended(funded_status)
+        ):
+            continue
+        daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
+        if not daily_pnl or account_key in reconciled_accounts:
+            continue
+        written, complete = _write_farming_prop_days_and_progress(
+            evaluation, daily_pnl, row_index + 2, match_log)
+        if written:
+            match_log.append(
+                f"✅ 🌾 Row {row_index + 2} | Tradovate farming reconciliation: "
+                f"{written} Prop Day(s), {'5/5 complete' if complete else 'next day queued'}"
+            )
+        reconciled_accounts.add(account_key)
 
 
 def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None, tradovate_farming_days=None):
