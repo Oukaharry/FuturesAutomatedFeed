@@ -2150,6 +2150,125 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
     return None
 
 
+def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_log):
+    """Persist Prop Day P/L and qualifying-day progress for one farming account."""
+    normalized_days = []
+    for day in daily_pnl or []:
+        date = str((day or {}).get('date') or '').strip()
+        try:
+            net_pnl = float((day or {}).get('net_pnl') or 0)
+        except (TypeError, ValueError):
+            continue
+        if date:
+            normalized_days.append((date, net_pnl))
+
+    normalized_days = sorted(dict(normalized_days).items())[:60]
+    if not normalized_days:
+        return 0, False
+
+    # Farming begins when the companion places this account's $0.00 marker.
+    # Older Tradovate history must not consume Prop Day 1; use only the most
+    # recent closed day and assign it to this evaluation's next free Prop Day.
+    date, net_pnl = normalized_days[-1]
+    slot = None
+    for candidate in range(1, 6):
+        if str(evaluation.get(f'_Prop Day {candidate} Date') or '').strip() == date:
+            slot = candidate
+            break
+    if slot is None:
+        for candidate in range(1, 6):
+            if not str(evaluation.get(f'Prop Day {candidate}') or '').strip():
+                slot = candidate
+                break
+    if slot is None:
+        return 0, True
+
+    prop_field = f'Prop Day {slot}'
+    if _eval_push_field_blocked(evaluation, prop_field, phase_code='FA'):
+        match_log.append(
+            f"🚫 Skipped manually-edited cell: Row {row_num} [{prop_field}] "
+            f"(Tradovate push would have been ${net_pnl:.2f})"
+        )
+        return 0, False
+    evaluation[prop_field] = f"{net_pnl:.2f}"
+    evaluation[f'_{prop_field} Date'] = date
+
+    progress = 1
+    for candidate in range(1, slot + 1):
+        try:
+            candidate_pnl = float(evaluation.get(f'Prop Day {candidate}') or 0)
+        except (TypeError, ValueError):
+            candidate_pnl = 0
+        if candidate_pnl > 0 and progress < 5:
+            progress += 1
+        progress_field = f'Prop Progress {candidate}'
+        if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
+            evaluation[progress_field] = f'{progress}/5'
+
+    completed = progress >= 5
+    if completed:
+        # A fifth profitable farming day completes qualifying. Remove any
+        # speculative next farming day and queue the second funded trade.
+        for day_num in range(1, 61):
+            hedge_field = f'Hedge Day {day_num}'
+            value = str(evaluation.get(hedge_field) or '').strip().upper()
+            if value in ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'):
+                evaluation[hedge_field] = ''
+        funded_field = 'Hedge Result 2.1'
+        if not _eval_push_field_blocked(evaluation, funded_field, phase_code='FD'):
+            current = str(evaluation.get(funded_field) or '').strip()
+            if not current or current in ('-', '—'):
+                last_date = datetime.strptime(normalized_days[-1][0], '%Y-%m-%d').date()
+                next_date = last_date + timedelta(days=1)
+                while next_date.weekday() >= 5:
+                    next_date += timedelta(days=1)
+                evaluation[funded_field] = next_date.strftime('%A').upper()
+                match_log.append(
+                    f"✅ Row {row_num} | Prop Progress 5/5 → {funded_field} "
+                    f"{evaluation[funded_field]} (Funded Trade 2)"
+                )
+    else:
+        # A Tradovate-side close bypasses the companion's order callback, so
+        # reconcile its next daily placeholder from the latest recorded P/L.
+        next_field = f'Hedge Day {slot + 1}'
+        next_value = str(evaluation.get(next_field) or '').strip()
+        if not next_value and not _eval_push_field_blocked(evaluation, next_field, phase_code='FA'):
+            last_date = datetime.strptime(date, '%Y-%m-%d').date()
+            next_date = last_date + timedelta(days=1)
+            while next_date.weekday() >= 5:
+                next_date += timedelta(days=1)
+            evaluation[next_field] = next_date.strftime('%A').upper()
+            match_log.append(
+                f"✅ Row {row_num} | {next_field} → {evaluation[next_field]} "
+                "(next farming day)"
+            )
+    return 1, completed
+
+
+def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match_log):
+    """Apply Tradovate farming history even when an MT5 hedge payload is empty."""
+    reconciled_accounts = set()
+    for row_index, evaluation in enumerate(evaluations or []):
+        if not isinstance(evaluation, dict) or evaluation.get('_deleted'):
+            continue
+        for account_number in (evaluation.get('Account #.1'), evaluation.get('Account #')):
+            account_key = str(account_number or '').strip()
+            if not account_key:
+                continue
+            daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
+            if not daily_pnl or account_key in reconciled_accounts:
+                continue
+            written, complete = _write_farming_prop_days_and_progress(
+                evaluation, daily_pnl, row_index + 2, match_log)
+            if written:
+                match_log.append(
+                    f"✅ 🌾 Row {row_index + 2} | Tradovate farming reconciliation: "
+                    f"{written} Prop Day(s), {'5/5 complete' if complete else 'next day queued'}"
+                )
+            reconciled_accounts.add(account_key)
+            break
+
+
 def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None, tradovate_farming_days=None):
     """
     Update evaluation hedge result fields from aggregated MT5 comment data OR raw deals.
@@ -2168,6 +2287,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     """
     aggregated_data = aggregated_data or []
     tradovate_farming_days = tradovate_farming_days or []
+    tradovate_match_log = []
+    if evaluations and tradovate_farming_days:
+        _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, tradovate_match_log)
     
     # -------------------------------------------------------------------------
     # SERVER-SIDE SESSION MATCHING LOGIC
@@ -2175,7 +2297,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     if raw_deals:
         import datetime
         
-        match_log = ["🔄 Using SERVER-SIDE Session Matching (ignoring client aggregation)"]
+        match_log = ["🔄 Using SERVER-SIDE Session Matching (ignoring client aggregation)"] + tradovate_match_log
         
         # Helper: Parse simple comment patterns
         def parse_comment(c):
@@ -2914,36 +3036,6 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                         f"total_farming_days={total_farming_days} → {field_name}=${last_profit:.2f} date={last_date}"
                     )
 
-                # --- Write Prop Day values from Tradovate MNQ daily P&L ---
-                if tradovate_farming_days:
-                    tv_mnq_days = _match_tradovate_farming(tradovate_farming_days, acc_num)
-                    if tv_mnq_days:
-                        prop_days_written = 0
-                        for day_idx, tv_day in enumerate(tv_mnq_days):
-                            prop_slot = day_idx + 1
-                            if prop_slot > 60:
-                                break
-                            prop_field = f'Prop Day {prop_slot}'
-                            if _eval_push_field_blocked(best_eval, prop_field, phase_code='FA'):
-                                match_log.append(
-                                    f"🚫 Skipped manually-edited cell: Row {row_num} [{prop_field}] "
-                                    f"(Tradovate push would have been ${tv_day['net_pnl']:.2f})"
-                                )
-                                continue
-                            best_eval[prop_field] = f"{tv_day['net_pnl']:.2f}"
-                            prop_days_written += 1
-                        if prop_days_written:
-                            match_log.append(
-                                f"   ✅ 💰 Row {row_num} | Prop Days 1-{prop_days_written}: "
-                                f"Tradovate MNQ P&L written"
-                            )
-                            logging.info(
-                                f"[FA PROP DAY] row={row_num} account={acc_num} "
-                                f"wrote {prop_days_written} Prop Day value(s) from Tradovate MNQ"
-                            )
-                    else:
-                        logging.info(f"[FA PROP DAY] No matching Tradovate MNQ data for account {acc_num}")
-
                 # --- Also add to trade_summary for logging ---
                 try:
                     p_firm = best_eval.get('Prop Firm') or 'Unknown Firm'
@@ -3212,9 +3304,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     """
     if not evaluations or not aggregated_data:
         # If no server-side matching occurred (raw_deals was None), just return None for sessions
-        return evaluations, ["No evaluations or aggregated data to process"], None
+        return evaluations, tradovate_match_log or ["No evaluations or aggregated data to process"], None
     
-    match_log = []
+    match_log = list(tradovate_match_log)
     updates_made = 0
     
     match_log.append(f"📊 Processing {len(aggregated_data)} aggregated trade groups")

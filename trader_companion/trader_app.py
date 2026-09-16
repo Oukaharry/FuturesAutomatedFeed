@@ -1670,7 +1670,9 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
-        self.pusher = None if TRADOVATE_ONLY_MODE else MT5DataPusher()
+        # Keep the inert provider in Tradovate-only mode so shared push code can
+        # safely produce an empty MT5 payload alongside Tradovate farming history.
+        self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
         self._auto_push_first_run = True
@@ -1687,6 +1689,7 @@ class TradeOpssAIApp:
         self._auto_trade_batch_event = threading.Event()
         self._auto_trade_scheduled_dt = None
         self._auto_trade_waiting_gate = False
+        self._planned_trade_configs = {}
 
         # Trading engine state
         self.trading_api = None
@@ -1704,6 +1707,8 @@ class TradeOpssAIApp:
         self._status_poll_active = False   # real-time status polling flag
         self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
         self._cached_acct_mappings = {}    # {firm_name: {acct_key: info}} cached on connect
+        self._pending_farming_closes = {}  # Accounts whose companion farming trade is awaiting closure.
+        self._farming_close_poll_active = False
 
         self._show_login_screen()
         
@@ -2015,6 +2020,8 @@ class TradeOpssAIApp:
         # Direction indicator
         ctk.CTkLabel(toolbar, text="🎲 Random Bias (Per-Firm Family)",
                      font=("Segoe UI", 9, "bold"), text_color="#38BDF8").pack(side="left", padx=(8, 6), pady=5)
+        self._ctk_button(toolbar, text="TP/SL Plan", command=self._open_tp_sl_plan,
+                 fg=self.C_BG_THIRD, hover=self.C_BORDER, width=88).pack(side="left", padx=(0, 6), pady=5)
 
         self.auto_trade_firms_var = tk.StringVar(value="")
 
@@ -2991,6 +2998,21 @@ class TradeOpssAIApp:
     # Fetching fills + balance logs is slow; reuse within the same TTL window.
     _TRADOVATE_FARMING_CACHE_TTL = 300  # seconds
 
+    @staticmethod
+    def _format_farming_pnl_lines(firm_name, farming_data):
+        """Format the exact Tradovate MNQ daily values shown in Live Activity."""
+        lines = []
+        for account in farming_data or []:
+            account_name = str(account.get("account_name") or "Unknown account")
+            for day in account.get("mnq_daily_pnl") or []:
+                try:
+                    net_pnl = float(day.get("net_pnl") or 0)
+                except (TypeError, ValueError):
+                    continue
+                date = str(day.get("date") or "Unknown date")
+                lines.append(f"🌾 {firm_name} | {account_name} | {date} | Net P/L: ${net_pnl:+,.2f}")
+        return lines
+
     def _refresh_prop_billing_sync(self, _log):
         """Manual Push: synchronously re-scrape billing (fees & payouts) from every
         connected prop firm dashboard so firm_billing and the per-eval Fee/Date are
@@ -3447,6 +3469,8 @@ class TradeOpssAIApp:
                     if mnq_data:
                         total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in mnq_data)
                         _log(f"🌾 {firm_name}: {total_days} Prop Day(s) ready (cached)")
+                        for line in self._format_farming_pnl_lines(firm_name, mnq_data):
+                            _log(line)
                     tradovate_farming_days.extend(mnq_data)
                 elif full_prop_refresh:
                     # Manual push — block on the fetch so prop days land in THIS payload.
@@ -3457,6 +3481,8 @@ class TradeOpssAIApp:
                         if data:
                             total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in data)
                             _log(f"🌾 {firm_name}: {total_days} Prop Day(s) fetched")
+                            for line in self._format_farming_pnl_lines(firm_name, data):
+                                _log(line)
                         tradovate_farming_days.extend(data)
                     except Exception as _e:
                         _log(f"⚠️ {firm_name}: prop-day fetch failed: {_e}", "WARN")
@@ -3467,6 +3493,8 @@ class TradeOpssAIApp:
                     if existing:
                         total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in existing)
                         _log(f"🌾 {firm_name}: {total_days} Prop Day(s) from stale cache (refreshing in background)")
+                        for line in self._format_farming_pnl_lines(firm_name, existing):
+                            _log(line)
                         tradovate_farming_days.extend(existing)
                     else:
                         _log(f"🌾 {firm_name}: fetching Tradovate history in background (available next push)")
@@ -4649,6 +4677,15 @@ class TradeOpssAIApp:
         if not self.auto_push_enabled: return
         
         try:
+            if TRADOVATE_ONLY_MODE:
+                # There is no MT5 deal feed on macOS Tradovate-only builds. The
+                # first Auto-Push still needs to fetch and submit farming P/L.
+                if getattr(self, "_auto_push_first_run", False):
+                    self._auto_push_first_run = False
+                    self.log("🔍 Auto-sync scan: Tradovate-only initial refresh")
+                    self.push_data(full_prop_refresh=True)
+                return
+
             if not self.pusher.connected:
                 self.log("⚠️ Auto-push: MT5 not connected — skipping check", "ERROR")
                 return
@@ -4689,6 +4726,93 @@ class TradeOpssAIApp:
                 
         except Exception as e:
             self.log(f"❌ Auto-push check error: {e}", "ERROR")
+
+    def _track_farming_close(self, broker_account, account_number):
+        """Watch one companion-submitted Tradovate farming account until it is flat."""
+        if not broker_account or not account_number:
+            return
+        account_key = str(account_number).strip().lower()
+        self._pending_farming_closes[account_key] = {
+            "account": str(account_number).strip(),
+            "broker": broker_account,
+            "flat_checks": 0,
+        }
+        if not self._farming_close_poll_active:
+            self._farming_close_poll_active = True
+            self.root.after(5000, self._poll_pending_farming_closes)
+
+    def _resume_pending_farming_closes(self, evaluations):
+        """Restore farming-close watches for $0.00 markers found after restart."""
+        for evaluation in evaluations or []:
+            if not isinstance(evaluation, dict) or evaluation.get("_deleted"):
+                continue
+            unresolved_slot = 0
+            for slot in range(1, 61):
+                value = self._cell(evaluation.get(f"Hedge Day {slot}"))
+                try:
+                    is_zero_marker = float(value.replace("$", "").replace(",", "")) == 0
+                except (AttributeError, TypeError, ValueError):
+                    is_zero_marker = False
+                if is_zero_marker and not self._cell(evaluation.get(f"Prop Day {slot}")):
+                    unresolved_slot = slot
+            if not unresolved_slot:
+                continue
+
+            account_number = self._primary_trade_account(evaluation)
+            firm_name = self._cell(evaluation.get("Prop Firm"))
+            connection = (self._broker_connections.get(firm_name) or {}).get("account")
+            if connection and hasattr(connection, "has_open_position_for_account"):
+                self._track_farming_close(connection, account_number)
+                self.log(
+                    f"🌾 Resumed close watch: {account_number} / Hedge Day {unresolved_slot}"
+                )
+
+    def _poll_pending_farming_closes(self):
+        """Check tracked farming positions without blocking the Tk event loop."""
+        pending = dict(getattr(self, "_pending_farming_closes", {}) or {})
+        if not pending:
+            self._farming_close_poll_active = False
+            return
+
+        def _check_positions():
+            closed_keys = []
+            for account_key, tracked in pending.items():
+                try:
+                    is_open, _label = tracked["broker"].has_open_position_for_account(tracked["account"])
+                except Exception:
+                    continue
+                if is_open:
+                    tracked["flat_checks"] = 0
+                else:
+                    tracked["flat_checks"] += 1
+                    # A second flat read lets Tradovate settle its cash-balance log.
+                    if tracked["flat_checks"] >= 2:
+                        closed_keys.append(account_key)
+
+            def _finish():
+                for account_key, tracked in pending.items():
+                    if account_key in self._pending_farming_closes:
+                        self._pending_farming_closes[account_key] = tracked
+                if closed_keys:
+                    closed_accounts = [
+                        self._pending_farming_closes.pop(key, {}).get("account", key)
+                        for key in closed_keys
+                    ]
+                    self.log(
+                        "🌾 Farming account(s) closed — reconciling Prop Day/progress: "
+                        + ", ".join(closed_accounts)
+                    )
+                    # This is lifecycle-driven, not a user-initiated Push. A full
+                    # refresh waits for Tradovate daily P/L before posting it.
+                    self.push_data(full_prop_refresh=True)
+                if self._pending_farming_closes:
+                    self.root.after(5000, self._poll_pending_farming_closes)
+                else:
+                    self._farming_close_poll_active = False
+
+            self.root.after(0, _finish)
+
+        threading.Thread(target=_check_positions, daemon=True).start()
 
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
@@ -4768,6 +4892,11 @@ class TradeOpssAIApp:
         broker_card = self._section_card(parent, "BROKER CONNECTIONS", "🏦")
         broker_card.pack(fill="x", padx=4, pady=2)
 
+        self.prop_firm_var = tk.StringVar(value="MFFU_Flex")
+        self.phase_var = tk.StringVar(value="challenge_trade1")
+        self.acct_size_var = tk.StringVar(value="$50,000")
+        self.strategy_var = tk.StringVar(value="Random Entries")
+
         # Global settings row: Platform + Mode + Connect All
         bk_global = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
                     tk.Frame(broker_card, bg="#161B22")
@@ -4802,6 +4931,52 @@ class TradeOpssAIApp:
         else:
             ttk.Combobox(bk_global, textvariable=self.trading_mode_var,
                          values=["Simulation", "Live"], state='readonly', width=14).pack(side="left", padx=(0, 10))
+
+        blueprint_row = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
+                        tk.Frame(broker_card, bg="#161B22")
+        blueprint_row.pack(fill="x", padx=10, pady=(2, 4))
+        blueprint_names = list(self.prop_firm_mgr.firm_blueprints) if self.prop_firm_mgr else ["MFFU_Flex"]
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(blueprint_row, text="Blueprint:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.prop_firm_combo = ctk.CTkComboBox(
+                blueprint_row, variable=self.prop_firm_var, values=blueprint_names,
+                width=180, height=30, state="readonly", fg_color=self.C_BG_THIRD,
+                border_color=self.C_BORDER, button_color=self.C_ACCENT,
+                text_color=self.C_TEXT, dropdown_fg_color=self.C_BG_SEC,
+                command=lambda _: self._on_prop_firm_change())
+            self.prop_firm_combo.pack(side="left", padx=(0, 12))
+            ctk.CTkLabel(blueprint_row, text="Phase:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.phase_combo = ctk.CTkComboBox(
+                blueprint_row, variable=self.phase_var, values=[], width=180,
+                height=30, state="readonly", fg_color=self.C_BG_THIRD,
+                border_color=self.C_BORDER, button_color=self.C_ACCENT,
+                text_color=self.C_TEXT, dropdown_fg_color=self.C_BG_SEC)
+            self.phase_combo.pack(side="left", padx=(0, 12))
+            ctk.CTkLabel(blueprint_row, text="Size:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            self.acct_size_combo = ctk.CTkComboBox(
+                blueprint_row, variable=self.acct_size_var, values=[], width=120,
+                height=30, state="readonly", fg_color=self.C_BG_THIRD,
+                border_color=self.C_BORDER, button_color=self.C_ACCENT,
+                text_color=self.C_TEXT, dropdown_fg_color=self.C_BG_SEC)
+            self.acct_size_combo.pack(side="left")
+        else:
+            ttk.Label(blueprint_row, text="Blueprint:").pack(side="left", padx=(0, 4))
+            self.prop_firm_combo = ttk.Combobox(blueprint_row, textvariable=self.prop_firm_var,
+                                                values=blueprint_names, state="readonly", width=22)
+            self.prop_firm_combo.pack(side="left", padx=(0, 10))
+            self.prop_firm_combo.bind("<<ComboboxSelected>>", self._on_prop_firm_change)
+            ttk.Label(blueprint_row, text="Phase:").pack(side="left", padx=(0, 4))
+            self.phase_combo = ttk.Combobox(blueprint_row, textvariable=self.phase_var,
+                                            state="readonly", width=22)
+            self.phase_combo.pack(side="left", padx=(0, 10))
+            ttk.Label(blueprint_row, text="Size:").pack(side="left", padx=(0, 4))
+            self.acct_size_combo = ttk.Combobox(blueprint_row, textvariable=self.acct_size_var,
+                                                state="readonly", width=14)
+            self.acct_size_combo.pack(side="left")
+        self._on_prop_firm_change()
 
         self.broker_connect_all_btn = self._ctk_button(bk_global, text="Connect All",
                                                         command=self._connect_all_brokers,
@@ -4886,22 +5061,14 @@ class TradeOpssAIApp:
                          values=["All Trades", "Buy Only", "Sell Only"],
                          state='readonly', width=12).pack(side="left")
 
-        # ── Hidden vars for backward compat with save/load config ──
-        self.prop_firm_var = tk.StringVar(value="MFFU_Flex")
-        self.phase_var = tk.StringVar(value="challenge_trade1")
-        self.acct_size_var = tk.StringVar(value="$50,000")
-        self.strategy_var = tk.StringVar(value="Random Entries")
-
-        # Dummy combos (hidden, for _on_prop_firm_change / _update_account_sizes compat)
-        self.prop_firm_combo = ttk.Combobox(parent)
-        self.phase_combo = ttk.Combobox(parent)
-        self.acct_size_combo = ttk.Combobox(parent)
-
     # ── Phase detection helpers ──
 
     _FIRM_MAP = {
         "My Funded Futures": "MFFU_Flex",
         "MFFU": "MFFU",
+        "MFFU Builder 50K": "MFFU Builder 50K",
+        "MFFU Builder": "MFFU Builder 50K",
+        "MFFU_Builder": "MFFU Builder 50K",
         "MFFU Rapid EOD": "MFFU Rapid EOD",
         "MFFU Rapid EOD 50K": "MFFU Rapid EOD",
         "Rapid EOD": "MFFU Rapid EOD",
@@ -5016,6 +5183,8 @@ class TradeOpssAIApp:
             return "TopStep RTP"
 
         # 5. Other known families by substring (defensive).
+        if "mffu builder" in norm or "mffu_builder" in norm:
+            return "MFFU Builder 50K"
         if "mffu" in norm or "my funded futures" in norm:
             return "MFFU_Flex"
         if "fundednextflex" in compact or "funded next flex" in norm:
@@ -5375,11 +5544,11 @@ class TradeOpssAIApp:
         if not self._has_passed_to_funded(ev):
             if firm_orders.get("Challenge"):
                 chain.append("Challenge")
-        if self._has_passed_to_funded(ev) or self._cell(ev.get("Account #.1")):
-            pg = self._phase_group_for_orders("Funded", firm_code)
-            if firm_orders.get(pg):
-                chain.append("Funded")
-        if firm_orders.get("Farming"):
+        pg = self._phase_group_for_orders("Funded", firm_code)
+        if firm_orders.get(pg):
+            chain.append("Funded")
+        if (firm_orders.get("Farming") or firm_orders.get("Qualifying Days")
+            or firm_orders.get("Min Trading Days")):
             chain.append("Farming")
         try:
             idx = chain.index(completed_phase)
@@ -5411,16 +5580,30 @@ class TradeOpssAIApp:
         pg = self._phase_group_for_orders(traded_phase, firm_code)
         trade_keys = firm_orders.get(pg, [])
 
+        farming_keys = (firm_orders.get("Farming", [])
+                or firm_orders.get("Qualifying Days", [])
+                or firm_orders.get("Min Trading Days", []))
+        farming_fields = phase_to_fields.get("Farming", [])
+        if traded_phase == "Funded" and farming_keys:
+            # A funded entry earns its qualifying-day placeholder immediately.
+            # Fail-status handling removes it later when the funded entry loses.
+            return next((field for field in farming_fields
+                         if not self._cell(ev.get(field))), None)
+
         next_idx = traded_idx + 1
         if trade_keys and next_idx < len(trade_keys) and next_idx < len(fields):
             return fields[next_idx]
 
+        if traded_phase == "Farming" and farming_keys:
+            # Farming is a daily sequence, not a transition straight into the
+            # next funded trade. Advance only after the day just traded; never
+            # backfill an earlier empty Hedge Day cell. The payout workflow
+            # controls the eventual transition out of farming.
+            return next((field for field in farming_fields[traded_idx + 1:]
+                         if not self._cell(ev.get(field))), None)
+
         next_phase = self._next_progression_phase(ev, firm_code, traded_phase)
         if not next_phase:
-            return None
-        if next_phase == "Funded" and not (
-            self._has_passed_to_funded(ev) or self._cell(ev.get("Account #.1"))
-        ):
             return None
         next_fields = phase_to_fields.get(next_phase, [])
         return next_fields[0] if next_fields else None
@@ -6614,6 +6797,9 @@ class TradeOpssAIApp:
                 # Populate broker connection rows per prop firm
                 prop_accounts = data.get("prop_accounts", [])
                 self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
+                # Queue eligibility excludes $0.00 markers, so recover their
+                # close watches from the complete dashboard data separately.
+                self.root.after(1500, lambda evs=evaluations: self._resume_pending_farming_closes(evs))
 
                 # Status poll can be slow and touches Tradovate; defer so trade rows render first
                 if not RELEASE_DISABLE_STATUS_POLL:
@@ -6708,6 +6894,7 @@ class TradeOpssAIApp:
         for child in self._trades_inner.winfo_children():
             child.destroy()
         self._active_trade_rows.clear()
+        self._planned_trade_configs.clear()
 
         if not evaluations:
             if CTK_AVAILABLE:
@@ -7288,6 +7475,11 @@ class TradeOpssAIApp:
             firm_code=firm_code, current_phase=row_data["current_phase"],
             phase_key=phase_key, acct_size=acct_size, row_eval=ev,
             acct_num=acct_num, is_farming=_is_farming_sym)
+        skip_reason = config.get("_skip_order_reason")
+        if skip_reason:
+            self.log(f"⏭ Trade blocked for {acct_num}: {skip_reason}", "WARN")
+            return
+        trado_qty = int(config.get("tradovate_qty", trado_qty) or trado_qty)
         trado_tp = int(config.get("tradovate_tp_ticks", trado_tp) or trado_tp)
         trado_sl = int(config.get("tradovate_sl_ticks", trado_sl) or trado_sl)
         mt5_tp = int(config.get("mt5_tp_points", mt5_tp) or mt5_tp)
@@ -7462,6 +7654,8 @@ class TradeOpssAIApp:
                         )
                     except Exception:
                         pass
+                if platform == "Tradovate" and str(row_data.get("current_phase") or "").lower() == "farming":
+                    self._track_farming_close(broker_account, acct_num)
 
                 # 2. MT5 hedge (opposite direction)
                 if hedging and mt5_api:
@@ -7523,9 +7717,9 @@ class TradeOpssAIApp:
         Mirrors the connector's _compute_trade_adjustments routing exactly:
 
           • Funded / Double Dip / Apex payout (funded phase keys):
-            ONLY calculate_funded_sl — trade 1 = fixed $2,000 SL; trade 2+ uses
-            classic (balance − lock) by default, or split ($2k + cushion) when
-            Split (Tradeify) is on — Tradeify accounts only.
+                        Funded Trade 1 preserves its blueprint SL. Trade 2+ uses
+                        calculate_funded_sl against the account's current minimum-equity
+                        floor, or the blueprint fallback when live data is unavailable.
           • Challenge / Farming (else): TP-by-stage → SL midnight-floor →
             SL TMDL cap (calculate_adjusted_tp is skipped for farming
             symbols, which use adjust_farming_tp_sl upstream).
@@ -7586,16 +7780,27 @@ class TradeOpssAIApp:
         scoped_net_liq = float(account_min_eq['net_liq']) if (scoped and account_min_eq.get('net_liq') is not None) else None
 
         # Apply firm-specific, per-account variation before the balance-based
-        # adjustments below. This is the shared path used by manual and
-        # automatic order placement, so the generated config is actually used.
+        # adjustments below. A queued auto-trade may already have a planned
+        # randomization from the TP/SL Plan window; reuse it for the order.
         try:
-            config = self.prop_firm_mgr.randomize_trade_config(
-                firm_code=firm_code,
-                phase_key=phase_key,
-                config=config,
-                account_key=acct_num,
-                balance=scoped_net_liq if scoped_net_liq is not None else 50000.0,
-            )
+            plan_key = self._planned_trade_config_key(acct_num, firm_code, phase_key)
+            planned = self._planned_trade_configs.pop(plan_key, None)
+            if planned:
+                config = planned.copy()
+                self.log(f"📋 Using planned TP/SL for {acct_num}")
+            else:
+                user_key = ""
+                if hasattr(self, "client_email_entry"):
+                    user_key = self.client_email_entry.get().strip().lower()
+                config = self.prop_firm_mgr.randomize_trade_config(
+                    firm_code=firm_code,
+                    phase_key=phase_key,
+                    config=config,
+                    account_key=acct_num,
+                    balance=scoped_net_liq if scoped_net_liq is not None else 50000.0,
+                    user_key=user_key or None,
+                    purchase_date=(row_eval or {}).get("Date Purchased"),
+                )
         except Exception as _rand_err:
             self.log(f"⚠ Trade randomization skipped for {acct_num}: {_rand_err}", "WARN")
 
@@ -7670,10 +7875,15 @@ class TradeOpssAIApp:
                     is_lucid = str(firm_code or "").strip() == "Lucid"
                     is_mffu_rapid_eod = str(firm_code or "").strip() == "MFFU Rapid EOD"
                     is_topstep_xfa = str(firm_code or "").strip() == "TopStep 50K XFA"
+                    is_ftmo_pro = str(firm_code or "").strip() in (
+                        "FTMO Futures Pro", "FTMO Pro")
+                    is_tradeify_select = str(firm_code or "").strip() in (
+                        "Tradeify Select", "Tradeify Select 50K")
                     is_reserve_ft2_plus = (
                         (is_bg_reserve or is_lucid) and 2 <= trade_index <= 5)
                     is_spec_funded = (
-                        is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa)
+                        is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa
+                        or is_ftmo_pro or is_tradeify_select)
                     if trade_index >= 2 and not is_rapid_daily and not is_spec_funded:
                         cycle_goal, goal_source = self._funded_cycle_goal_dollars(
                             firm_code, current_phase, phase_key, acct_size, config)
@@ -7691,39 +7901,35 @@ class TradeOpssAIApp:
                                 f"⚠ Funded cycle TP {acct_num}: no cycle goal or trade 1 TP "
                                 "available — keeping blueprint TP", "WARN")
 
-                    # Rapid Daily pins every funded SL to the $1,000 DLL
-                    # (496 ticks at 4 MNQ). Its dedicated randomizer already
-                    # computed TP, so do not apply the generic floor rewrite.
-                    if is_rapid_daily:
-                        self.log(
-                            f"🎯 Rapid Daily funded rule {acct_num}: "
-                            f"TP={config.get('tradovate_tp_ticks')}t "
-                            "SL=496t ($1,000 DLL), "
-                            f"live balance=${balance:,.2f}")
-                        audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
-                              status="rapid_daily_rule", balance=balance,
-                              trade_index=trade_index, sl_after=496,
-                              tp_after=config.get("tradovate_tp_ticks"))
-                    elif is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa:
-                        randomization = config.get("_randomization") or {}
-                        self.log(
-                            f"🎯 {firm_code} FT{trade_index} rule {acct_num}: "
-                            f"target=${randomization.get('target_dollars', '?')} "
-                            f"balance=${balance:,.2f} → "
-                            f"TP={config.get('tradovate_tp_ticks')}t "
-                            f"SL={config.get('tradovate_sl_ticks')}t")
-                        audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
-                              status="reserve_ft2_5_rule", balance=balance,
-                              trade_index=trade_index, sl_after=config.get('tradovate_sl_ticks'),
-                              tp_after=config.get('tradovate_tp_ticks'),
-                              target_dollars=randomization.get("target_dollars"))
-                    else:
+                    if trade_index >= 2:
+                        if (is_ftmo_pro or is_tradeify_select or is_reserve_ft2_plus
+                                or is_mffu_rapid_eod or is_topstep_xfa):
+                            policy_name = (
+                                "FTMO Pro" if is_ftmo_pro else
+                                "Tradeify Select" if is_tradeify_select else
+                                "Blue Guardian Reserve" if is_reserve_ft2_plus else
+                                "MFFU Rapid EOD" if is_mffu_rapid_eod else
+                                "TopStep XFA")
+                            self.log(
+                                f"🧮 {policy_name} {acct_num}: preserving dedicated "
+                                f"TP={config.get('tradovate_tp_ticks')}t "
+                                f"SL={config.get('tradovate_sl_ticks')}t")
+                            audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                                  status=("ftmo_pro_dedicated_rule" if is_ftmo_pro
+                                          else "tradeify_select_dedicated_rule" if is_tradeify_select
+                                      else "blue_guardian_reserve_dedicated_rule" if is_reserve_ft2_plus
+                                      else "mffu_rapid_eod_dedicated_rule" if is_mffu_rapid_eod
+                                      else "topstep_xfa_dedicated_rule"), balance=balance,
+                                  target_account_id=target_account_id,
+                                  tp_after=config.get("tradovate_tp_ticks"),
+                                  sl_after=config.get("tradovate_sl_ticks"))
+                            return config
                         # Trade 2+ risks only the remaining buffer above the
-                        # cycle hard floor/min-equity. Trade 1 keeps the fixed
-                        # $2,000 rule.
+                        # account's live minimum-equity floor. A documented
+                        # blueprint floor is used only when live data is absent.
                         cycle_floor, floor_source = self._funded_cycle_hard_floor(
                             firm_code, config, account_min_eq)
-                        threshold = (cycle_floor if trade_index >= 2 and cycle_floor is not None
+                        threshold = (cycle_floor if cycle_floor is not None
                                      else self.prop_firm_mgr.get_lock_level(firm_code))
                         sl_mode = self._funded_sl_mode(firm_code)
                         self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
@@ -7739,6 +7945,10 @@ class TradeOpssAIApp:
                               cycle_floor_source=floor_source,
                               funded_profit=funded_profit,
                               sl_after=config.get("tradovate_sl_ticks"))
+                    else:
+                        self.log(
+                            f"🧮 Funded SL {acct_num}: trade_index=1 — "
+                            f"keeping blueprint SL={config.get('tradovate_sl_ticks')}t")
             except Exception as _fe:
                 self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
                 audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
@@ -7800,11 +8010,10 @@ class TradeOpssAIApp:
                     audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
                           status="error", error=str(_te))
 
-            # 2/3) SL midnight floor + TMDL cap. Reuses the account-scoped
-            # snapshot when available (Tradovate); otherwise falls back to the
-            # legacy get_min_equity() for brokers without account resolution.
+            # 2/3) Farming SL midnight floor + TMDL cap. Challenge stops stay
+            # at their blueprint values.
             min_eq = account_min_eq
-            if min_eq is None and broker_account and hasattr(broker_account, 'get_min_equity'):
+            if is_farming and min_eq is None and broker_account and hasattr(broker_account, 'get_min_equity'):
                 try:
                     min_eq = broker_account.get_min_equity()
                     if isinstance(min_eq, dict):
@@ -7813,7 +8022,15 @@ class TradeOpssAIApp:
                 except Exception as _sle:
                     self.log(f"⚠ SL floor/TMDL {acct_num}: get_min_equity failed — {_sle}")
                     min_eq = None
-            if isinstance(min_eq, dict):
+            is_tradeify_select = str(firm_code or "").strip() in (
+                "Tradeify Select", "Tradeify Select 50K")
+            is_bg_reserve = str(firm_code or "").strip() in (
+                "Blue Guardian Reserve", "Blue Guardian Reserve 50K",
+                "Blue Guardian", "BGR")
+            is_mffu_rapid_eod = str(firm_code or "").strip() == "MFFU Rapid EOD"
+            is_topstep_xfa = str(firm_code or "").strip() == "TopStep 50K XFA"
+            if is_farming and isinstance(min_eq, dict) and not (
+                    is_tradeify_select or is_bg_reserve or is_mffu_rapid_eod or is_topstep_xfa):
                 try:
                     live_net_liq = min_eq.get('net_liq')
                     net_liq_sod = min_eq.get('net_liq_sod', 0)
@@ -8140,6 +8357,136 @@ class TradeOpssAIApp:
                             st.configure(text="⚡ ARMED", bg="#064E3B", fg="#6EE7B7")
                 except Exception:
                     pass
+
+    @staticmethod
+    def _planned_trade_config_key(acct_num, firm_code, phase_key):
+        return f"{acct_num}|{firm_code}|{phase_key}"
+
+    def _next_placeholder_display(self, row):
+        """Return the phase and cell that will receive this row's next day placeholder."""
+        evaluation = row.get("eval") or {}
+        firm_code = row.get("firm_code")
+        current_phase = row.get("current_phase")
+        traded_field = self._find_day_field_name(evaluation, current_phase)
+        next_field = self._resolve_next_hedge_field(
+            evaluation, firm_code, current_phase, traded_field)
+        if not next_field:
+            return "No next placeholder"
+        for phase_name, fields in self._ALL_PHASE_FIELD_SETS:
+            if next_field in fields:
+                return f"{phase_name}: {next_field}"
+        return next_field
+
+    def _build_planned_trade_configs(self, refresh=False):
+        """Assign one preview TP/SL configuration per queued account."""
+        if refresh:
+            self._planned_trade_configs.clear()
+        plans = []
+        for row in list(getattr(self, "_active_trade_rows", []) or []):
+            firm_code = row.get("firm_code")
+            phase_key = row.get("phase_key")
+            acct_num = row.get("acct_num")
+            acct_size = row.get("acct_size")
+            if not self.prop_firm_mgr or not all((firm_code, phase_key, acct_num, acct_size)):
+                continue
+            plan_key = self._planned_trade_config_key(acct_num, firm_code, phase_key)
+            config = self._planned_trade_configs.get(plan_key)
+            if config is None:
+                blueprint = self.prop_firm_mgr.get_strategy_config(
+                    firm_code, phase_key, acct_size)
+                if not blueprint:
+                    continue
+                try:
+                    config = self.prop_firm_mgr.randomize_trade_config(
+                        firm_code=firm_code,
+                        phase_key=phase_key,
+                        config=blueprint.copy(),
+                        account_key=acct_num,
+                        balance=float(row.get("preview_balance", 50000.0) or 50000.0),
+                        user_key=(self.client_email_entry.get().strip().lower()
+                                  if hasattr(self, "client_email_entry") else None),
+                        purchase_date=(row.get("eval") or {}).get("Date Purchased"),
+                    )
+                except Exception as err:
+                    self.log(f"⚠ TP/SL plan unavailable for {acct_num}: {err}", "WARN")
+                    continue
+                self._planned_trade_configs[plan_key] = config.copy()
+            plans.append((row, config))
+        return plans
+
+    def _open_tp_sl_plan(self):
+        """Display the queued accounts' planned TP/SL values and EAT start time."""
+        plans = self._build_planned_trade_configs()
+        if not plans:
+            messagebox.showinfo("TP/SL Plan", "Scan active trades first.")
+            return
+
+        if CTK_AVAILABLE:
+            window = ctk.CTkToplevel(self.root)
+        else:
+            window = tk.Toplevel(self.root)
+        window.title("Queued TP/SL Plan")
+        window.geometry("920x460")
+        window.minsize(760, 320)
+        window.transient(self.root)
+
+        from datetime import datetime, timedelta, timezone
+        eat = timezone(timedelta(hours=3))
+        scheduled = getattr(self, "_auto_trade_scheduled_dt", None)
+        time_text = (scheduled.astimezone(eat).strftime("%I:%M %p EAT")
+                     if scheduled else "Not scheduled")
+        background = self.C_BG_SEC if CTK_AVAILABLE else "#07101d"
+        outer = ctk.CTkFrame(window, fg_color=background) if CTK_AVAILABLE else tk.Frame(window, bg=background)
+        outer.pack(fill="both", expand=True, padx=12, pady=12)
+
+        title = f"QUEUED TP/SL PLAN  |  Expected start: {time_text}"
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(outer, text=title, font=("Consolas", 12, "bold"),
+                         text_color="#38BDF8").pack(anchor="w", pady=(0, 10))
+            table = ctk.CTkScrollableFrame(outer, fg_color="#020A14")
+        else:
+            tk.Label(outer, text=title, font=("Consolas", 11, "bold"),
+                     fg="#38BDF8", bg=background).pack(anchor="w", pady=(0, 10))
+            table = tk.Frame(outer, bg="#020A14")
+        table.pack(fill="both", expand=True)
+
+        columns = (("Account", 120), ("Prop firm", 175), ("Phase", 125),
+               ("TP", 100), ("SL", 100), ("Next placeholder", 190),
+               ("Expected EAT", 140))
+        for index, (label, width) in enumerate(columns):
+            widget = (ctk.CTkLabel(table, text=label.upper(), width=width, anchor="w",
+                                   font=("Consolas", 9, "bold"), text_color="#64748B")
+                      if CTK_AVAILABLE else tk.Label(table, text=label.upper(), width=max(8, width // 9),
+                                                      anchor="w", font=("Consolas", 9, "bold"),
+                                                      fg="#64748B", bg="#020A14"))
+            widget.grid(row=0, column=index, padx=6, pady=(6, 4), sticky="w")
+
+        for row_index, (row, config) in enumerate(plans, start=1):
+            symbol = config.get("tradovate_symbol") or config.get("topstepx_symbol") or "-"
+            quantity = config.get("tradovate_qty", config.get("topstepx_qty", "-"))
+            tp = config.get("tradovate_tp_ticks", config.get("topstepx_tp_ticks", "-"))
+            sl = config.get("tradovate_sl_ticks", config.get("topstepx_sl_ticks", "-"))
+            next_placeholder = self._next_placeholder_display(row)
+            values = (str(row.get("acct_num", "-")), str((row.get("eval") or {}).get("Prop Firm", row.get("firm_code", "-"))),
+                      str(row.get("phase_key", "-")), f"{symbol} x{quantity} | {tp}t",
+                      f"{sl}t", next_placeholder, time_text)
+            for index, ((_, width), value) in enumerate(zip(columns, values)):
+                widget = (ctk.CTkLabel(table, text=value, width=width, anchor="w",
+                                       font=("Consolas", 10), text_color=self.C_TEXT)
+                          if CTK_AVAILABLE else tk.Label(table, text=value, width=max(8, width // 9),
+                                                          anchor="w", font=("Consolas", 9),
+                                                          fg="#D8E5F7", bg="#020A14"))
+                widget.grid(row=row_index, column=index, padx=6, pady=4, sticky="w")
+
+        def refresh_plan():
+            window.destroy()
+            self._planned_trade_configs.clear()
+            self._open_tp_sl_plan()
+
+        button = (ctk.CTkButton(outer, text="Refresh planned values", command=refresh_plan,
+                                width=160, fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
+                  if CTK_AVAILABLE else tk.Button(outer, text="Refresh planned values", command=refresh_plan))
+        button.pack(anchor="e", pady=(10, 0))
 
     def _stop_auto_trade(self):
         """Cancel auto-trade scheduler."""
@@ -9223,6 +9570,8 @@ class TradeOpssAIApp:
                             )
                         except Exception:
                             pass
+                    if platform == "Tradovate" and str(row_data.get("current_phase") or "").lower() == "farming":
+                        self._track_farming_close(broker_account, acct_num)
 
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
@@ -9307,12 +9656,42 @@ class TradeOpssAIApp:
         threading.Thread(target=_dispatch_parallel, daemon=True).start()
 
     def _on_prop_firm_change(self, event=None):
-        """Update phase and size options when prop firm changes (compat stub)."""
-        pass
+        """Refresh selector values from the chosen firm's blueprint."""
+        if not self.prop_firm_mgr:
+            return
+
+        selected_firm = self.prop_firm_var.get()
+        blueprints = self.prop_firm_mgr.firm_blueprints
+        firm_code = (selected_firm if selected_firm in blueprints
+                     else self._resolve_firm_code(selected_firm))
+        firm_info = blueprints.get(firm_code) or self.prop_firm_mgr.get_firm_info(firm_code)
+        phase_keys = list(firm_info.get("strategy_configs", {}).keys())
+        if not phase_keys:
+            return
+
+        self.prop_firm_var.set(firm_code)
+        self.phase_combo.configure(values=phase_keys)
+        if self.phase_var.get() not in phase_keys:
+            self.phase_var.set(phase_keys[0])
+        self._update_account_sizes()
 
     def _update_account_sizes(self):
-        """Update account size (compat stub)."""
-        pass
+        """Refresh account-size selector values for the chosen blueprint."""
+        if not self.prop_firm_mgr:
+            return
+
+        selected_firm = self.prop_firm_var.get()
+        blueprints = self.prop_firm_mgr.firm_blueprints
+        firm_code = (selected_firm if selected_firm in blueprints
+                     else self._resolve_firm_code(selected_firm))
+        firm_info = blueprints.get(firm_code) or self.prop_firm_mgr.get_firm_info(firm_code)
+        account_sizes = firm_info.get("account_sizes", [])
+        if not account_sizes:
+            return
+
+        self.acct_size_combo.configure(values=account_sizes)
+        if self.acct_size_var.get() not in account_sizes:
+            self.acct_size_var.set(account_sizes[0])
 
     def _populate_broker_rows(self, evaluations, prop_accounts):
         """Build one connection row per unique prop firm from active evaluations."""
@@ -11572,6 +11951,9 @@ class TradeOpssAIApp:
 
     def _funded_cycle_hard_floor(self, firm_code, config, account_min_eq):
         """Resolve the hard floor used to size funded trade 2+ SL risk."""
+        if isinstance(account_min_eq, dict) and account_min_eq.get("min_equity") is not None:
+            return float(account_min_eq["min_equity"]), "account.min_equity"
+
         for key in (
             "funded_cycle_hard_floor", "cycle_hard_floor", "hard_floor",
             "funded_floor_locked_after_payout1",
@@ -11597,9 +11979,6 @@ class TradeOpssAIApp:
                     return float(value), f"rules.{key}"
         except Exception:
             pass
-
-        if isinstance(account_min_eq, dict) and account_min_eq.get("min_equity") is not None:
-            return float(account_min_eq["min_equity"]), "account.min_equity"
 
         try:
             hard_stop = self.prop_firm_mgr._HARD_STOP_THRESHOLDS.get(firm_code)
