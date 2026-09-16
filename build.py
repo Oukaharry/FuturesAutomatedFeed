@@ -139,7 +139,7 @@ def build(trader_release: bool = False):
         'selenium', 'dotenv', 'psutil', 'pyperclip', 'pytz', 'zoneinfo',
         'requests', 'urllib3', 'certifi',
         'playwright', 'playwright.async_api', 'playwright.sync_api',
-        'connectors.alphatrader_connector', 'connectors.blackarrow_connector',
+        'connectors.alphatrader_connector',
     ]
     if not trader_release:
         hidden_imports.extend([

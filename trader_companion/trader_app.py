@@ -350,6 +350,13 @@ ensure_chrome_debug = None
 _TRADOVATE_IMPORT_ERROR = None
 _TOPSTEPX_IMPORT_ERROR = None
 _ALPHATRADER_IMPORT_ERROR = None
+try:
+    from connectors.alphatrader_connector import AlphaTraderConnector
+    ALPHATRADER_AVAILABLE = True
+except Exception as _alphatrader_import_err:
+    AlphaTraderConnector = None
+    ALPHATRADER_AVAILABLE = False
+    _ALPHATRADER_IMPORT_ERROR = str(_alphatrader_import_err)
 _gzip_post = None
 
 
@@ -7623,15 +7630,9 @@ class TradeOpssAIApp:
                         tp_ticks=trado_tp, sl_ticks=trado_sl,
                         expected_account=acct_num,
                     )
-                elif platform == "BlackArrow":
-                    # BlackArrow (web.blackarrowtrading.com) — ticks passed directly
-                    order_result = broker_account.place_order(
-                        trado_sym, side=side, qty=trado_qty,
-                        tp_ticks=trado_tp, sl_ticks=trado_sl,
-                    )
 
                 # Some broker implementations return a status dict instead of raising.
-                # AlphaTrader/BlackArrow return False (bool) on failure — catch that too.
+                # AlphaTrader returns False (bool) on failure — catch that too.
                 # Normalize all failure modes so MT5 is never hedged against a missing fill.
                 if isinstance(order_result, dict) and order_result.get("success") is False:
                     raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
@@ -7958,7 +7959,7 @@ class TradeOpssAIApp:
             # 1) TP by stage profit (skipped for farming symbols upstream)
             if broker_account and not is_farming:
                 try:
-                    # Respect the per-config opt-out flag.  The5ers (and any other
+                    # Respect the per-config opt-out flag.  Firms (and any other
                     # firm with a strict consistency rule) set disable_tp_adjustment=True
                     # in their blueprint so the dynamic TP raise can never push a single
                     # trade over the 40% consistency ceiling.
@@ -9511,11 +9512,6 @@ class TradeOpssAIApp:
                             tp_ticks=trado_tp, sl_ticks=trado_sl,
                             expected_account=acct_num,
                         )
-                    elif platform == "BlackArrow":
-                        order_result = broker_account.place_order(
-                            trado_sym, side=side, qty=trado_qty,
-                            tp_ticks=trado_tp, sl_ticks=trado_sl,
-                        )
                     elif platform == "TopStepX":
                         # Account is already selected upstream — don't re-open the slow
                         # dropdown here. place_*_order verifies the selector still matches
@@ -10000,23 +9996,6 @@ class TradeOpssAIApp:
                         return
                     account = AlphaTraderConnector(email=user, password=pwd)
                     account.connect()
-                elif platform == "BlackArrow":
-                    if not BLACKARROW_AVAILABLE:
-                        err = _BLACKARROW_IMPORT_ERROR or 'unknown reason'
-                        self.root.after(0, lambda: conn["status_var"].set("❌"))
-                        self.log(f"BlackArrow import failed: {err}", "ERROR")
-                        self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
-                        return
-                    # Gather account IDs from active evals for this firm
-                    _ba_acct_ids = [
-                        str(rd["eval"].get("Account #") or rd["eval"].get("Account #.1") or "").strip()
-                        for rd in getattr(self, "_active_trade_rows", [])
-                        if isinstance(rd.get("eval"), dict) and str(rd["eval"].get("Prop Firm") or "").strip() == firm_name
-                    ]
-                    _ba_acct_id = next((a for a in _ba_acct_ids if a), "")
-                    account = BlackArrowConnector(email=user, password=pwd, account_id=_ba_acct_id)
-                    account.connect()
-                    self.log("⚠ BlackArrow: if a 2FA code is requested, enter it manually in the browser window.")
                 else:
                     self.root.after(0, lambda: conn["status_var"].set("❌"))
                     self.log(f"Unknown platform: {platform}", "ERROR")
@@ -11679,9 +11658,6 @@ class TradeOpssAIApp:
         # 1. Literal heuristic — fast path, preserves prior behaviour.
         if "topstep" in name.lower():
             return "TopStepX"
-        _name_stripped = name.lower().replace("%", "").replace(" ", "")
-        if "blackarrow" in name.lower() or "the5ers" in _name_stripped or "5ers" in _name_stripped:
-            return "BlackArrow"
         if "alphafutures" in name.lower() or "alpha futures" in name.lower():
             return "AlphaTrader"
 
