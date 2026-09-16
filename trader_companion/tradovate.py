@@ -3021,7 +3021,7 @@ class TradovateAccount:
         
         Uses /cashBalance/getCashBalanceSnapshot for current net liq,
         /userAccountAutoLiq/deps for trailing drawdown limits, and
-        /accountRiskStatus/list for the max net liq (trailing reference).
+        /accountRiskStatus/deps for the max net liq (trailing reference).
         
         Returns:
             dict with 'net_liq', 'min_equity', 'drawdown_remaining' or None on failure.
@@ -3060,17 +3060,15 @@ class TradovateAccount:
                 rs = risk_raw
             max_net_liq = rs.get('maxNetLiq', 0) or 0
 
-            # EOD trailing drawdown:
-            # SL floor from SOD: midnight_balance - trailing_max_drawdown
-            # Absolute floor:    trailingMaxDrawdownLimit - trailing_max_drawdown
-            # min_equity = max(sod_floor, absolute_floor)
+            # EOD trailing drawdown combines the current SOD anchor with the
+            # absolute floor reported by Tradovate's auto-liquidation record.
             if trailing_max_drawdown > 0:
-                absolute_floor = (net_liq_sod - trailing_max_drawdown) if trailing_max_drawdown_limit > 0 else 0
-                if net_liq_sod > 0:
-                    sod_floor = net_liq_sod - trailing_max_drawdown
-                    min_equity = max(sod_floor, absolute_floor)
-                else:
-                    min_equity = absolute_floor
+                sod_floor = (net_liq_sod - trailing_max_drawdown) if net_liq_sod > 0 else 0
+                absolute_floor = (
+                    trailing_max_drawdown_limit - trailing_max_drawdown
+                    if trailing_max_drawdown_limit > 0 else 0
+                )
+                min_equity = max(sod_floor, absolute_floor)
             else:
                 min_equity = 0
 
