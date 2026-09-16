@@ -16,7 +16,6 @@ from trader_companion.prop_firm_manager import PropFirmManager
 REMAINING_FIRMS = (
     "MFFU_Flex",
     "Funded Next",
-    "FundingTicks",
     "TopStep",
     "TopStep RTP",
     "TradeDay",
@@ -24,11 +23,9 @@ REMAINING_FIRMS = (
     "Tradeify",
     "Apex",
     "Top One Futures",
-    "The5ers",
     "Funded Futures Family",
-    "GoatFunded",
     "Funded Next Flex",
-    "FTMO Futures",
+    "FTMO Futures Pro",
     "Tradeify Select",
 )
 

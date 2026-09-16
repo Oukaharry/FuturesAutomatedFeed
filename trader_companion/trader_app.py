@@ -1593,7 +1593,6 @@ class TradeOpssAIApp:
         "Funded Next":      "#E91E63",
         "FundedNext Rapid Daily": "#F472B6",
         "FTMO Futures Pro": "#0EA5E9",
-        "FundingTicks":     "#F1C40F",
         "TradeDay":         "#9B59B6",
         "Tradeify":         "#1ABC9C",
         "Tradeify Select":  "#14B8A6",
@@ -1602,7 +1601,6 @@ class TradeOpssAIApp:
         "Top One Futures": "#0D9488",
         "Funded Futures Family": "#7C3AED",
         "LucidMaxx":        "#8B5CF6",
-        "Goat Funded Futures": "#22C55E",
     }
 
     PHASE_BADGE = {
@@ -5087,7 +5085,6 @@ class TradeOpssAIApp:
         "MFFU Rapid EOD": "MFFU Rapid EOD",
         "MFFU Rapid EOD 50K": "MFFU Rapid EOD",
         "Rapid EOD": "MFFU Rapid EOD",
-        "Funding Ticks": "FundingTicks",
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
         "Funded Next Flex": "Funded Next Flex",
@@ -5119,9 +5116,6 @@ class TradeOpssAIApp:
         "FFF": "Funded Futures Family",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
-        "Goat Funded Futures": "GoatFunded",
-        "GoatFunded": "GoatFunded",
-        "GFF": "GoatFunded",
     }
 
     # ── Broker login sharing ──────────────────────────────────────────
@@ -5208,12 +5202,8 @@ class TradeOpssAIApp:
             return "Funded Next"
         if "funded futures family" in norm or "fundedfuturesfamily" in compact or compact == "fff":
             return "Funded Futures Family"
-        if "goatfunded" in compact or "goat funded" in norm:
-            return "GoatFunded"
-        if "ftmofuturespro" in compact or "ftmopro" in compact:
+        if "ftmofuturespro" in compact or "ftmopro" in compact or "ftmofutures" in compact or compact == "ftmo":
             return "FTMO Futures Pro"
-        if "ftmofutures" in compact or compact == "ftmo":
-            return "FTMO Futures"
         if "rapiddaily" in compact:
             return "FundedNext Rapid Daily"
         if "tradeifyselect" in compact or ("tradeify" in compact and "addon" in compact):
@@ -5232,16 +5222,13 @@ class TradeOpssAIApp:
         "Trade Day": "TradeDay",
         "Tradeify": "Tradeify",
         "Tradeify Select": "Tradeify (50% Add-On)",
-        "FTMO Futures": "FTMO Futures",
         "FTMO Futures Pro": "FTMO Futures Pro",
-        "FundingTicks": "Funding Ticks",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
         "AlphaFutures": "Alpha Futures",
         "Funded Futures Family": "Funded Futures Family",
         "Apex": "Apex",
         "Top One Futures": "Top One Futures",
-        "GoatFunded": "Goat Funded Futures",
     }
 
     def _sync_prop_firm_from_account(self, ev):
@@ -5320,12 +5307,10 @@ class TradeOpssAIApp:
         "TopStep":          "ZERO",  # TopStep funded accounts also start at $0
         "TopStep RTP":      "ZERO",  # Same TopStep account family — funded starts at $0
         "Funded Next":      "ACCOUNT_SIZE",
-        "FundingTicks":     "ACCOUNT_SIZE",
         "TradeDay":         "ACCOUNT_SIZE",
         "Tradeify":         "ACCOUNT_SIZE",
         "Tradeify Select":  "ACCOUNT_SIZE",
         "Blue Guardian Reserve": "ACCOUNT_SIZE",
-        "FTMO Futures":     "ACCOUNT_SIZE",
         "FTMO Futures Pro": "ACCOUNT_SIZE",
         "FundedNext Rapid Daily": "ACCOUNT_SIZE",
         "AlphaFutures":     "ACCOUNT_SIZE",
@@ -5334,7 +5319,6 @@ class TradeOpssAIApp:
         "LucidMaxx":        "ACCOUNT_SIZE",
         "Top One Futures":  "ACCOUNT_SIZE",
         "Funded Futures Family": "ACCOUNT_SIZE",
-        "GoatFunded":            "ACCOUNT_SIZE",
     }
 
     def _resolve_starting_balance(self, ev, current_phase, acct_size):
@@ -10481,12 +10465,6 @@ class TradeOpssAIApp:
         "My Funded Futures": {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "MFFUAccount",
                               "login_url": "https://myfundedfutures.com", "accounts_url": "https://myfundedfutures.com",
                               "cdp": True},
-        "Goat Funded Futures": {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": None,
-                               "login_url": "https://app.goatfundedfutures.com", "accounts_url": "https://app.goatfundedfutures.com/accounts",
-                               "cdp": False},
-        "GoatFunded":          {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": None,
-                               "login_url": "https://app.goatfundedfutures.com", "accounts_url": "https://app.goatfundedfutures.com/accounts",
-                               "cdp": False},
     }
 
     def _auto_launch_propfirm_browsers(self, active_firms):

@@ -74,10 +74,10 @@ def test_remaining_prop_firms_use_stable_farming_randomization():
         "tradovate_sl_ticks": 150,
     }
     remaining_firms = (
-        "MFFU_Flex", "Funded Next", "FundingTicks", "TopStep", "TopStep RTP",
+        "MFFU_Flex", "Funded Next", "TopStep", "TopStep RTP",
         "TradeDay", "AlphaFutures", "Tradeify", "Apex",
-        "Top One Futures", "The5ers", "Funded Futures Family", "GoatFunded",
-        "Funded Next Flex", "FTMO Futures",
+        "Top One Futures", "Funded Futures Family",
+        "Funded Next Flex", "FTMO Futures Pro",
     )
 
     for firm in remaining_firms:
