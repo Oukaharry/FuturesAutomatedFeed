@@ -6,7 +6,7 @@ from tests.simulate_lucid_flex_50k import run_simulation
 
 def _config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 140,
         "tradovate_sl_ticks": 200,

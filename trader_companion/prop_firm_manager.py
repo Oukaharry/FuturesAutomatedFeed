@@ -118,7 +118,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
@@ -129,7 +129,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
@@ -140,7 +140,7 @@ class PropFirmManager:
                     },
                     "challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
@@ -151,7 +151,7 @@ class PropFirmManager:
                     },
                     "challenge_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
@@ -162,7 +162,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 300,
                             "tradovate_sl_ticks": 133,
@@ -173,7 +173,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 267,
                             "tradovate_sl_ticks": 133,
@@ -184,7 +184,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 267,
                             "tradovate_sl_ticks": 133,
@@ -195,7 +195,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 267,
                             "tradovate_sl_ticks": 133,
@@ -206,7 +206,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 154,
                             "tradovate_sl_ticks": 600,
@@ -224,7 +224,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
@@ -235,7 +235,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
@@ -246,9 +246,9 @@ class PropFirmManager:
                     },
                     "challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 101,
+                            "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 10.4,
                             "mt5_tp_points": 46,
@@ -257,7 +257,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 520,
                             "tradovate_sl_ticks": 200,
@@ -268,7 +268,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 220,
                             "tradovate_sl_ticks": 260,
@@ -279,7 +279,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 220,
                             "tradovate_sl_ticks": 245,
@@ -290,7 +290,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 220,
                             "tradovate_sl_ticks": 238,
@@ -301,7 +301,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -319,7 +319,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 127,
                             "tradovate_sl_ticks": 250,
@@ -330,7 +330,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 127,
                             "tradovate_sl_ticks": 250,
@@ -341,7 +341,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 250,
@@ -352,7 +352,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 250,
@@ -363,7 +363,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 250,
@@ -374,7 +374,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 250,
@@ -385,7 +385,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -403,7 +403,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 151,
                             "topstepx_sl_ticks": 201,
@@ -414,7 +414,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 151,
                             "topstepx_sl_ticks": 201,
@@ -425,7 +425,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 340,
                             "topstepx_sl_ticks": 201,
@@ -436,7 +436,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 161,
@@ -447,7 +447,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 146,
@@ -458,7 +458,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 139,
@@ -468,7 +468,7 @@ class PropFirmManager:
                         }
                     },"funded_trade_doubledip_1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 340,
                             "topstepx_sl_ticks": 201,
@@ -478,7 +478,7 @@ class PropFirmManager:
                         }
                     },"funded_trade_doubledip_2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 161,
@@ -488,7 +488,7 @@ class PropFirmManager:
                         }
                     },"funded_trade_doubledip_3": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 146,
@@ -498,7 +498,7 @@ class PropFirmManager:
                         }
                     },"funded_trade_doubledip_4": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 140,
                             "topstepx_sl_ticks": 139,
@@ -509,7 +509,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "topstepx_symbol": "MNQU26",
+                            "topstepx_symbol": "MNQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 154,
                             "topstepx_sl_ticks": 600,
@@ -540,7 +540,7 @@ class PropFirmManager:
                     # single loss does not breach the daily limit.
                     "challenge_trade1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 151,
                             "topstepx_sl_ticks": 100,
@@ -551,7 +551,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 151,
                             "topstepx_sl_ticks": 100,
@@ -571,7 +571,7 @@ class PropFirmManager:
                     # net out at the new TP/SL ratios before live use.
                     "funded_trade1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
@@ -582,9 +582,9 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 20,
                             "mt5_tp_points": 36,
@@ -593,9 +593,9 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 18.0,
                             "mt5_tp_points": 32,
@@ -604,9 +604,9 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 13.6,
                             "mt5_tp_points": 30,
@@ -620,7 +620,7 @@ class PropFirmManager:
                     # before enabling Payout-2+ hedged trading.
                     "funded_trade1_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -631,7 +631,7 @@ class PropFirmManager:
                     },
                     "funded_trade2_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -642,7 +642,7 @@ class PropFirmManager:
                     },
                     "funded_trade3_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -657,7 +657,7 @@ class PropFirmManager:
                     # hold the recurring Payout-2+ flavor.
                     "funded_trade_doubledip_1": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
@@ -668,9 +668,9 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 20,
                             "mt5_tp_points": 36,
@@ -679,9 +679,9 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_3": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 9,
                             "mt5_tp_points": 32,
@@ -690,9 +690,9 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_4": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
-                            "topstepx_tp_ticks": 47,
+                            "topstepx_tp_ticks": 114,
                             "topstepx_sl_ticks": 100,
                             "mt5_volume": 20,
                             "mt5_tp_points": 30,
@@ -706,7 +706,7 @@ class PropFirmManager:
                     # values left at 0 — fill before enabling.
                     "funded_trade_doubledip_1_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -717,7 +717,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_2_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -728,7 +728,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_3_p2": {
                         "50k": {
-                            "topstepx_symbol": "NQU26",
+                            "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 47,
                             "topstepx_sl_ticks": 100,
@@ -743,7 +743,7 @@ class PropFirmManager:
                     # the standard TopStep blueprint.
                     "farming": {
                         "50k": {
-                            "topstepx_symbol": "MNQU26",
+                            "topstepx_symbol": "MNQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 154,
                             "topstepx_sl_ticks": 600,
@@ -761,7 +761,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
                             "tradovate_sl_ticks": 200,
@@ -772,7 +772,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
                             "tradovate_sl_ticks": 200,
@@ -783,7 +783,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 340,
                             "tradovate_sl_ticks": 200,
@@ -794,7 +794,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 140,
                             "tradovate_sl_ticks": 170,
@@ -805,7 +805,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 140,
                             "tradovate_sl_ticks": 160,
@@ -816,7 +816,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 140,
                             "tradovate_sl_ticks": 155,
@@ -827,7 +827,7 @@ class PropFirmManager:
                     },
                     "funded_trade5": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 140,
                             "tradovate_sl_ticks": 150,
@@ -838,7 +838,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 154,
                             "tradovate_sl_ticks": 600,
@@ -856,7 +856,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 62,
                             "tradovate_sl_ticks": 200,
@@ -867,7 +867,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 62,
                             "tradovate_sl_ticks": 200,
@@ -878,7 +878,7 @@ class PropFirmManager:
                     },
                     "challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 62,
                             "tradovate_sl_ticks": 200,
@@ -889,7 +889,7 @@ class PropFirmManager:
                     },
                     "challenge_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 62,
                             "tradovate_sl_ticks": 200,
@@ -900,7 +900,7 @@ class PropFirmManager:
                     },
                     "challenge_trade5": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 62,
                             "tradovate_sl_ticks": 200,
@@ -911,7 +911,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 200,
@@ -922,7 +922,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 200,
@@ -933,7 +933,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 200,
@@ -944,7 +944,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -960,7 +960,7 @@ class PropFirmManager:
                 # Platform: Alpha Trader (futures.alphatrader.com) — migrated from Tradovate 2026.
                 # Connector: connectors/alphatrader_connector.py
                 # tradovate_symbol field is still used for symbol lookup; connector maps it to
-                # Alpha Trader contract_id (e.g. "NQU6" → "NQ", "MNQU6" → "MNQ").
+                # Alpha Trader contract_id (e.g. "NQZ6" → "NQ", "MNQZ6" → "MNQ").
                 "account_sizes": ["$50,000", "$100,000", "$150,000"],
                 "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
                 "compliance_rules": {
@@ -969,7 +969,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -978,7 +978,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -987,7 +987,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -998,7 +998,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1007,7 +1007,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1016,7 +1016,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1027,7 +1027,7 @@ class PropFirmManager:
                     },
                     "challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1036,7 +1036,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1045,7 +1045,7 @@ class PropFirmManager:
                             "mt5_sl_points": 55
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 135,
                             "tradovate_sl_ticks": 175,
@@ -1056,7 +1056,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 175,
@@ -1065,7 +1065,7 @@ class PropFirmManager:
                             "mt5_sl_points": 154
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 175,
@@ -1074,7 +1074,7 @@ class PropFirmManager:
                             "mt5_sl_points": 154
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 175,
@@ -1085,7 +1085,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 175,
@@ -1094,7 +1094,7 @@ class PropFirmManager:
                             "mt5_sl_points": 29
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 175,
@@ -1103,7 +1103,7 @@ class PropFirmManager:
                             "mt5_sl_points": 29
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 175,
@@ -1114,7 +1114,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1123,7 +1123,7 @@ class PropFirmManager:
                             "mt5_sl_points": 54
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1132,7 +1132,7 @@ class PropFirmManager:
                             "mt5_sl_points": 54
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1143,7 +1143,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1152,7 +1152,7 @@ class PropFirmManager:
                             "mt5_sl_points": 54
                         },
                         "100k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 4,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1161,7 +1161,7 @@ class PropFirmManager:
                             "mt5_sl_points": 54
                         },
                         "150k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 6,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 175,
@@ -1172,7 +1172,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -1190,7 +1190,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
@@ -1201,7 +1201,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
@@ -1211,7 +1211,7 @@ class PropFirmManager:
                         }
                     },"challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
@@ -1222,7 +1222,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 540,
                             "tradovate_sl_ticks": 200,
@@ -1233,7 +1233,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 240,
                             "tradovate_sl_ticks": 260,
@@ -1244,7 +1244,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 240,
                             "tradovate_sl_ticks": 245,
@@ -1255,7 +1255,7 @@ class PropFirmManager:
                     },
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 240,
                             "tradovate_sl_ticks": 238,
@@ -1266,7 +1266,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 154,
                             "tradovate_sl_ticks": 600,
@@ -1284,7 +1284,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 310,
                             "tradovate_sl_ticks": 100,
@@ -1295,7 +1295,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 410,
                             "tradovate_sl_ticks": 100,
@@ -1306,7 +1306,7 @@ class PropFirmManager:
                     },
                     "payout1_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 250,
                             "tradovate_sl_ticks": 100,
@@ -1317,7 +1317,7 @@ class PropFirmManager:
                     },
                     "payout1_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 250,
                             "tradovate_sl_ticks": 100,
@@ -1328,7 +1328,7 @@ class PropFirmManager:
                     },
                     "payout2_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 100,
@@ -1339,7 +1339,7 @@ class PropFirmManager:
                     },
                     "payout2_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 100,
@@ -1350,7 +1350,7 @@ class PropFirmManager:
                     },
                     "payout3_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 100,
@@ -1361,7 +1361,7 @@ class PropFirmManager:
                     },
                     "payout3_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 100,
@@ -1372,7 +1372,7 @@ class PropFirmManager:
                     },
                     "payout4_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 100,
@@ -1383,7 +1383,7 @@ class PropFirmManager:
                     },
                     "payout4_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 150,
                             "tradovate_sl_ticks": 100,
@@ -1394,7 +1394,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 173,
                             "tradovate_sl_ticks": 500,
@@ -1412,7 +1412,7 @@ class PropFirmManager:
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 202,
                             "tradovate_sl_ticks": 200,
@@ -1423,7 +1423,7 @@ class PropFirmManager:
                     },
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
@@ -1435,7 +1435,7 @@ class PropFirmManager:
                     },
                     "funded_trade1a": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
@@ -1447,7 +1447,7 @@ class PropFirmManager:
                     },
                     "funded_trade1b": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 300,
                             "tradovate_sl_ticks": 200,
@@ -1459,7 +1459,7 @@ class PropFirmManager:
                     },
                     "funded_trade1c": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 180,
@@ -1471,7 +1471,7 @@ class PropFirmManager:
                     },
                     "funded_trade1d": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
@@ -1483,7 +1483,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 100,
@@ -1495,7 +1495,7 @@ class PropFirmManager:
                     },
                     "funded_trade2a": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 400,
                             "tradovate_sl_ticks": 200,
@@ -1507,7 +1507,7 @@ class PropFirmManager:
                     },
                     "funded_trade2b": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 80,
@@ -1519,7 +1519,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
@@ -1531,7 +1531,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_1a": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
@@ -1543,7 +1543,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_1b": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 300,
                             "tradovate_sl_ticks": 200,
@@ -1555,7 +1555,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_1c": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 180,
@@ -1567,7 +1567,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_1d": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
@@ -1579,7 +1579,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 200,
                             "tradovate_sl_ticks": 100,
@@ -1591,7 +1591,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_2a": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 400,
                             "tradovate_sl_ticks": 200,
@@ -1603,7 +1603,7 @@ class PropFirmManager:
                     },
                     "funded_trade_doubledip_2b": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 1,
                             "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 80,
@@ -1615,7 +1615,7 @@ class PropFirmManager:
                     },
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -1699,7 +1699,7 @@ class PropFirmManager:
                     # tradovate_sl_ticks=200 is the fallback if balance can't be read.
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
@@ -1716,7 +1716,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
@@ -1730,7 +1730,7 @@ class PropFirmManager:
                     },
                     "challenge_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
@@ -1749,7 +1749,7 @@ class PropFirmManager:
                     # Biggest trade = $940 / $3,760 = 25% — compliant at trade 4.
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 94,
                             "tradovate_sl_ticks": 100,
@@ -1765,7 +1765,7 @@ class PropFirmManager:
                     # Keep each trade ≤ 40% of running cumulative profits.
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
@@ -1779,7 +1779,7 @@ class PropFirmManager:
                     # ── Payout 3 ───────────────────────────────────────────────────
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
@@ -1793,7 +1793,7 @@ class PropFirmManager:
                     # ── Payout 4+ ──────────────────────────────────────────────────
                     "funded_trade4": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
@@ -1810,7 +1810,7 @@ class PropFirmManager:
                     # 2 MNQ × 154 ticks × $0.50 = $154.
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty":    2,
                     "compliance_rules": {
                         "consistency_pct": 0.40,
@@ -1839,7 +1839,7 @@ class PropFirmManager:
                     # Challenge: 2 trades at 50% consistency · $1,510 each (2 NQ × 151 ticks × $5)
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
                             "tradovate_sl_ticks": 200,
@@ -1851,7 +1851,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
                             "tradovate_sl_ticks": 200,
@@ -1864,7 +1864,7 @@ class PropFirmManager:
                     # Funded: each trade ~$1,680 (2 NQ × 168 ticks × $5; target $1,675)
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 168,
                             "tradovate_sl_ticks": 200,
@@ -1876,7 +1876,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 168,
                             "tradovate_sl_ticks": 200,
@@ -1888,7 +1888,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 168,
                             "tradovate_sl_ticks": 200,
@@ -1901,7 +1901,7 @@ class PropFirmManager:
                     # Farming: $204 (2 MNQ × 204 ticks × $0.50)
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -1933,7 +1933,7 @@ class PropFirmManager:
                     # SL=133t × 3 minis × $5 = $1,995 (within $2k max drawdown)
                     "challenge_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 101,
                             "tradovate_sl_ticks": 133,
@@ -1944,7 +1944,7 @@ class PropFirmManager:
                     },
                     "challenge_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 101,
                             "tradovate_sl_ticks": 133,
@@ -1956,7 +1956,7 @@ class PropFirmManager:
                     # Funded (Live Account): SL fixed to protect $2k max drawdown
                     "funded_trade1": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 500,
                             "tradovate_sl_ticks": 133,
@@ -1967,7 +1967,7 @@ class PropFirmManager:
                     },
                     "funded_trade2": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 133,
                             "tradovate_sl_ticks": 133,
@@ -1978,7 +1978,7 @@ class PropFirmManager:
                     },
                     "funded_trade3": {
                         "50k": {
-                            "tradovate_symbol": "NQU6",
+                            "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 133,
                             "tradovate_sl_ticks": 133,
@@ -1990,7 +1990,7 @@ class PropFirmManager:
                     # Farming: micro contracts (30 micros max)
                     "farming": {
                         "50k": {
-                            "tradovate_symbol": "MNQU6",
+                            "tradovate_symbol": "MNQZ6",
                             "tradovate_qty": 3,
                             "tradovate_tp_ticks": 204,
                             "tradovate_sl_ticks": 600,
@@ -2095,37 +2095,37 @@ class PropFirmManager:
             },
             "strategy_configs": {
                 "challenge_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade3": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 200, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "farming": {"50k": {
-                    "tradovate_symbol": "MNQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 1000, "tradovate_sl_ticks": 500,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2163,75 +2163,75 @@ class PropFirmManager:
                 "payout1_retained_balance": 52800,
                 "funded_cycle_hard_floor": 50100,
                 "position_contracts": 2,
-                "position_symbol": "NQU6",
+                "position_symbol": "NQZ6",
             },
             "strategy_configs": {
                 # Evaluation Phase — goal $53,000 (start $50,000)
                 "challenge_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 300, "tradovate_sl_ticks": 100,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade1_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 404, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Cycle 1 — goal $54,000 (start $50,000)
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 400, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade1_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 500, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Cycle 2 — goal $53,300; 3 escalating attempts
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 50, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2_recovery1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 150, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2_recovery2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 250, "tradovate_sl_ticks": 70,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Cycles 3-5 — goal $53,300 each; same structure repeats
                 "funded_trade3": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade3_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 120, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 220, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2277,38 +2277,38 @@ class PropFirmManager:
             "strategy_configs": {
                 # Evaluation — repeat daily until balance = $53,000
                 "challenge_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1 — Build (goal $56,000)
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1R — Recovery (repeat up to twice)
                 "funded_trade1_recovery": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1C — Cleanup; TP recomputed from live balance,
                 # values below are the $55,050 example from the spec.
                 "funded_trade1_cleanup": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 601, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Qualifying Days — need 5 days at $200+ before any payout
                 "qualifying_day": {"50k": {
-                    "tradovate_symbol": "MNQU6", "tradovate_qty": 3,
-                    "tradovate_tp_ticks": 138, "tradovate_sl_ticks": 600,
+                    "tradovate_symbol": "MNQZ6", "tradovate_qty": 3,
+                    "tradovate_tp_ticks": 140, "tradovate_sl_ticks": 600,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 2 — repeats for payouts 2, 3, 4...
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 95,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2348,39 +2348,39 @@ class PropFirmManager:
             "strategy_configs": {
                 # Evaluation — fixed 2-day target
                 "challenge_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 151, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 151, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded build — 4 cycles, each into Farming on TP
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 541, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 260,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade3": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 245,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 241, "tradovate_sl_ticks": 238,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Qualifying farming — 5 days at $150+ minimum
                 "farming": {"50k": {
-                    "tradovate_symbol": "MNQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "MNQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 154, "tradovate_sl_ticks": 600,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
@@ -2429,54 +2429,179 @@ class PropFirmManager:
             "strategy_configs": {
                 # Evaluation — 2 fixed days, +$1,500 each
                 "challenge_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 400,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 1 — overshoot to $55,000
                 "funded_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 501, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trade 2 — wide SL funded by Payout 1's retained equity
                 "funded_trade2": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 290,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded Trades 3-5 — identical stage, repeats through Payout 5
                 "funded_trade3": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade4": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "funded_trade5": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 190,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Farming — post-TP buffer, run until 5 winning days are logged
                 "farming": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 1,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 1,
                     "tradovate_tp_ticks": 32, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Live Session 1 — post-Payout-5 promotion, single attempt
                 "live_trade1": {"50k": {
-                    "tradovate_symbol": "NQU6", "tradovate_qty": 2,
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 210, "tradovate_sl_ticks": 200,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                }},
+            },
+        }
+
+        # MFFU Builder 50K — Tradovate-only (no MT5 hedge), fixed 2× NQ mini,
+        # 100-tick SL at order time via randomize_trade_config. Extra phase keys
+        # (recovery / cycle / rebuild) vs Flex; progression in _PHASE_TRADE_ORDER.
+        self.firm_blueprints["MFFU Builder 50K"] = {
+            "name": "MFFU Builder 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Challenge Phase", "Funded Phase"],
+            "broker_platform": "Tradovate",
+            "rules": {
+                "evaluation_fee": 76.50,
+                "max_loss": 2000,
+                "payout_gross": 2000,
+                "payout_net": 1600,
+                "payout_request_balance": 54100,
+                "payout_retained_balance": 52100,
+                "funded_floor": 50100,
+                "funded_cycle_hard_floor": 50100,
+                "profit_split": "80/20",
+                "one_resolved_trade_per_day": True,
+                "no_hedge": True,
+                "payout_count": 5,
+            },
+            "state_machine": {
+                "evaluation": {
+                    "start": "challenge_trade1",
+                    "challenge_trade1_win": "funded_trade1",
+                    "challenge_trade1_loss": "challenge_recovery",
+                    "challenge_recovery_win": "funded_trade1",
+                    "challenge_recovery_loss": "evaluation_failed",
+                },
+                "funded": {
+                    "start": "funded_trade1",
+                    "payout_target_balance": 54100,
+                    "payout_retained_balance": 52100,
+                    "payout_count": 5,
+                },
+            },
+            "strategy_configs": {
+                "challenge_trade1": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "challenge_recovery": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 401, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_trade1": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_trade2": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_trade3": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_recovery1": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_recovery2": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "funded_recovery3": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 206, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "finishing_trade": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "rebuild_trade": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "rebuild_trade2": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 201, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "cycle_trade_a": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "cycle_trade_b": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
+                }},
+                "cycle_recovery": {"50k": {
+                    "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
+                    "tradovate_tp_ticks": 101, "tradovate_sl_ticks": 100,
+                    "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
+                    "disable_tp_adjustment": True, "no_hedge": True,
                 }},
             },
         }
@@ -2501,71 +2626,6 @@ class PropFirmManager:
             rapid_eod_configs[phase_key]["50k"]["tradovate_tp_ticks"] = 267
         rapid_eod_configs["funded_trade5"] = copy.deepcopy(rapid_eod_configs["funded_trade4"])
         self.firm_blueprints["MFFU Rapid EOD"] = rapid_eod
-
-        builder = copy.deepcopy(self.firm_blueprints["MFFU_Flex"])
-        builder["name"] = "MFFU Builder 50K"
-        builder["trading_phases"] = ["Challenge Phase", "Funded Phase", "Farming Phase"]
-        builder["rules"] = {
-            "evaluation_fee": 76.50,
-            "max_loss": 2000,
-            "payout_gross": 2000,
-            "payout_net": 1600,
-            "payout_request_balance": 54100,
-            "payout_retained_balance": 52100,
-            "funded_floor": 50100,
-            "funded_cycle_hard_floor": 50100,
-            "profit_split": "80/20",
-            "one_resolved_trade_per_day": True,
-            "no_hedge": True,
-            "payout_count": 5,
-        }
-        builder["state_machine"] = {
-            "evaluation": {
-                "start": "challenge_trade1",
-                "challenge_trade1_win": "funded_trade1",
-                "challenge_trade1_loss": "challenge_recovery",
-                "challenge_recovery_win": "funded_trade1",
-                "challenge_recovery_loss": "evaluation_failed",
-            },
-            "funded": {
-                "start": "funded_trade1",
-                "payout_target_balance": 54100,
-                "payout_retained_balance": 52100,
-                "payout_count": 5,
-            },
-        }
-        builder_base = {
-            "tradovate_symbol": "NQU6",
-            "tradovate_qty": 2,
-            "tradovate_sl_ticks": 100,
-            "mt5_volume": 0,
-            "mt5_tp_points": 0,
-            "mt5_sl_points": 0,
-            "disable_tp_adjustment": True,
-            "no_hedge": True,
-        }
-
-        def builder_config(tp_ticks):
-            return {**builder_base, "tradovate_tp_ticks": tp_ticks}
-
-        builder["strategy_configs"] = {
-            "challenge_trade1": {"50k": builder_config(301)},
-            "challenge_recovery": {"50k": builder_config(401)},
-            "funded_trade1": {"50k": builder_config(206)},
-            "funded_trade2": {"50k": builder_config(206)},
-            "funded_trade3": {"50k": builder_config(206)},
-            "funded_recovery1": {"50k": builder_config(206)},
-            "funded_recovery2": {"50k": builder_config(206)},
-            "funded_recovery3": {"50k": builder_config(206)},
-            "finishing_trade": {"50k": builder_config(101)},
-            "rebuild_trade": {"50k": builder_config(201)},
-            "rebuild_trade2": {"50k": builder_config(201)},
-            "cycle_trade_a": {"50k": builder_config(101)},
-            "cycle_trade_b": {"50k": builder_config(101)},
-            "cycle_recovery": {"50k": builder_config(101)},
-            "farming": {"50k": builder_config(0)},
-        }
-        self.firm_blueprints["MFFU Builder 50K"] = builder
 
         xfa = copy.deepcopy(self.firm_blueprints["TopStep"])
         xfa["name"] = "TopStep 50K XFA"
@@ -3054,7 +3114,7 @@ class PropFirmManager:
                         firm_code=self.current_firm_code or "")
                 else:
                     ultimate_fallback = {
-                        "tradovate_symbol": "MNQU6",
+                        "tradovate_symbol": "MNQZ6",
                         "tradovate_qty": 2,
                         "tradovate_tp_ticks": 154,
                         "tradovate_sl_ticks": 400,
@@ -3132,7 +3192,6 @@ class PropFirmManager:
                 "finishing_trade", "rebuild_trade", "rebuild_trade2",
                 "cycle_trade_a", "cycle_trade_b", "cycle_recovery",
             ],
-            "Farming": ["farming"],
         },
         "MFFU Rapid EOD": {
             "Challenge":  ["challenge_trade1", "challenge_trade2", "challenge_trade3", "challenge_trade4"],
@@ -3592,7 +3651,7 @@ class PropFirmManager:
                              firm_code: str) -> Dict:
         """Adjust MT5 TP for farming trades based on hard-stop proximity.
 
-        Farming trades use micro contracts (MNQU6).  If the MT5 TP is so
+        Farming trades use micro contracts (MNQZ6).  If the MT5 TP is so
         large that the prop account would breach the hard-stop threshold
         before MT5 closes, we cap MT5 TP to a safe distance.
 
@@ -4126,7 +4185,7 @@ class PropFirmManager:
             return False
 
         if firm in ("MFFU Builder 50K", "MFFU Builder", "MFFU_Builder"):
-            cfg["tradovate_symbol"] = "NQU6"
+            cfg["tradovate_symbol"] = "NQZ6"
             cfg["tradovate_qty"] = 2
             cfg["tradovate_sl_ticks"] = 100
             cfg["mt5_volume"] = 0
@@ -4489,7 +4548,7 @@ class PropFirmManager:
                 state = self._account_random_state.setdefault(account_id, {})
                 qty = int(state.setdefault("lucid_eval_qty", random.choice((1, 2))))
                 cfg["tradovate_qty"] = qty
-                cfg["tradovate_symbol"] = "NQU6"
+                cfg["tradovate_symbol"] = "NQZ6"
                 cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
                 cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
             elif phase.startswith("funded_trade1"):
@@ -4497,7 +4556,7 @@ class PropFirmManager:
                 target = self._random_state_value(
                     account_key, "lucid_ft1_target_dollars", 53000, 54000)
                 cfg["tradovate_qty"] = 2
-                cfg["tradovate_symbol"] = "NQU6"
+                cfg["tradovate_symbol"] = "NQZ6"
                 tp = max(1, min(600, int(math.floor((target - 50000.0 + 17.0) / 10.0))))
                 owner = self._lucid_funded_tp_owners.get(tp)
                 while owner is not None and owner != account_id:
@@ -4523,7 +4582,7 @@ class PropFirmManager:
                 offset = self._draw_uniform(1300, 1700)
                 target = cycle_start + offset
                 cfg["tradovate_qty"] = 2
-                cfg["tradovate_symbol"] = "NQU6"
+                cfg["tradovate_symbol"] = "NQZ6"
                 tp = max(0, min(600, int(math.floor((target - balance + 17.0) / 10.0))))
                 owner = self._lucid_funded_tp_owners.get(tp)
                 while owner is not None and owner != account_id:
@@ -4547,7 +4606,7 @@ class PropFirmManager:
             elif is_farming:
                 account_id = str(account_key or "default")
                 cfg["tradovate_qty"] = 1
-                cfg["tradovate_symbol"] = "MNQU6"
+                cfg["tradovate_symbol"] = "MNQZ6"
                 cfg["tradovate_qty"] = 2
                 cfg["tradovate_tp_ticks"] = 156
                 randomize_farming_sl()
@@ -4563,8 +4622,8 @@ class PropFirmManager:
             if phase.startswith("challenge_trade"):
                 if "blue_guardian_eval_setup" not in state:
                     state["blue_guardian_eval_setup"] = random.choice((
-                        ("NQU6", 1, 1), ("NQU6", 2, 2),
-                        ("MNQU6", 10, 1), ("MNQU6", 20, 2),
+                        ("NQZ6", 1, 1), ("NQZ6", 2, 2),
+                        ("MNQZ6", 10, 1), ("MNQZ6", 20, 2),
                     ))
                 symbol, qty, divisor = state["blue_guardian_eval_setup"]
                 tp = int(math.floor(self._draw_uniform(300, 304) / divisor))

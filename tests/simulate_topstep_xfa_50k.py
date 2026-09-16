@@ -21,7 +21,7 @@ TICK_DOLLARS_MNQ = 2.0
 
 def _config():
     return {
-        "topstepx_symbol": "NQU26",
+        "topstepx_symbol": "NQZ26",
         "topstepx_qty": 2,
         "topstepx_tp_ticks": 400,
         "topstepx_sl_ticks": 200,
@@ -30,7 +30,7 @@ def _config():
 
 def _farm_config():
     return {
-        "topstepx_symbol": "MNQU26",
+        "topstepx_symbol": "MNQZ26",
         "topstepx_qty": 2,
         "topstepx_tp_ticks": 154,
         "topstepx_sl_ticks": 520,

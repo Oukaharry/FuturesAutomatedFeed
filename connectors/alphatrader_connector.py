@@ -50,9 +50,9 @@ TOKEN_REFRESH = 300     # refresh token this many seconds before expiry
 
 # Tradovate symbol -> Alpha Trader contract_id
 SYMBOL_MAP: dict[str, str] = {
-    "NQ": "NQ",   "NQU6": "NQ",  "NQM6": "NQ",  "NQH6": "NQ",  "NQZ6": "NQ",
+    "NQ": "NQ",   "NQZ6": "NQ",  "NQM6": "NQ",  "NQH6": "NQ",  "NQU6": "NQ",
     "NQU5": "NQ", "NQM5": "NQ",  "NQH5": "NQ",  "NQZ5": "NQ",
-    "MNQ": "MNQ", "MNQU6": "MNQ","MNQM6": "MNQ","MNQH6": "MNQ","MNQZ6": "MNQ",
+    "MNQ": "MNQ", "MNQZ6": "MNQ","MNQM6": "MNQ","MNQH6": "MNQ","MNQU6": "MNQ",
     "ES":  "ES",  "ESU6": "ES",  "ESM6": "ES",  "ESH6": "ES",  "ESZ6": "ES",
     "MES": "MES", "MESU6": "MES","MESM6": "MES",
     "GC":  "GC",  "GCM6": "GC", "GCQ6": "GC",  "GCZ6": "GC",

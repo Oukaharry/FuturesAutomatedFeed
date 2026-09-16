@@ -20,7 +20,7 @@ MNQ_TICK_DOLLARS = 1.5
 
 def _nq_config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 95,
@@ -29,7 +29,7 @@ def _nq_config():
 
 def _mnq_config():
     return {
-        "tradovate_symbol": "MNQU6",
+        "tradovate_symbol": "MNQZ6",
         "tradovate_qty": 3,
         "tradovate_tp_ticks": 138,
         "tradovate_sl_ticks": 500,

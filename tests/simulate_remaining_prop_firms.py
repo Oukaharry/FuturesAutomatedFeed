@@ -38,7 +38,7 @@ def _config(manager, firm, phase):
     if config:
         return config
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
@@ -46,7 +46,7 @@ def _config(manager, firm, phase):
 
 
 def _tick_value(manager, config):
-    symbol = config.get("tradovate_symbol") or config.get("topstepx_symbol") or "NQU6"
+    symbol = config.get("tradovate_symbol") or config.get("topstepx_symbol") or "NQZ6"
     return manager.get_tick_value(symbol)
 
 

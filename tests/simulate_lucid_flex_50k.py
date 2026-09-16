@@ -21,7 +21,7 @@ MNQ_TICK_DOLLARS = 1.0
 
 def _eval_config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 1,
         "tradovate_tp_ticks": 304,
         "tradovate_sl_ticks": 400,
@@ -30,7 +30,7 @@ def _eval_config():
 
 def _funded_config(cycle_start):
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 140,
         "tradovate_sl_ticks": 200,
@@ -40,7 +40,7 @@ def _funded_config(cycle_start):
 
 def _farm_config():
     return {
-        "tradovate_symbol": "MNQU6",
+        "tradovate_symbol": "MNQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 156,
         "tradovate_sl_ticks": 500,

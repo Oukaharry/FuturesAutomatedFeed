@@ -36,7 +36,7 @@ MIN_FT2_BALANCE = 50100.0
 
 def _config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 201,
         "tradovate_sl_ticks": 190,
@@ -45,7 +45,7 @@ def _config():
 
 def _farm_config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 1,
         "tradovate_tp_ticks": 31,
         "tradovate_sl_ticks": 200,

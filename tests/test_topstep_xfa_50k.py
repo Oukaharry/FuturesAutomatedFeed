@@ -6,7 +6,7 @@ from tests.simulate_topstep_xfa_50k import run_simulation
 
 def _config():
     return {
-        "topstepx_symbol": "NQU26",
+        "topstepx_symbol": "NQZ26",
         "topstepx_qty": 2,
         "topstepx_tp_ticks": 400,
         "topstepx_sl_ticks": 200,

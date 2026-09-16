@@ -51,9 +51,11 @@ FILL_WAIT        = 5      # seconds to poll for Avg fill price after market entr
 # BlackArrow uses price-based TP/SL orders, so ticks → price offset.
 TICK_SIZES: dict = {
     "NQFUT":  0.25,
+    "NQZ6":   0.25,
     "NQU6":   0.25,
     "NQFU6":  0.25,
     "MNQFUT": 0.25,
+    "MNQZ6":  0.25,
     "MNQU6":  0.25,
 }
 

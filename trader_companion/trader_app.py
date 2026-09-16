@@ -400,8 +400,8 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
 def _to_topstepx_symbol(sym):
     """Convert Tradovate-style futures symbol to TopStepX-style.
 
-    Tradovate uses a single-digit year (e.g. NQU6 = NQ Sep 2026).
-    TopStepX expects a two-digit year (e.g. NQU26).
+    Tradovate uses a single-digit year (e.g. NQZ6 = NQ Dec 2026).
+    TopStepX expects a two-digit year (e.g. NQZ26).
 
     Recognized month codes: F G H J K M N Q U V X Z
     Returns the input unchanged if it doesn't look like a futures symbol.
@@ -7620,7 +7620,7 @@ class TradeOpssAIApp:
                     # dropdown here. place_*_order verifies the selector still matches
                     # acct_num (expected_account) and only switches if it drifted,
                     # so we stay fast while never firing on the wrong account.
-                    # TopStepX uses two-digit year futures codes (NQU26, MNQU26)
+                    # TopStepX uses two-digit year futures codes (NQZ26, MNQZ26)
                     _tsx_sym = _to_topstepx_symbol(trado_sym)
                     # Convert ticks to dollars for TopStepX: dollars = ticks * tick_value * quantity
                     _tsx_tick_val = self.prop_firm_mgr.get_tick_value(_tsx_sym) if self.prop_firm_mgr else 0.5
@@ -9537,7 +9537,7 @@ class TradeOpssAIApp:
                         # dropdown here. place_*_order verifies the selector still matches
                         # acct_num (expected_account) and only switches if it drifted,
                         # so we stay fast while never firing on the wrong account.
-                        # TopStepX uses two-digit year futures codes (NQU26, MNQU26)
+                        # TopStepX uses two-digit year futures codes (NQZ26, MNQZ26)
                         _tsx_sym = _to_topstepx_symbol(trado_sym)
                         _tsx_tick_val = self.prop_firm_mgr.get_tick_value(_tsx_sym) if self.prop_firm_mgr else 0.5
                         _tsx_tp_dollars = trado_tp * _tsx_tick_val * trado_qty
