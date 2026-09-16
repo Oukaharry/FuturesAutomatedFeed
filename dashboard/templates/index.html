@@ -5296,8 +5296,10 @@
                 const propProgressKey = `Prop Progress ${i}`;
                 const hedgeDayKey = `Hedge Day ${i}`;
                 
+                const propDayVal = (ev[propDayKey] === null || ev[propDayKey] === undefined) ? '' : ev[propDayKey];
+
                 // 1. Extract Note Content for Prop Progress
-                let progressContent = ev[propProgressKey] || '';
+                let progressContent = propDayVal ? (ev[propProgressKey] || '') : '';
                 let hasNote = false;
                 if (ev._notes && ev._notes[propDayKey]) {
                     progressContent = ev._notes[propDayKey];
@@ -5314,7 +5316,6 @@
                 // Render Prop Day
                 // Note: We're passing the propDayKey which cell() uses to lookup note.
                 // Since we deleted it, no note indicator will appear.
-                const propDayVal = (ev[propDayKey] === null || ev[propDayKey] === undefined) ? '' : ev[propDayKey];
                 html += cell(getInputHtml(propDayVal, 'text', index, propDayKey, readOnly), propDayKey);
                 
                 // Restore note immediately after rendering the cell so data is consistent
@@ -5327,20 +5328,24 @@
                 const displayValue = progressContent.replace(/\n/g, ' ').replace(/"/g, '&quot;');
                 const noteClass = hasNote ? 'has-note' : '';
                 
+                if (hasNote) {
                     const propDayFieldAttr = _escapeNoteFieldAttr(propDayKey);
                     html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;"
                                     data-eval-index="${index}"
                                     data-eval-field="${propDayFieldAttr}"
-                                    ${hasNote ? `title="${displayValue}"` : ''}>
-                                <input type="text" 
-                                    class="cell-input" 
-                                    value="${displayValue}" 
+                                    title="${displayValue}">
+                                <input type="text"
+                                    class="cell-input"
+                                    value="${displayValue}"
                                     placeholder="-"
                                     onfocus="isEditing = true"
                                     ${readOnly ? 'readonly' : `oninput="syncPropProgressInput(this, ${index}, '${propDayKey}')" onblur="updatePropProgress(this, ${index}, '${propDayKey}')"`}
                                     style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
                                 >
                             </td>`;
+                } else {
+                    html += cell(getInputHtml(progressContent, 'text', index, propProgressKey, readOnly), propProgressKey);
+                }
 
                 // 4. Render Hedge Day Cell
                 const hedgeDayVal = (ev[hedgeDayKey] === null || ev[hedgeDayKey] === undefined) ? '' : ev[hedgeDayKey];

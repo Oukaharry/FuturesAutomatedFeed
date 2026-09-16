@@ -1706,7 +1706,7 @@ def _eval_push_field_blocked(ev, field_name, phase_code=''):
         if _is_weekday_or_empty_label(existing):
             return False
         return True
-    if phase_code != 'FA':
+    if phase_code != 'FA' or field_name.startswith('Prop Progress'):
         if field_name in set(ev.get('_cleared_fields') or []):
             return True
     return False
@@ -2190,8 +2190,17 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             f"(Tradovate push would have been ${net_pnl:.2f})"
         )
         return 0, False
+    prop_day_was_cleared = prop_field in set(evaluation.get('_cleared_fields') or [])
     evaluation[prop_field] = f"{net_pnl:.2f}"
     evaluation[f'_{prop_field} Date'] = date
+    if prop_day_was_cleared:
+        progress_field = f'Prop Progress {slot}'
+        cleared_fields = set(evaluation.get('_cleared_fields') or [])
+        cleared_fields.discard(progress_field)
+        if cleared_fields:
+            evaluation['_cleared_fields'] = sorted(cleared_fields)
+        else:
+            evaluation.pop('_cleared_fields', None)
     if slot == 1 and not str(evaluation.get('Date 8') or '').strip():
         evaluation['Date 8'] = date
 
@@ -13112,6 +13121,7 @@ def update_data():
                 for _i in range(1, 61):
                     PUSH_SOURCED_KEYS.add(f'Hedge Day {_i}')
                     PUSH_SOURCED_KEYS.add(f'Prop Day {_i}')
+                    PUSH_SOURCED_KEYS.add(f'Prop Progress {_i}')
                 # Payout/date fields that should only be overwritten by explicit user edits
                 # (prevents a stale browser tab from reverting dashboard-entered payouts)
                 PAYOUT_KEYS = {

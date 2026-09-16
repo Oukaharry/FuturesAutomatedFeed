@@ -46,6 +46,36 @@ def test_fifth_profitable_farming_day_queues_funded_trade_two():
     assert evaluation["Hedge Result 2.1"] == "WEDNESDAY"
 
 
+def test_cleared_prop_progress_is_not_regenerated_without_a_prop_day_clear():
+    evaluation = {
+        "Prop Day 1": "100.00",
+        "_Prop Day 1 Date": "2026-09-16",
+        "Prop Progress 1": "",
+        "_cleared_fields": ["Prop Progress 1"],
+    }
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-16", "net_pnl": 100.0}], 2, []
+    )
+
+    assert evaluation["Prop Progress 1"] == ""
+
+
+def test_refreshed_cleared_prop_day_restores_its_progress():
+    evaluation = {
+        "Prop Day 1": "",
+        "Prop Progress 1": "",
+        "_cleared_fields": ["Prop Day 1", "Prop Progress 1"],
+    }
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-16", "net_pnl": 100.0}], 2, []
+    )
+
+    assert evaluation["Prop Day 1"] == "100.00"
+    assert evaluation["Prop Progress 1"] == "2/5 9/16/26"
+
+
 def test_tradovate_only_payload_reconciles_farming_without_hedge_deals():
     evaluations = [
         {"Account #.1": "FTDFYSLX50914913722", "Status": "In Progress"},
