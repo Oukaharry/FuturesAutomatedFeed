@@ -9994,7 +9994,10 @@ class TradeOpssAIApp:
                         self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
                         return
                     account = TradovateAccount(user, pwd, trading_mode=mode)
-                    account.login()
+                    if not account.login():
+                        raise RuntimeError(
+                            "Tradovate trading session did not become ready; retry the connection."
+                        )
                 elif platform == "TopStepX":
                     if not TOPSTEPX_AVAILABLE:
                         err = _TOPSTEPX_IMPORT_ERROR or 'unknown reason'
