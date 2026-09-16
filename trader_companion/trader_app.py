@@ -1676,6 +1676,7 @@ class TradeOpssAIApp:
         self.auto_push_enabled = False
         self.auto_push_thread = None
         self._auto_push_first_run = True
+        self._last_hourly_farming_refresh = None
         self._push_lock = threading.Lock()
         self._push_in_progress = False
         self._push_pending = False
@@ -4815,12 +4816,25 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_check_positions, daemon=True).start()
 
+    def _run_hourly_farming_refresh_if_due(self):
+        """Refresh Tradovate farming history hourly while Auto-Push is enabled."""
+        if not self.auto_push_enabled:
+            return
+        now = time.monotonic()
+        last_refresh = getattr(self, "_last_hourly_farming_refresh", None)
+        if last_refresh is not None and now - last_refresh < 3600:
+            return
+        self._last_hourly_farming_refresh = now
+        self.log("🌾 Hourly farming scan — refreshing Tradovate Net P/L")
+        self.push_data(full_prop_refresh=True)
+
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
         cycle = 0
         while self.auto_push_enabled:
             try:
                 self.root.after(0, self.check_and_push_update)
+                self.root.after(0, self._run_hourly_farming_refresh_if_due)
             except Exception as e:
                 # Thread-safe: can't call self.log from background thread directly
                 try:

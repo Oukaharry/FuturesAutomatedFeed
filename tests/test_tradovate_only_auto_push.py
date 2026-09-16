@@ -18,6 +18,22 @@ def test_tradovate_only_auto_push_runs_one_initial_full_refresh():
     assert app._auto_push_first_run is False
 
 
+def test_hourly_farming_refresh_runs_only_when_due():
+    app = TradeOpssAIApp.__new__(TradeOpssAIApp)
+    app.auto_push_enabled = True
+    app._last_hourly_farming_refresh = 100.0
+    app.log = Mock()
+    app.push_data = Mock()
+
+    with patch("trader_companion.trader_app.time.monotonic", side_effect=[3699.0, 3700.0, 3701.0]):
+        app._run_hourly_farming_refresh_if_due()
+        app._run_hourly_farming_refresh_if_due()
+        app._run_hourly_farming_refresh_if_due()
+
+    app.push_data.assert_called_once_with(full_prop_refresh=True)
+    assert app._last_hourly_farming_refresh == 3700.0
+
+
 def test_farming_close_tracker_starts_one_poll_for_new_account():
     app = TradeOpssAIApp.__new__(TradeOpssAIApp)
     app._pending_farming_closes = {}
