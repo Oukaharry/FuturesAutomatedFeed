@@ -900,7 +900,7 @@ def step_probe_switch_and_trade(driver: webdriver.Chrome, email: str,
         size  = conn.get_account_size_label(firm) or "50k"
         cfg   = (blueprints.get("challenge_trade1") or {})
         phase_cfg = cfg.get(size) or cfg.get("50k", {})
-        sym   = (phase_cfg.get("tradovate_symbol") or "NQU6").upper()
+        sym   = (phase_cfg.get("tradovate_symbol") or "NQZ6").upper()
         qty   = int(phase_cfg.get("tradovate_qty") or 1)
         tp_t  = int(phase_cfg.get("tradovate_tp_ticks") or 202)
         sl_t  = int(phase_cfg.get("tradovate_sl_ticks") or 175)

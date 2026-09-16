@@ -1,0 +1,6230 @@
+{
+  "meta": {
+    "source_module": "trader_companion/prop_firm_manager.py",
+    "default_account_size_key": "50k",
+    "columns": [
+      "eval",
+      "funded",
+      "farming"
+    ],
+    "legend": {
+      "blueprint": "Static values in firm_blueprints before randomize_trade_config runs.",
+      "randomization": "What randomize_trade_config may change at order time.",
+      "runtime_note": "Many firms also adjust SL via calculate_funded_sl, calculate_adjusted_sl_midnight, or TMDL cap after randomization."
+    },
+    "runtime_sl_adjustments": {
+      "calculate_funded_sl": "Funded trade 2+: SL$ = balance - lock_level; trade 1 often fixed $2k risk (see app path).",
+      "calculate_adjusted_sl_midnight": "Challenge/intraday: widen/tighten SL from SOD balance vs blueprint SL dollars.",
+      "calculate_adjusted_sl_tmdl_cap": "Cap SL to remaining trailing drawdown before lock."
+    }
+  },
+  "prop_firms": {
+    "AlphaFutures": {
+      "display_name": "AlphaFutures",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 135,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 135
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 135,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 55,
+              "mt5_volume": 7.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 135
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 135,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 55,
+              "mt5_volume": 11.1,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 135
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 154,
+              "mt5_volume": 22,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 100,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 29,
+              "mt5_volume": 40,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 100,
+                "effective_ticks_range": [
+                  92,
+                  108
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 200,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 54,
+              "mt5_volume": 25,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 200,
+                "effective_ticks_range": [
+                  184,
+                  216
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 200,
+              "tradovate_sl_ticks": 175,
+              "mt5_tp_points": 39,
+              "mt5_sl_points": 54,
+              "mt5_volume": 15,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 200,
+                "effective_ticks_range": [
+                  184,
+                  216
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 175,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Apex": {
+      "display_name": "Apex",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Payout 3",
+        "Payout 4",
+        "Farming (Consistency)"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 310,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 82,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 310
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 410,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 107,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 410
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "static",
+        "trade_count": 8,
+        "trades": [
+          {
+            "phase_key": "payout1_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 250,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 250
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout1_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 250,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 250
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout2_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 100,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 100
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout2_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 100,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 100
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout3_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 150
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout3_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 150
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout4_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 150
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "payout4_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 21,
+              "mt5_sl_points": 54,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 150
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 173,
+              "tradovate_sl_ticks": 500,
+              "mt5_tp_points": 121,
+              "mt5_sl_points": 48,
+              "mt5_volume": 0,
+              "symbol": "MNQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 173,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  450,
+                  550
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Blue Guardian Reserve": {
+      "display_name": "Blue Guardian Reserve 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase",
+        "Live Phase"
+      ],
+      "broker_platform": "Tradovate",
+      "eval": {
+        "mode": "randomized",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 301,
+              "tradovate_sl_ticks": 400,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "eval_contract_setup_draw",
+                "tp_draw_range": [
+                  300,
+                  304
+                ],
+                "divisor_by_setup": "1 or 2"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "eval_contract_setup_draw",
+                "base_sl_ticks": 400
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 301,
+              "tradovate_sl_ticks": 400,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "eval_contract_setup_draw",
+                "tp_draw_range": [
+                  300,
+                  304
+                ],
+                "divisor_by_setup": "1 or 2"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "eval_contract_setup_draw",
+                "base_sl_ticks": 400
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 6,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 501,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "persisted_target_balance",
+                "target_balance_range": [
+                  54250,
+                  56000
+                ],
+                "formula_ticks": "floor((target - 50000) / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 101,
+              "tradovate_sl_ticks": 290,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  53500,
+                  55000
+                ],
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 201,
+              "tradovate_sl_ticks": 190,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  53500,
+                  55000
+                ],
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 201,
+              "tradovate_sl_ticks": 190,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  53500,
+                  55000
+                ],
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5",
+            "blueprint": {
+              "tradovate_tp_ticks": 201,
+              "tradovate_sl_ticks": 190,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  53500,
+                  55000
+                ],
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "live_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 210,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 100
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 32,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 31,
+                "qty": 1
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "base_plus_daily_jitter",
+                "base_range": [
+                  160,
+                  320
+                ],
+                "jitter": [
+                  -15,
+                  15
+                ],
+                "clamped_range": [
+                  100,
+                  390
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "FTMO Futures Pro": {
+      "display_name": "FTMO Futures Pro 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Qualifying Days",
+        "Payout Cycle"
+      ],
+      "broker_platform": "Tradovate",
+      "eval": {
+        "mode": "static",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 302,
+              "tradovate_sl_ticks": 190,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 302
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 190
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 601,
+              "tradovate_sl_ticks": 95,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "profit_dollars_above_50k",
+                "target_profit_range": [
+                  5000,
+                  6000
+                ],
+                "persisted_per_user": true,
+                "formula_ticks": "floor(profit / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 95
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1_cleanup",
+            "blueprint": {
+              "tradovate_tp_ticks": 601,
+              "tradovate_sl_ticks": 190,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "profit_dollars_above_50k",
+                "target_profit_range": [
+                  5000,
+                  6000
+                ],
+                "persisted_per_user": true,
+                "formula_ticks": "floor(profit / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 95
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 601,
+              "tradovate_sl_ticks": 95,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "profit_dollars_above_50k",
+                "target_profit_range": [
+                  5000,
+                  6000
+                ],
+                "persisted_per_user": true,
+                "formula_ticks": "floor(profit / 10)",
+                "clamped_ticks": [
+                  80,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 95
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 501,
+              "tradovate_sl_ticks": 95,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  54500,
+                  57000
+                ],
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  0,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "dll_room",
+                "formula_ticks": "min(95, floor((balance - 50050) / 10))",
+                "min_ticks": 20
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "qualifying_day",
+            "blueprint": {
+              "tradovate_tp_ticks": 140,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "MNQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 138,
+                "qty": 3
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "base_plus_daily_jitter",
+                "base_range": [
+                  500,
+                  580
+                ],
+                "jitter": [
+                  -20,
+                  20
+                ],
+                "clamped_range": [
+                  480,
+                  600
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Funded Futures Family": {
+      "display_name": "Funded Futures Family",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Payout 3",
+        "Farming (Consistency)"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 23,
+              "mt5_sl_points": 30,
+              "mt5_volume": 10.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 23,
+              "mt5_sl_points": 30,
+              "mt5_volume": 10.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 168,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 46,
+              "mt5_volume": 16,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 168,
+                "effective_ticks_range": [
+                  155,
+                  181
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 168,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 46,
+              "mt5_volume": 18,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 168,
+                "effective_ticks_range": [
+                  155,
+                  181
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 168,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 46,
+              "mt5_volume": 18,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 168,
+                "effective_ticks_range": [
+                  155,
+                  181
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Funded Next": {
+      "display_name": "Funded Next",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Payout 3",
+        "Payout 4",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 3.6,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 6.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 10.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 520,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 134,
+              "mt5_volume": 18.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 520,
+                "effective_ticks_range": [
+                  478,
+                  562
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 260,
+              "mt5_tp_points": 61,
+              "mt5_sl_points": 59,
+              "mt5_volume": 17,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 220,
+                "effective_ticks_range": [
+                  202,
+                  238
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 260,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 245,
+              "mt5_tp_points": 57,
+              "mt5_sl_points": 59,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 220,
+                "effective_ticks_range": [
+                  202,
+                  238
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 245,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 238,
+              "mt5_tp_points": 55,
+              "mt5_sl_points": 59,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 220,
+                "effective_ticks_range": [
+                  202,
+                  238
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 238,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Funded Next Flex": {
+      "display_name": "Funded Next Flex",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Payout 3",
+        "Payout 4",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 84,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 24,
+              "mt5_volume": 3.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 84
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 84,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 24,
+              "mt5_volume": 6.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 84
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 84,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 24,
+              "mt5_volume": 9.6,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 84
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 310,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 80,
+              "mt5_volume": 12,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 310,
+                "effective_ticks_range": [
+                  285,
+                  335
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 35,
+              "mt5_volume": 14,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "funded_next_flex_room_sl",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 150,
+                "effective_ticks_range": [
+                  138,
+                  162
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 35,
+              "mt5_volume": 16,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "funded_next_flex_room_sl",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 150,
+                "effective_ticks_range": [
+                  138,
+                  162
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 35,
+              "mt5_sl_points": 35,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "funded_next_flex_room_sl",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 150,
+                "effective_ticks_range": [
+                  138,
+                  162
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 150,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "FundedNext Rapid Daily": {
+      "display_name": "FundedNext Rapid Daily 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Evaluation Phase",
+        "Funded Cycle 1",
+        "Funded Cycle 2",
+        "Funded Cycle 3",
+        "Funded Cycle 4",
+        "Funded Cycle 5"
+      ],
+      "broker_platform": "Tradovate",
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 302,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 302
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade1_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 404,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 404
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 11,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 400,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  54900,
+                  56650
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  54900,
+                  56650
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 50,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2_recovery1",
+            "blueprint": {
+              "tradovate_tp_ticks": 150,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2_recovery2",
+            "blueprint": {
+              "tradovate_tp_ticks": 250,
+              "tradovate_sl_ticks": 70,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 70,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 120,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 120,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5",
+            "blueprint": {
+              "tradovate_tp_ticks": 120,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 220,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "legal_tick_candidates_from_balance_target",
+                "target_balance_dollars_range": [
+                  53150,
+                  53450
+                ],
+                "exclude_tick_multiples_of_100": true,
+                "max_ticks": 600,
+                "friction_dollars": 8.8,
+                "ft1_persisted_per_account": false
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; not overwritten by randomizer"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "none",
+        "trade_count": 0,
+        "trades": []
+      }
+    },
+    "Lucid": {
+      "display_name": "Lucid",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Double Dip Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "randomized",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 5,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "qty_choice_1_or_2",
+                "ticks_if_qty_1": 304,
+                "ticks_if_qty_2": 152
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "qty_choice_1_or_2",
+                "ticks_if_qty_1": 400,
+                "ticks_if_qty_2": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 8,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "qty_choice_1_or_2",
+                "ticks_if_qty_1": 304,
+                "ticks_if_qty_2": 152
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "qty_choice_1_or_2",
+                "ticks_if_qty_1": 400,
+                "ticks_if_qty_2": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 5,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 340,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 15,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_unique_tp",
+                "target_balance_range": [
+                  53000,
+                  54000
+                ],
+                "friction_dollars": 17.0
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 140,
+              "tradovate_sl_ticks": 170,
+              "mt5_tp_points": 38,
+              "mt5_sl_points": 39,
+              "mt5_volume": 18,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "cycle_start_plus_offset",
+                "offset_range": [
+                  1300,
+                  1700
+                ],
+                "friction_dollars": 17.0
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 140,
+              "tradovate_sl_ticks": 160,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 18.0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "cycle_start_plus_offset",
+                "offset_range": [
+                  1300,
+                  1700
+                ],
+                "friction_dollars": 17.0
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 140,
+              "tradovate_sl_ticks": 155,
+              "mt5_tp_points": 34,
+              "mt5_sl_points": 39,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "cycle_start_plus_offset",
+                "offset_range": [
+                  1300,
+                  1700
+                ],
+                "friction_dollars": 17.0
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5",
+            "blueprint": {
+              "tradovate_tp_ticks": 140,
+              "tradovate_sl_ticks": 150,
+              "mt5_tp_points": 34,
+              "mt5_sl_points": 39,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "cycle_start_plus_offset",
+                "offset_range": [
+                  1300,
+                  1700
+                ],
+                "friction_dollars": 17.0
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 154,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 156
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "farming_sl_factor",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600
+              }
+            }
+          }
+        ]
+      }
+    },
+    "MFFU Builder 50K": {
+      "display_name": "MFFU Builder 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase"
+      ],
+      "broker_platform": "Tradovate",
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 401,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 401,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 301,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 301,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "static",
+        "trade_count": 12,
+        "trades": [
+          {
+            "phase_key": "cycle_recovery",
+            "blueprint": {
+              "tradovate_tp_ticks": 101,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 101,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "cycle_trade_a",
+            "blueprint": {
+              "tradovate_tp_ticks": 101,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 101,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "cycle_trade_b",
+            "blueprint": {
+              "tradovate_tp_ticks": 101,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 101,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "finishing_trade",
+            "blueprint": {
+              "tradovate_tp_ticks": 101,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 101,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_recovery1",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_recovery2",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_recovery3",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 206,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 206,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "rebuild_trade",
+            "blueprint": {
+              "tradovate_tp_ticks": 201,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 201,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          },
+          {
+            "phase_key": "rebuild_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 201,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2,
+              "disable_tp_adjustment": true
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 201,
+                "note": "Blueprint TP; disable_tp_adjustment at order time"
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Forced to 100t in randomize_trade_config"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "none",
+        "trade_count": 0,
+        "trades": []
+      }
+    },
+    "MFFU Rapid EOD": {
+      "display_name": "MFFU Rapid EOD 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 51,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 4,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 51
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 51,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 7,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 51
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 51,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 10,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 51
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 51,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 13,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 51
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 5,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 320,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 88,
+              "mt5_sl_points": 18,
+              "mt5_volume": 16,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "unique_tick_pick",
+                "ticks_range": [
+                  305,
+                  335
+                ],
+                "exclude_multiples_of_100": true,
+                "persisted_per_account": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 19,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "unique_tick_pick",
+                "ticks_range": [
+                  267,
+                  450
+                ],
+                "exclude_multiples_of_100": true,
+                "capped_at": 599
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "unique_tick_pick",
+                "ticks_range": [
+                  267,
+                  450
+                ],
+                "exclude_multiples_of_100": true,
+                "capped_at": 599
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 6,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "unique_tick_pick",
+                "ticks_range": [
+                  267,
+                  450
+                ],
+                "exclude_multiples_of_100": true,
+                "capped_at": 599
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 6,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "unique_tick_pick",
+                "ticks_range": [
+                  267,
+                  450
+                ],
+                "exclude_multiples_of_100": true,
+                "capped_at": 599
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 154,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "farming_sl_factor",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 133
+              }
+            }
+          }
+        ]
+      }
+    },
+    "MFFU_Flex": {
+      "display_name": "MFFU",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 52,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 4,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 52
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 52,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 7,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 52
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 52,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 10,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 52
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 52,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 15,
+              "mt5_sl_points": 18,
+              "mt5_volume": 13,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 52
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 300,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 88,
+              "mt5_sl_points": 18,
+              "mt5_volume": 16,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 300,
+                "effective_ticks_range": [
+                  276,
+                  324
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 19,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 267,
+                "effective_ticks_range": [
+                  246,
+                  288
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 267,
+                "effective_ticks_range": [
+                  246,
+                  288
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 267,
+              "tradovate_sl_ticks": 133,
+              "mt5_tp_points": 78,
+              "mt5_sl_points": 18,
+              "mt5_volume": 6,
+              "symbol": "NQZ6",
+              "qty": 3
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 267,
+                "effective_ticks_range": [
+                  246,
+                  288
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 133,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 154,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Top One Futures": {
+      "display_name": "Top One Futures Elite Daily",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Double Dip Payout 1",
+        "Double Dip Payout 2",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 202,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 202
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 16,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1a",
+            "blueprint": {
+              "tradovate_tp_ticks": 100,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 100,
+                "effective_ticks_range": [
+                  92,
+                  108
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1b",
+            "blueprint": {
+              "tradovate_tp_ticks": 300,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 300,
+                "effective_ticks_range": [
+                  276,
+                  324
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1c",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 180,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  460,
+                  540
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 180,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1d",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 200,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 200,
+                "effective_ticks_range": [
+                  184,
+                  216
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2a",
+            "blueprint": {
+              "tradovate_tp_ticks": 400,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 400,
+                "effective_ticks_range": [
+                  368,
+                  432
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2b",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 80,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 80,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1a",
+            "blueprint": {
+              "tradovate_tp_ticks": 100,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 100,
+                "effective_ticks_range": [
+                  92,
+                  108
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1b",
+            "blueprint": {
+              "tradovate_tp_ticks": 300,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 300,
+                "effective_ticks_range": [
+                  276,
+                  324
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1c",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 180,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  460,
+                  540
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 180,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1d",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2",
+            "blueprint": {
+              "tradovate_tp_ticks": 200,
+              "tradovate_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 200,
+                "effective_ticks_range": [
+                  184,
+                  216
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2a",
+            "blueprint": {
+              "tradovate_tp_ticks": 400,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 400,
+                "effective_ticks_range": [
+                  368,
+                  432
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2b",
+            "blueprint": {
+              "tradovate_tp_ticks": 600,
+              "tradovate_sl_ticks": 80,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 1
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  552,
+                  648
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 80,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "TopStep": {
+      "display_name": "TopStep",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 151,
+              "topstepx_sl_ticks": 201,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 4.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 201
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 151,
+              "topstepx_sl_ticks": 201,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 8.4,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 201
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 8,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 340,
+              "topstepx_sl_ticks": 201,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 340,
+                "effective_ticks_range": [
+                  313,
+                  367
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 201,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 161,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 161,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 146,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 18.0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 146,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 139,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 13.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 139,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1",
+            "blueprint": {
+              "topstepx_tp_ticks": 340,
+              "topstepx_sl_ticks": 201,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 340,
+                "effective_ticks_range": [
+                  313,
+                  367
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 201,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 161,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 161,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_3",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 146,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 9,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 146,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_4",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 139,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 140,
+                "effective_ticks_range": [
+                  129,
+                  151
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 139,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "topstepx_tp_ticks": 154,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "TopStep 50K XFA": {
+      "display_name": "TopStep 50K XFA",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 152,
+              "topstepx_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 4.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 152
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 152,
+              "topstepx_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 8.4,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 152
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 9,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 400,
+              "topstepx_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_4000_5000",
+                "formula_ticks": "floor((target + 18) / 10)",
+                "persisted_per_account": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 400,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "topstepx_tp_ticks": 400,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 18.0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "topstepx_tp_ticks": 400,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 13.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade5",
+            "blueprint": {
+              "topstepx_tp_ticks": 400,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 13.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1",
+            "blueprint": {
+              "topstepx_tp_ticks": 340,
+              "topstepx_sl_ticks": 201,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 161,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_3",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 146,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 9,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_4",
+            "blueprint": {
+              "topstepx_tp_ticks": 140,
+              "topstepx_sl_ticks": 139,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_dollars_balance_aware",
+                "target_dollars_range": [
+                  4000,
+                  5000
+                ],
+                "formula_ticks": "floor((target - balance + 18) / 10)"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_balance_over_10",
+                "formula_ticks": "min(600, floor(balance / 10))"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "topstepx_tp_ticks": 154,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "base_plus_daily_jitter",
+                "base_range": [
+                  520,
+                  580
+                ],
+                "jitter": [
+                  -20,
+                  20
+                ],
+                "clamped_range": [
+                  450,
+                  600
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "TopStep RTP": {
+      "display_name": "TopStep RTP",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 151,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 4.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 151,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 42,
+              "mt5_volume": 8.4,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 14,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade1_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 18.0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 13.6,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 89,
+              "mt5_volume": 16,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_1_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 36,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_2_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_3",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 32,
+              "mt5_sl_points": 39,
+              "mt5_volume": 9,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_3_p2",
+            "blueprint": {
+              "topstepx_tp_ticks": 47,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 47,
+                "effective_ticks_range": [
+                  43,
+                  51
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade_doubledip_4",
+            "blueprint": {
+              "topstepx_tp_ticks": 114,
+              "topstepx_sl_ticks": 100,
+              "mt5_tp_points": 30,
+              "mt5_sl_points": 39,
+              "mt5_volume": 20,
+              "symbol": "NQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 114,
+                "effective_ticks_range": [
+                  105,
+                  123
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 100,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "topstepx_tp_ticks": 154,
+              "topstepx_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ26",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "TradeDay": {
+      "display_name": "TradeDay",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Double Dip Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 5,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 62,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 20,
+              "mt5_volume": 3.6,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 62
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 62,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 20,
+              "mt5_volume": 5.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 62
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 62,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 20,
+              "mt5_volume": 7.4,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 62
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 62,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 20,
+              "mt5_volume": 10.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 62
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade5",
+            "blueprint": {
+              "tradovate_tp_ticks": 62,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 20,
+              "mt5_volume": 14.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 62
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 129,
+              "mt5_volume": 20,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  460,
+                  540
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 129,
+              "mt5_volume": 28,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  460,
+                  540
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 500,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 129,
+              "mt5_volume": 20,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 500,
+                "effective_ticks_range": [
+                  460,
+                  540
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 204,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 55,
+              "mt5_volume": 3.2,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 204,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Tradeify": {
+      "display_name": "Tradeify",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Payout 1",
+        "Payout 2",
+        "Payout 3",
+        "Payout 4",
+        "Farming (Consistency)"
+      ],
+      "broker_platform": null,
+      "eval": {
+        "mode": "static",
+        "trade_count": 3,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 5.2,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 102,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 30,
+              "mt5_volume": 8.8,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 102
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 540,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 46,
+              "mt5_sl_points": 139,
+              "mt5_volume": 15,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 540,
+                "effective_ticks_range": [
+                  497,
+                  583
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 240,
+              "tradovate_sl_ticks": 260,
+              "mt5_tp_points": 61,
+              "mt5_sl_points": 64,
+              "mt5_volume": 18,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 240,
+                "effective_ticks_range": [
+                  221,
+                  259
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 260,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 240,
+              "tradovate_sl_ticks": 245,
+              "mt5_tp_points": 57,
+              "mt5_sl_points": 64,
+              "mt5_volume": 3,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 240,
+                "effective_ticks_range": [
+                  221,
+                  259
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 245,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 240,
+              "tradovate_sl_ticks": 238,
+              "mt5_tp_points": 55,
+              "mt5_sl_points": 64,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "randomized",
+                "method": "blueprint_tp_factor_per_account",
+                "factor_range": [
+                  0.92,
+                  1.08
+                ],
+                "blueprint_ticks": 240,
+                "effective_ticks_range": [
+                  221,
+                  259
+                ],
+                "unique_tp_per_firm": true
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 238,
+                "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 154,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 146,
+              "mt5_sl_points": 43,
+              "mt5_volume": 3.6,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "policy": "generic_per_account",
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154,
+                "note": "Farming TP stays at blueprint"
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "blueprint_sl_factor_per_account",
+                "factor_range": [
+                  0.9,
+                  1.1
+                ],
+                "blueprint_ticks": 600,
+                "effective_ticks_range": [
+                  540,
+                  660
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Tradeify Select": {
+      "display_name": "Tradeify Select 50K",
+      "account_sizes": [
+        "$50,000",
+        "$100,000",
+        "$150,000"
+      ],
+      "trading_phases": [
+        "Challenge Phase",
+        "Funded Phase",
+        "Farming Phase"
+      ],
+      "broker_platform": "Tradovate",
+      "eval": {
+        "mode": "static",
+        "trade_count": 2,
+        "trades": [
+          {
+            "phase_key": "challenge_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "challenge_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 151,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 151
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          }
+        ]
+      },
+      "funded": {
+        "mode": "mixed",
+        "trade_count": 4,
+        "trades": [
+          {
+            "phase_key": "funded_trade1",
+            "blueprint": {
+              "tradovate_tp_ticks": 541,
+              "tradovate_sl_ticks": 200,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  54500,
+                  56000
+                ],
+                "pre_sept_2026_purchase_offset": 1000,
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  15,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "fixed",
+                "ticks": 200
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade2",
+            "blueprint": {
+              "tradovate_tp_ticks": 241,
+              "tradovate_sl_ticks": 260,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  54500,
+                  57500
+                ],
+                "pre_sept_2026_purchase_offset": 1000,
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  150,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade3",
+            "blueprint": {
+              "tradovate_tp_ticks": 241,
+              "tradovate_sl_ticks": 245,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  54500,
+                  57500
+                ],
+                "pre_sept_2026_purchase_offset": 1000,
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  150,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          },
+          {
+            "phase_key": "funded_trade4",
+            "blueprint": {
+              "tradovate_tp_ticks": 241,
+              "tradovate_sl_ticks": 238,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "NQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "randomized",
+                "method": "target_balance_dollars",
+                "target_balance_range": [
+                  54500,
+                  57500
+                ],
+                "pre_sept_2026_purchase_offset": 1000,
+                "formula_ticks": "floor((target - balance) / 10)",
+                "clamped_ticks": [
+                  150,
+                  600
+                ]
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "floor_room_above_50100",
+                "formula_ticks": "min(600, floor((balance - 50100) / 10))"
+              }
+            }
+          }
+        ]
+      },
+      "farming": {
+        "mode": "mixed",
+        "trade_count": 1,
+        "trades": [
+          {
+            "phase_key": "farming",
+            "blueprint": {
+              "tradovate_tp_ticks": 154,
+              "tradovate_sl_ticks": 600,
+              "mt5_tp_points": 0,
+              "mt5_sl_points": 0,
+              "mt5_volume": 0,
+              "symbol": "MNQZ6",
+              "qty": 2
+            },
+            "randomization": {
+              "tp": {
+                "mode": "fixed",
+                "ticks": 154
+              },
+              "sl": {
+                "mode": "randomized",
+                "method": "base_plus_daily_jitter_with_cap",
+                "base_range": [
+                  470,
+                  580
+                ],
+                "jitter": [
+                  -20,
+                  20
+                ],
+                "clamped_range": [
+                  450,
+                  600
+                ],
+                "cap_formula": "floor((balance - 50100) / 4)"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

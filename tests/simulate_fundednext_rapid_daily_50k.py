@@ -22,7 +22,7 @@ LATER_CYCLE_RETAINED_BALANCE = 50100.0
 
 def _config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 400,
         "tradovate_sl_ticks": 100,

@@ -37,7 +37,7 @@ def _calculate_payout(balance, cycle_start, funded_number):
 
 def _config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 3,
         "tradovate_tp_ticks": 320,
         "tradovate_sl_ticks": 133,

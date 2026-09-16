@@ -6,7 +6,7 @@ from tests.simulate_mffu_rapid_eod_50k import _calculate_payout, run_simulation
 
 def _config():
     return {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 3,
         "tradovate_tp_ticks": 320,
         "tradovate_sl_ticks": 133,

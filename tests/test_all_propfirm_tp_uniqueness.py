@@ -5,31 +5,31 @@ from trader_companion.prop_firm_manager import PropFirmManager
 
 CONFIGS = {
     "Tradeify Select": {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
     },
     "MFFU_Flex": {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
     },
     "Funded Next": {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
     },
     "TopStep RTP": {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
     },
     "Lucid": {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 200,
@@ -41,7 +41,7 @@ def test_fundednext_rapid_daily_ft1_cap_is_shared_by_design():
     random.seed(20260915)
     manager = PropFirmManager()
     config = {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 300,
         "tradovate_sl_ticks": 496,
@@ -60,7 +60,7 @@ def test_fundednext_rapid_daily_ft1_cap_is_shared_by_design():
 def test_ftmo_futures_pro_ft1_floor_is_shared_by_current_rule():
     manager = PropFirmManager()
     config = {
-        "tradovate_symbol": "NQU6",
+        "tradovate_symbol": "NQZ6",
         "tradovate_qty": 2,
         "tradovate_tp_ticks": 200,
         "tradovate_sl_ticks": 95,
