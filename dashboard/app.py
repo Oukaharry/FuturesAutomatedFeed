@@ -5530,6 +5530,33 @@ def _extract_companion_version(data=None):
     ).strip()
 
 
+# Companions below this are refused. Traders mid-challenge stay on the version
+# they started with (Trader SOP 1a), so lower this before a release goes wide.
+MIN_COMPANION_VERSION = '1.12.0'
+
+
+def _parse_version(value):
+    """'1.12.0' -> (1, 12, 0); non-numeric parts sort low rather than raise."""
+    parts = []
+    for chunk in str(value or '').strip().split('.'):
+        digits = ''.join(ch for ch in chunk if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+
+def _companion_version_rejected(version):
+    """Reason to refuse this Companion, or None when it is supported."""
+    if not version:
+        return (f'Companion version not reported. Update to v{MIN_COMPANION_VERSION} '
+                f'and sign in again.')
+    if _parse_version(version) < _parse_version(MIN_COMPANION_VERSION):
+        return (f'Companion v{version} is no longer supported. Update to '
+                f'v{MIN_COMPANION_VERSION} to continue.')
+    return None
+
+
 def _perform_client_email_auth(email: str, *, actor: str = 'client'):
     """Shared email→hierarchy lookup for companion auth."""
     try:
@@ -5603,6 +5630,14 @@ def api_companion_auth():
         email = data.get('email', '').strip().lower()
         if not email:
             return jsonify({"status": "error", "message": "Email required"}), 400
+
+        stale = _companion_version_rejected(_extract_companion_version(data))
+        if stale:
+            return jsonify({
+                "status": "upgrade_required",
+                "message": stale,
+                "minimum_version": MIN_COMPANION_VERSION,
+            }), 426
 
         return _perform_client_email_auth(email, actor='companion')
     except Exception as e:
@@ -5850,6 +5885,14 @@ def api_client_push():
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
     
+    stale = _companion_version_rejected(_extract_companion_version(data))
+    if stale:
+        return jsonify({
+            "status": "upgrade_required",
+            "message": stale,
+            "minimum_version": MIN_COMPANION_VERSION,
+        }), 426
+
     # Look up client by email
     client_info = get_client_by_email(email)
     if not client_info:
