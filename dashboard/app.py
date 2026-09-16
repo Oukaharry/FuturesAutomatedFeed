@@ -2205,7 +2205,11 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             progress += 1
         progress_field = f'Prop Progress {candidate}'
         if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
-            evaluation[progress_field] = f'{progress}/5'
+            progress_date = datetime.strptime(
+                str(evaluation.get(f'_Prop Day {candidate} Date') or date),
+                '%Y-%m-%d',
+            ).strftime('%-m/%-d/%y')
+            evaluation[progress_field] = f'{progress}/5 {progress_date}'
 
     completed = progress >= 5
     if completed:

@@ -5293,10 +5293,11 @@
             let html = '';
             for (let i = 1; i <= 60; i++) {
                 const propDayKey = `Prop Day ${i}`;
+                const propProgressKey = `Prop Progress ${i}`;
                 const hedgeDayKey = `Hedge Day ${i}`;
                 
                 // 1. Extract Note Content for Prop Progress
-                let progressContent = '';
+                let progressContent = ev[propProgressKey] || '';
                 let hasNote = false;
                 if (ev._notes && ev._notes[propDayKey]) {
                     progressContent = ev._notes[propDayKey];
