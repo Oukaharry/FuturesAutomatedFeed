@@ -9649,13 +9649,13 @@ def _norm_quality_account_text(raw) -> str:
     return re.sub(r'\s+', ' ', v).strip()
 
 
-# Quality scan: skip row SOP checks when Account # cells are status labels (case-insensitive).
+# Quality scan: skip day-marker checks when Account # cells are status labels (case-insensitive).
 _QUALITY_SKIP_ACCOUNT_PHRASES = ('moved to live', 'dashboard lock')
-_QUALITY_SKIP_ACCOUNT_SUBSTRINGS = ('restricted', 'pause')
+_QUALITY_SKIP_ACCOUNT_SUBSTRINGS = ('restricted', 'pause', 'ban')
 
 
 def _quality_row_has_skip_account_marker(ev) -> bool:
-    """True when Account # cells are status labels, not tradable account ids."""
+    """True when Account # cells contain a status label — skip day-placeholder quality flags."""
     if not isinstance(ev, dict):
         return False
     blobs = [
@@ -9669,12 +9669,7 @@ def _quality_row_has_skip_account_marker(ev) -> bool:
     for phrase in _QUALITY_SKIP_ACCOUNT_PHRASES:
         if phrase in text:
             return True
-    for sub in _QUALITY_SKIP_ACCOUNT_SUBSTRINGS:
-        if sub in text:
-            return True
-    if re.search(r'\bban\b', text):
-        return True
-    return False
+    return any(sub in text for sub in _QUALITY_SKIP_ACCOUNT_SUBSTRINGS)
 
 
 def _quality_row_payout_hedge_without_weekday(ev) -> bool:
@@ -10001,9 +9996,6 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                 if prop_firm.lower() in ('funding ticks', 'fundingticks'):
                     continue
 
-                # Account-number status labels (not real ids) — do not SOP-flag the row.
-                if _quality_row_has_skip_account_marker(ev):
-                    continue
                 # "Payout" written in a funded hedge cell and no weekday placeholder:
                 # waiting on payout, not a missing-day / SOP row.
                 if _quality_row_payout_hedge_without_weekday(ev):
@@ -10392,7 +10384,13 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                     and (k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day'))
                     and not k.startswith('_')
                 ]
-                if (not new_row_strict_mode or has_account_num_local) and not _inactive_p1 and not _inactive_p2 and status_p1:
+                if (
+                    (not new_row_strict_mode or has_account_num_local)
+                    and not _inactive_p1
+                    and not _inactive_p2
+                    and status_p1
+                    and not _quality_row_has_skip_account_marker(ev)
+                ):
                     # Downtime/current-day markers should follow Kenyan day boundaries (midnight EAT).
                     _allowed_abbrs = _allowed_trading_day_abbrs(now_eat)
                     _allowed_human = '/'.join(sorted(_allowed_abbrs))
