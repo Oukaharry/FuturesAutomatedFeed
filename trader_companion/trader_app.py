@@ -29,7 +29,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.0"
+APP_VERSION = "1.12.0"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -1789,7 +1789,7 @@ class TradeOpssAIApp:
             try:
                 response = requests.post(
                     f"https://www.tradeopss.com{COMPANION_AUTH_PATH}",
-                    json={"email": email},
+                    json={"email": email, "companion_version": APP_VERSION},
                     headers=_companion_auth_headers(),
                     timeout=30
                 )
@@ -2472,7 +2472,7 @@ class TradeOpssAIApp:
                 # Use public endpoint - no API key needed
                 response = requests.post(
                     f"{dashboard_url}{COMPANION_AUTH_PATH}",
-                    json={"email": email},
+                    json={"email": email, "companion_version": APP_VERSION},
                     headers=_companion_auth_headers(),
                     timeout=30
                 )

@@ -6220,13 +6220,12 @@
                     if (isFirmHidden(propFirm)) return;
                     // Match payouts script preference: funded account first, then challenge account
                     const account = (ev['Account #.1'] || ev['Account #'] || '-').toString().trim();
-                    // Match payouts script: Payout 1..8
+                    // Match payouts script: Payout 1..8 — amount required.
+                    // A date with $0 is not a payout (farming used to stamp Date 8).
                     for (let i = 1; i <= 8; i++) {
                         const amt = parseCur(ev[`Payout ${i}`]);
                         const rawDate = (ev[`Date ${i}`] || '').toString().trim();
-                        // Match payouts script inclusion rule:
-                        // include if amount != 0 OR a date is present
-                        if (amt !== 0 || (rawDate && rawDate !== '-')) {
+                        if (amt !== 0) {
                             const dateObj = parsePayDate(rawDate);
                             window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj, payout_num: i });
                         }
