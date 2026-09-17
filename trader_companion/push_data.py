@@ -21,7 +21,7 @@ def lookup_client(url, email):
     try:
         response = requests.post(
             f"{url.rstrip('/')}{COMPANION_AUTH_PATH}",
-            json={"email": email},
+            json={"email": email, "companion_version": APP_VERSION},
             headers=_companion_auth_headers(),
             timeout=15
         )

@@ -1019,6 +1019,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.0') or '1.12.0'
 
 # ── Suppress SIGPIPE (benign client disconnect errors) ──────────────────────
 # When a client closes the connection during a large response, the server's
@@ -1932,6 +1933,9 @@ def recalculate_hedge_nets(evaluations):
         return val is None or str(val).strip() in ('', '-')
 
     for ev in (evaluations or []):
+        if not isinstance(ev, dict):
+            continue
+        _clear_farming_payout_date_collisions(ev)
         # --- Hedge Net (Phase 1) ---
         # =IF(OR(ISBLANK(HR1), Status P1<>"Fail"), "", -Fee + HR1+HR2+HR3+HR4+HR5)
         status_p1 = str(ev.get('Status P1', '')).strip()
@@ -2200,8 +2204,7 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             evaluation['_cleared_fields'] = sorted(cleared_fields)
         else:
             evaluation.pop('_cleared_fields', None)
-    if slot == 1 and not str(evaluation.get('Date 8') or '').strip():
-        evaluation['Date 8'] = date
+    _clear_farming_payout_date_collisions(evaluation)
 
     progress = 1
     for candidate in range(1, slot + 1):
@@ -2259,6 +2262,49 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     return 1, completed
 
 
+def _payout_slot_is_empty(evaluation, n):
+    raw = evaluation.get(f'Payout {n}') if isinstance(evaluation, dict) else None
+    s = str(raw or '').strip()
+    if s in ('', '-', 'None', 'nan', 'NaN'):
+        return True
+    try:
+        return abs(float(s.replace('$', '').replace(',', ''))) < 1e-9
+    except (TypeError, ValueError):
+        return False
+
+
+def _clear_farming_payout_date_collisions(evaluation):
+    """Drop farming dates that were stamped into Payout 8's date column.
+
+    Date 8 belongs to Payout 8. Farming used to copy Prop Day 1's date there,
+    which the Stats payouts list rendered as a $0.00 payout.
+    """
+    if not isinstance(evaluation, dict) or evaluation.get('_deleted'):
+        return False
+    if not _payout_slot_is_empty(evaluation, 8):
+        return False
+    date8 = str(evaluation.get('Date 8') or '').strip()
+    if not date8 or date8 == '-':
+        return False
+    farming_dates = {
+        str(evaluation.get(f'_Prop Day {i} Date') or '').strip()
+        for i in range(1, 61)
+    }
+    farming_dates.discard('')
+    if date8 not in farming_dates:
+        return False
+    evaluation['Date 8'] = ''
+    return True
+
+
+def _strip_farming_payout_date_collisions(evaluations):
+    cleared = 0
+    for evaluation in evaluations or []:
+        if _clear_farming_payout_date_collisions(evaluation):
+            cleared += 1
+    return cleared
+
+
 def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match_log):
     """Apply Tradovate farming history even when an MT5 hedge payload is empty."""
     placeholder_accounts = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
@@ -2310,8 +2356,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     aggregated_data = aggregated_data or []
     tradovate_farming_days = tradovate_farming_days or []
     tradovate_match_log = []
+    if evaluations:
+        _strip_farming_payout_date_collisions(evaluations)
     if evaluations and tradovate_farming_days:
         _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, tradovate_match_log)
+        _strip_farming_payout_date_collisions(evaluations)
     
     # -------------------------------------------------------------------------
     # SERVER-SIDE SESSION MATCHING LOGIC
@@ -5520,6 +5569,17 @@ def _companion_access_denied(client_id, identity=None):
     }), 403
 
 
+def _required_companion_version():
+    """Server-side TradeOpssAI version gate (sync with trader_app APP_VERSION)."""
+    try:
+        cfg = current_app.config.get('REQUIRED_COMPANION_VERSION')
+        if cfg:
+            return str(cfg).strip()
+    except RuntimeError:
+        pass
+    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.0').strip() or '1.12.0'
+
+
 def _extract_companion_version(data=None):
     payload = data if isinstance(data, dict) else (request.get_json(silent=True) or {})
     return (
@@ -5530,30 +5590,22 @@ def _extract_companion_version(data=None):
     ).strip()
 
 
-# Companions below this are refused. Traders mid-challenge stay on the version
-# they started with (Trader SOP 1a), so lower this before a release goes wide.
-MIN_COMPANION_VERSION = '1.12.0'
-
-
-def _parse_version(value):
-    """'1.12.0' -> (1, 12, 0); non-numeric parts sort low rather than raise."""
-    parts = []
-    for chunk in str(value or '').strip().split('.'):
-        digits = ''.join(ch for ch in chunk if ch.isdigit())
-        parts.append(int(digits) if digits else 0)
-    while len(parts) < 3:
-        parts.append(0)
-    return tuple(parts[:3])
-
-
-def _companion_version_rejected(version):
-    """Reason to refuse this Companion, or None when it is supported."""
+def _companion_version_denied(data=None):
+    """403 when companion version is missing or not the current server version."""
+    version = _extract_companion_version(data)
+    required = _required_companion_version()
     if not version:
-        return (f'Companion version not reported. Update to v{MIN_COMPANION_VERSION} '
-                f'and sign in again.')
-    if _parse_version(version) < _parse_version(MIN_COMPANION_VERSION):
-        return (f'Companion v{version} is no longer supported. Update to '
-                f'v{MIN_COMPANION_VERSION} to continue.')
+        return jsonify({
+            "status": "error",
+            "message": f"TradeOpssAI client required. Update to v{required} and sign in again.",
+            "required_version": required,
+        }), 403
+    if version != required:
+        return jsonify({
+            "status": "error",
+            "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
+            "required_version": required,
+        }), 403
     return None
 
 
@@ -5621,8 +5673,13 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
+    Version is checked first; only REQUIRED_COMPANION_VERSION may sign in.
     """
     try:
+        denied = _companion_version_denied()
+        if denied:
+            return denied
+
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
@@ -5630,14 +5687,6 @@ def api_companion_auth():
         email = data.get('email', '').strip().lower()
         if not email:
             return jsonify({"status": "error", "message": "Email required"}), 400
-
-        stale = _companion_version_rejected(_extract_companion_version(data))
-        if stale:
-            return jsonify({
-                "status": "upgrade_required",
-                "message": stale,
-                "minimum_version": MIN_COMPANION_VERSION,
-            }), 426
 
         return _perform_client_email_auth(email, actor='companion')
     except Exception as e:
@@ -5659,6 +5708,10 @@ def api_client_data():
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+        denied = _companion_version_denied(data)
+        if denied:
+            return denied
 
         email = (data.get('email') or '').strip().lower()
         if not email:
@@ -5884,14 +5937,10 @@ def api_client_push():
     
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
-    
-    stale = _companion_version_rejected(_extract_companion_version(data))
-    if stale:
-        return jsonify({
-            "status": "upgrade_required",
-            "message": stale,
-            "minimum_version": MIN_COMPANION_VERSION,
-        }), 426
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
 
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -6345,6 +6394,10 @@ def api_migrate_sheet():
     
     if not sheet_url:
         return jsonify({"status": "error", "message": "Google Sheet URL required"}), 400
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
     
     # Look up client by email
     client_info = get_client_by_email(email)
@@ -8757,6 +8810,10 @@ def api_push_hedging_review():
 
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
+
+    denied = _companion_version_denied(data)
+    if denied:
+        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:
@@ -12874,6 +12931,10 @@ def import_csv_companion():
     email = (request.form.get('email') or '').strip().lower()
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
+
+    denied = _companion_version_denied({"email": email})
+    if denied:
+        return denied
 
     client_info = get_client_by_email(email)
     if not client_info:

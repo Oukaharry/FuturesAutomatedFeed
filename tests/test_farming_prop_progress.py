@@ -1,5 +1,7 @@
 from dashboard.app import (
+    _clear_farming_payout_date_collisions,
     _write_farming_prop_days_and_progress,
+    recalculate_hedge_nets,
     update_evaluations_from_aggregated_data,
 )
 
@@ -18,7 +20,7 @@ def test_farming_prop_progress_advances_only_for_profitable_days():
     assert not complete
     assert evaluation["Prop Day 1"] == "210.00"
     assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
-    assert evaluation["Date 8"] == "2026-09-16"
+    assert "Date 8" not in evaluation
     assert evaluation["Prop Progress 1"] == "2/5 9/16/26"
     assert evaluation["Hedge Day 2"] == "THURSDAY"
 
@@ -103,7 +105,7 @@ def test_tradovate_only_payload_reconciles_farming_without_hedge_deals():
     assert updated[0]["Prop Day 1"] == "999.00"
     assert updated[1]["Prop Day 1"] == "152.40"
     assert updated[1]["_Prop Day 1 Date"] == "2026-09-16"
-    assert updated[1]["Date 8"] == "2026-09-16"
+    assert not str(updated[1].get("Date 8") or "").strip()
     assert updated[1]["Prop Progress 1"] == "2/5 9/16/26"
     assert updated[1]["Hedge Day 2"] == "THURSDAY"
     assert "Prop Day 2" not in updated[1]
@@ -130,3 +132,69 @@ def test_tradovate_farming_does_not_use_unstarted_challenge_account():
     assert "Prop Day 1" not in updated[0]
     assert "Prop Progress 1" not in updated[0]
     assert not any("Tradovate farming reconciliation" in entry for entry in log)
+
+
+def test_farming_does_not_stamp_payout_date_eight():
+    evaluation = {"Date 8": "", "Payout 8": ""}
+    try:
+        _write_farming_prop_days_and_progress(
+            evaluation, [{"date": "2026-09-16", "net_pnl": 152.40}], 2, []
+        )
+    except ValueError:
+        # Windows strftime does not accept %-m; Prop Day is written first.
+        pass
+    assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
+    assert not str(evaluation.get("Date 8") or "").strip()
+
+
+def test_farming_clears_phantom_date_eight_matching_prop_day():
+    evaluation = {
+        "Date 8": "2026-09-16",
+        "Payout 8": "",
+        "_Prop Day 1 Date": "2026-09-16",
+        "Prop Day 1": "152.40",
+    }
+    assert _clear_farming_payout_date_collisions(evaluation) is True
+    assert evaluation["Date 8"] == ""
+    assert evaluation["Prop Day 1"] == "152.40"
+
+
+def test_farming_keeps_real_payout_eight_date():
+    evaluation = {
+        "Date 8": "2026-09-16",
+        "Payout 8": "1200.00",
+        "_Prop Day 1 Date": "2026-09-16",
+        "Prop Day 1": "152.40",
+    }
+    assert _clear_farming_payout_date_collisions(evaluation) is False
+    assert evaluation["Date 8"] == "2026-09-16"
+    assert evaluation["Payout 8"] == "1200.00"
+
+
+def test_hedge_net_recalc_clears_phantom_date_eight():
+    evaluations = [{
+        "Date 8": "2026-09-16",
+        "Payout 8": "",
+        "_Prop Day 1 Date": "2026-09-16",
+        "Status P1": "Pass",
+        "Status": "Pass",
+    }]
+    recalculate_hedge_nets(evaluations)
+    assert evaluations[0]["Date 8"] == ""
+
+
+def test_push_clears_phantom_date_eight_without_new_farming():
+    evaluations = [{
+        "Account #.1": "FTDFYSLX50914913722",
+        "Status": "Pass",
+        "Date 8": "2026-09-16",
+        "Payout 8": None,
+        "_Prop Day 1 Date": "2026-09-16",
+        "Prop Day 1": "-548.30",
+    }]
+    updated, log, sessions = update_evaluations_from_aggregated_data(
+        evaluations, raw_deals=[], tradovate_farming_days=[],
+    )
+    assert sessions is None
+    assert updated[0]["Date 8"] == ""
+    assert updated[0]["Prop Day 1"] == "-548.30"
