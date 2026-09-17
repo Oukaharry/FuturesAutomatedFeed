@@ -9647,6 +9647,58 @@ def _row_has_nonzero_currency_in_day_cols(ev, day_cols, parse_nonzero_fn):
     return False
 
 
+def _norm_quality_account_text(raw) -> str:
+    v = str(raw or '').strip().lower().replace('\u00a0', ' ')
+    v = re.sub(r'[^a-z0-9]+', ' ', v)
+    return re.sub(r'\s+', ' ', v).strip()
+
+
+def _quality_row_has_skip_account_marker(ev) -> bool:
+    """True when Account # cells are status labels, not tradable account ids."""
+    if not isinstance(ev, dict):
+        return False
+    blobs = [
+        ev.get('Account #'),
+        ev.get('Account #.1'),
+        ev.get('Account Number'),
+    ]
+    text = _norm_quality_account_text(' '.join(str(s or '') for s in blobs))
+    if not text:
+        return False
+    tokens = set(text.split())
+    return (
+        'moved to live' in text
+        or 'dashboard lock' in text
+        or 'restricted' in tokens
+        or 'ban' in tokens
+    )
+
+
+def _quality_row_payout_hedge_without_weekday(ev) -> bool:
+    """True when a funded/payout hedge cell says Payout and no weekday placeholder exists."""
+    if not isinstance(ev, dict):
+        return False
+    has_payout_label = False
+    has_weekday = False
+    funded_cols = set(FUNDED_HEDGE_COLS)
+    for col, val in ev.items():
+        if not isinstance(col, str) or col.startswith('_'):
+            continue
+        is_day_slot = (
+            col.startswith('Hedge Result')
+            or col.startswith('Hedge Day')
+            or col.startswith('Prop Day')
+        )
+        if not is_day_slot:
+            continue
+        if _weekday_abbrs_in_text(val):
+            has_weekday = True
+        if col in funded_cols or col.startswith('Hedge Result'):
+            if re.search(r'\bpayout\b', _norm_quality_account_text(val)):
+                has_payout_label = True
+    return has_payout_label and not has_weekday
+
+
 def _prop_account_has_credentials(pa) -> bool:
     """True if a prop_accounts row has portal login/password or Tradovate user/pass (Prop Firm tab)."""
     if not isinstance(pa, dict):
@@ -9944,6 +9996,14 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
 
                 # Skip defunct prop firms — no point flagging issues on closed firms
                 if prop_firm.lower() in ('funding ticks', 'fundingticks'):
+                    continue
+
+                # Account-number status labels (not real ids) — do not SOP-flag the row.
+                if _quality_row_has_skip_account_marker(ev):
+                    continue
+                # "Payout" written in a funded hedge cell and no weekday placeholder:
+                # waiting on payout, not a missing-day / SOP row.
+                if _quality_row_payout_hedge_without_weekday(ev):
                     continue
 
                 # Quality scan gating for newly added rows:
