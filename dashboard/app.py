@@ -1624,6 +1624,9 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             merged[key] = existing_val
             continue
         if not _hedge_cell_currency_only(existing_val):
+            # Keep dashboard text (weekday, Payout, etc.) unless companion sends numeric P&L.
+            if not (incoming_val and _hedge_cell_currency_only(incoming_val)):
+                merged[key] = existing_val
             continue
         if not incoming_val or str(incoming_val).strip() in ('', '-'):
             merged[key] = existing_val
@@ -1699,18 +1702,12 @@ def _eval_has_non_blank_value(v):
 def _eval_push_field_blocked(ev, field_name, phase_code=''):
     """True when MT5/companion push must not overwrite this eval cell.
 
-    Manual dashboard edits always win. Cleared cells block push except FA farming
-    (intentional same-day repopulation from the companion app).
-    Weekday placeholders (MON/TUESDAY/etc.) are not treated as manual locks —
-    companion numeric P&L should replace them.
+    Manual dashboard edits always win (including weekday / text corrections).
+    Cleared cells block push except FA farming (intentional same-day repopulation).
     """
     if not isinstance(ev, dict) or not field_name:
         return False
-    existing = ev.get(field_name)
     if field_name in set(ev.get('_manual_push_fields') or []):
-        from utils.data_processor import _is_weekday_or_empty_label
-        if _is_weekday_or_empty_label(existing):
-            return False
         return True
     if phase_code != 'FA' or field_name.startswith('Prop Progress'):
         if field_name in set(ev.get('_cleared_fields') or []):
@@ -1814,8 +1811,7 @@ def merge_dashboard_update_evaluations(
                 continue
             if _eval_has_non_blank_value(merged.get(key)):
                 cleared.discard(key)
-                if not _is_weekday_or_empty_label(merged.get(key)):
-                    manual.add(key)
+                manual.add(key)
             else:
                 old_val = existing_ev.get(key)
                 if ((key.startswith('Hedge Day') or key.startswith('Prop Day'))

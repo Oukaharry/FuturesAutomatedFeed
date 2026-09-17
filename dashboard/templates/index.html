@@ -3356,8 +3356,26 @@
         const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
         const IS_KWOK_ADMIN = USER_TYPE === 'kwok_admin';
         const IS_SUPER_ADMIN = USER_TYPE === 'super_admin';
-        /** Treat like client sheet cells: no inline edits (Kwok admin is read-only on the server). */
-        const SHEET_EDIT_LOCKED = IS_CLIENT || IS_KWOK_ADMIN;
+        /** Kwok admin: read-only sheet. Clients may edit companion-filled hedge/day cells only. */
+        const SHEET_EDIT_LOCKED = IS_KWOK_ADMIN;
+        /** Block row add / bulk edit affordances for client logins (server also rejects CREATE/DELETE). */
+        const SHEET_STRUCTURE_LOCKED = IS_CLIENT || IS_KWOK_ADMIN;
+
+        function isCompanionPushEvalField(key) {
+            if (!key || typeof key !== 'string') return false;
+            return (
+                key.startsWith('Hedge Result')
+                || key.startsWith('Hedge Day')
+                || key.startsWith('Prop Day')
+                || key.startsWith('Prop Progress')
+            );
+        }
+
+        function evalFieldReadOnly(key) {
+            if (IS_KWOK_ADMIN) return true;
+            if (IS_CLIENT) return !isCompanionPushEvalField(key);
+            return false;
+        }
         /** Super admin: evaluation rows selected for bulk delete (indices in currentData.evaluations). */
         let _selectedEvalIndices = new Set();
         /** Right-click notes: editable for admin / super_admin / bef_admin / trader; read-only for client & kwok_admin. */
@@ -4926,7 +4944,7 @@
 
                     // Date Purchased Logic
                     const datePurchased = getVal('Date Purchased');
-                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased', SHEET_EDIT_LOCKED);
+                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased', evalFieldReadOnly('Date Purchased'));
 
                     row.innerHTML = `
                         <td class="sticky-col-1">${displayNum}</td>
@@ -4935,57 +4953,57 @@
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
                                      title="${_selectedEvalIndices.has(index) ? 'Deselect row' : 'Select row for deletion'}">🗑️</button>` : ''}
                         </td>
-                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', SHEET_EDIT_LOCKED), 'Prop Firm')}
-                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', SHEET_EDIT_LOCKED), 'Account Size')}
+                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', evalFieldReadOnly('Prop Firm')), 'Prop Firm')}
+                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', evalFieldReadOnly('Account Size')), 'Account Size')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
-                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', SHEET_EDIT_LOCKED), 'Fee')}
+                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', evalFieldReadOnly('Fee')), 'Fee')}
                         
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started', SHEET_EDIT_LOCKED), 'Date Started')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended', SHEET_EDIT_LOCKED), 'Date Ended')}
-                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', SHEET_EDIT_LOCKED), 'Status P1')}
-                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', SHEET_EDIT_LOCKED), 'Account #')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started', evalFieldReadOnly('Date Started')), 'Date Started')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended', evalFieldReadOnly('Date Ended')), 'Date Ended')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', evalFieldReadOnly('Status P1')), 'Status P1')}
+                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', evalFieldReadOnly('Account #')), 'Account #')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1', SHEET_EDIT_LOCKED), 'Hedge Result 1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2', SHEET_EDIT_LOCKED), 'Hedge Result 2')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', SHEET_EDIT_LOCKED), 'Hedge Result 3')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', SHEET_EDIT_LOCKED), 'Hedge Result 4')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', SHEET_EDIT_LOCKED), 'Hedge Result 5')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1', evalFieldReadOnly('Hedge Result 1')), 'Hedge Result 1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2', evalFieldReadOnly('Hedge Result 2')), 'Hedge Result 2')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', evalFieldReadOnly('Hedge Result 3')), 'Hedge Result 3')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', evalFieldReadOnly('Hedge Result 4')), 'Hedge Result 4')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', evalFieldReadOnly('Hedge Result 5')), 'Hedge Result 5')}
                         ${cell(computeHedgeNet(ev), 'Hedge Net')}
                         
-                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', SHEET_EDIT_LOCKED), 'Account #.1')}
-                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', SHEET_EDIT_LOCKED), 'Activation Fee')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1', SHEET_EDIT_LOCKED), 'Date Started.1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1', SHEET_EDIT_LOCKED), 'Date Ended.1')}
-                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', SHEET_EDIT_LOCKED), 'Status')}
+                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', evalFieldReadOnly('Account #.1')), 'Account #.1')}
+                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', evalFieldReadOnly('Activation Fee')), 'Activation Fee')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1', evalFieldReadOnly('Date Started.1')), 'Date Started.1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1', evalFieldReadOnly('Date Ended.1')), 'Date Ended.1')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', evalFieldReadOnly('Status')), 'Status')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', SHEET_EDIT_LOCKED), 'Hedge Result 1.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', SHEET_EDIT_LOCKED), 'Hedge Result 2.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1', SHEET_EDIT_LOCKED), 'Hedge Result 3.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1', SHEET_EDIT_LOCKED), 'Hedge Result 4.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', SHEET_EDIT_LOCKED), 'Hedge Result 5.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', SHEET_EDIT_LOCKED), 'Hedge Result 6')}
-                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', SHEET_EDIT_LOCKED), 'Hedge Result 7')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', evalFieldReadOnly('Hedge Result 1.1')), 'Hedge Result 1.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', evalFieldReadOnly('Hedge Result 2.1')), 'Hedge Result 2.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1', evalFieldReadOnly('Hedge Result 3.1')), 'Hedge Result 3.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1', evalFieldReadOnly('Hedge Result 4.1')), 'Hedge Result 4.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', evalFieldReadOnly('Hedge Result 5.1')), 'Hedge Result 5.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', evalFieldReadOnly('Hedge Result 6')), 'Hedge Result 6')}
+                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', evalFieldReadOnly('Hedge Result 7')), 'Hedge Result 7')}
                         ${cell(computeHedgeNet1(ev), 'Hedge Net.1')}
                         
-                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', SHEET_EDIT_LOCKED), 'Payout 1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1', SHEET_EDIT_LOCKED), 'Date 1')}
-                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', SHEET_EDIT_LOCKED), 'Payout 2')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2', SHEET_EDIT_LOCKED), 'Date 2')}
-                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', SHEET_EDIT_LOCKED), 'Payout 3')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3', SHEET_EDIT_LOCKED), 'Date 3')}
-                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', SHEET_EDIT_LOCKED), 'Payout 4')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4', SHEET_EDIT_LOCKED), 'Date 4')}
-                        ${cell(getInputHtml(getVal('Payout 5'), 'text', index, 'Payout 5', SHEET_EDIT_LOCKED), 'Payout 5')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5', SHEET_EDIT_LOCKED), 'Date 5')}
-                        ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', SHEET_EDIT_LOCKED), 'Payout 6')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6', SHEET_EDIT_LOCKED), 'Date 6')}
-                        ${cell(getInputHtml(getVal('Payout 7'), 'text', index, 'Payout 7', SHEET_EDIT_LOCKED), 'Payout 7')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 7')), 'date', index, 'Date 7', SHEET_EDIT_LOCKED), 'Date 7')}
-                        ${cell(getInputHtml(getVal('Payout 8'), 'text', index, 'Payout 8', SHEET_EDIT_LOCKED), 'Payout 8')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 8')), 'date', index, 'Date 8', SHEET_EDIT_LOCKED), 'Date 8')}
+                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', evalFieldReadOnly('Payout 1')), 'Payout 1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1', evalFieldReadOnly('Date 1')), 'Date 1')}
+                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', evalFieldReadOnly('Payout 2')), 'Payout 2')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2', evalFieldReadOnly('Date 2')), 'Date 2')}
+                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', evalFieldReadOnly('Payout 3')), 'Payout 3')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3', evalFieldReadOnly('Date 3')), 'Date 3')}
+                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', evalFieldReadOnly('Payout 4')), 'Payout 4')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4', evalFieldReadOnly('Date 4')), 'Date 4')}
+                        ${cell(getInputHtml(getVal('Payout 5'), 'text', index, 'Payout 5', evalFieldReadOnly('Payout 5')), 'Payout 5')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5', evalFieldReadOnly('Date 5')), 'Date 5')}
+                        ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', evalFieldReadOnly('Payout 6')), 'Payout 6')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6', evalFieldReadOnly('Date 6')), 'Date 6')}
+                        ${cell(getInputHtml(getVal('Payout 7'), 'text', index, 'Payout 7', evalFieldReadOnly('Payout 7')), 'Payout 7')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 7')), 'date', index, 'Date 7', evalFieldReadOnly('Date 7')), 'Date 7')}
+                        ${cell(getInputHtml(getVal('Payout 8'), 'text', index, 'Payout 8', evalFieldReadOnly('Payout 8')), 'Payout 8')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 8')), 'date', index, 'Date 8', evalFieldReadOnly('Date 8')), 'Date 8')}
 
-                        ${generateDayColumns(ev, cell, index, currentRowNum, SHEET_EDIT_LOCKED)}
-                        ${generateFundedOverflowColumns(ev, cell, index, SHEET_EDIT_LOCKED)}
+                        ${generateDayColumns(ev, cell, index, currentRowNum)}
+                        ${generateFundedOverflowColumns(ev, cell, index)}
                     `;
                     fragment.appendChild(row);
                     rowsBuilt++;
@@ -5130,7 +5148,7 @@
         }
 
         function loadClientIssues(forceRescan) {
-            if (SHEET_EDIT_LOCKED) return;
+            if (SHEET_STRUCTURE_LOCKED) return;
             const clientId = '{{ client_id }}';
             if (!clientId) return;
             const loading = document.getElementById('issues-loading');
@@ -5240,7 +5258,7 @@
             }, 100);
         }
         // Auto-load issues when page loads (non-client)
-        if (!SHEET_EDIT_LOCKED) { setTimeout(loadClientIssues, 500); }
+        if (!SHEET_STRUCTURE_LOCKED) { setTimeout(loadClientIssues, 500); }
 
         fixSubHeaderTop();
 
@@ -5324,16 +5342,16 @@
             return keys;
         }
 
-        function generateFundedOverflowColumns(ev, cell, index, readOnly=false) {
+        function generateFundedOverflowColumns(ev, cell, index) {
             let html = '';
             for (const key of fundedOverflowKeys()) {
                 const val = (ev[key] === null || ev[key] === undefined) ? '' : ev[key];
-                html += cell(getInputHtml(val, 'text', index, key, readOnly), key);
+                html += cell(getInputHtml(val, 'text', index, key, evalFieldReadOnly(key)), key);
             }
             return html;
         }
 
-        function generateDayColumns(ev, cell, index, currentRowNum, readOnly=false){
+        function generateDayColumns(ev, cell, index, currentRowNum){
             let html = '';
             for (let i = 1; i <= 60; i++) {
                 const propDayKey = `Prop Day ${i}`;
@@ -5360,7 +5378,7 @@
                 // Render Prop Day
                 // Note: We're passing the propDayKey which cell() uses to lookup note.
                 // Since we deleted it, no note indicator will appear.
-                html += cell(getInputHtml(propDayVal, 'text', index, propDayKey, readOnly), propDayKey);
+                html += cell(getInputHtml(propDayVal, 'text', index, propDayKey, evalFieldReadOnly(propDayKey)), propDayKey);
                 
                 // Restore note immediately after rendering the cell so data is consistent
                 if (hasNote && ev._notes) ev._notes[propDayKey] = originalNote;
@@ -5372,6 +5390,7 @@
                 const displayValue = progressContent.replace(/\n/g, ' ').replace(/"/g, '&quot;');
                 const noteClass = hasNote ? 'has-note' : '';
                 
+                const progressReadOnly = evalFieldReadOnly(propProgressKey);
                 if (hasNote) {
                     const propDayFieldAttr = _escapeNoteFieldAttr(propDayKey);
                     html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;"
@@ -5383,17 +5402,17 @@
                                     value="${displayValue}"
                                     placeholder="-"
                                     onfocus="isEditing = true"
-                                    ${readOnly ? 'readonly' : `oninput="syncPropProgressInput(this, ${index}, '${propDayKey}')" onblur="updatePropProgress(this, ${index}, '${propDayKey}')"`}
-                                    style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
+                                    ${progressReadOnly ? 'readonly' : `oninput="syncPropProgressInput(this, ${index}, '${propDayKey}')" onblur="updatePropProgress(this, ${index}, '${propDayKey}')"`}
+                                    style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${progressReadOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
                                 >
                             </td>`;
                 } else {
-                    html += cell(getInputHtml(progressContent, 'text', index, propProgressKey, readOnly), propProgressKey);
+                    html += cell(getInputHtml(progressContent, 'text', index, propProgressKey, progressReadOnly), propProgressKey);
                 }
 
                 // 4. Render Hedge Day Cell
                 const hedgeDayVal = (ev[hedgeDayKey] === null || ev[hedgeDayKey] === undefined) ? '' : ev[hedgeDayKey];
-                html += cell(getInputHtml(hedgeDayVal, 'text', index, hedgeDayKey, readOnly), hedgeDayKey);
+                html += cell(getInputHtml(hedgeDayVal, 'text', index, hedgeDayKey, evalFieldReadOnly(hedgeDayKey)), hedgeDayKey);
             }
             return html;
         }
@@ -8362,7 +8381,7 @@
         // ── Save-time validation warnings (admin/trader only, changed rows only) ──
         function validateBeforeSave() {
             // Never show to clients
-            if (SHEET_EDIT_LOCKED) return [];
+            if (IS_KWOK_ADMIN) return [];
 
             // Only validate rows that were edited in this session
             const changedRows = new Set(Object.keys(_changedFields).map(Number));
@@ -8552,7 +8571,7 @@
         function showValidationWarnings(warnings) {
             const existing = document.getElementById('validation-warning-banner');
             if (existing) existing.remove();
-            if (!warnings.length || SHEET_EDIT_LOCKED) return;
+            if (!warnings.length || IS_KWOK_ADMIN) return;
 
             const banner = document.createElement('div');
             banner.id = 'validation-warning-banner';
