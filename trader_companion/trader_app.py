@@ -1594,6 +1594,8 @@ class TradeOpssAIApp:
     PROP_FIRM_COLORS = {
         "My Funded Futures": "#3B8ED0",
         "MFFU":             "#3B8ED0",
+        "MFFU Builder":     "#D4A017",
+        "MFFU Builder 50K": "#D4A017",
         "TopStep":          "#DA3633",
         "TopStep RTP":      "#EA580C",   # amber-orange — child of Topstep, distinct from standard red
         "Apex":             "#E67E22",
@@ -5303,6 +5305,7 @@ class TradeOpssAIApp:
 
     _DETECTED_PROP_FIRM_LABEL = {
         "MFFU": "My Funded Futures",
+        "MFFU Builder 50K": "MFFU Builder",
         "Funded Next": "FundedNext",
         "TopStep": "Topstep",
         "Trade Day": "TradeDay",

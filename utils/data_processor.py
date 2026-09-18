@@ -377,6 +377,7 @@ _FIRM_MAP = {
     "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
     "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
     "mff": "My Funded Futures",
+    "mffubuilder": "MFFU Builder", "mffubuilder50k": "MFFU Builder",
     "topstep": "Topstep",
     "topsteprtp": "TopStep RTP",
     "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
@@ -422,6 +423,8 @@ def normalize_prop_firm(name):
     if key in _FIRM_MAP:
         return _FIRM_MAP[key]
     # Partial matches for common patterns
+    if "mffubuilder" in key:
+        return "MFFU Builder"
     if "myfundedfutures" in key or "myfundedfx" in key:
         return "My Funded Futures"
     if "fundednext" in key:
@@ -1582,7 +1585,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Funded Futures Family', 'Other'},
+        'Prop Firm': {'My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Funded Futures Family', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
