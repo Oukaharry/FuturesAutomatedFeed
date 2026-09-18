@@ -9180,7 +9180,17 @@
         let waterlogPollTimer = null;
         let waterlogCustomPeriod = null; // { start_date, end_date } when superadmin filter is active
 
-        /** Profit Splits Paid so far = sum of all Profit Split rows (including current period). Actual net = net in progress − that sum. */
+        /** Ignore stale daily-watermark spikes vs last paid split baseline (matches server). */
+        function _capNetForProfitSplit(latestNet, baseline) {
+            const net = Number(latestNet) || 0;
+            const base = Number(baseline) || 0;
+            if (base > 0 && net - base > 15000) {
+                return base;
+            }
+            return net;
+        }
+
+        /** Header net = newest period row (matches table). Minus open-period split only — not lifetime splits. */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
@@ -9195,13 +9205,18 @@
                 elTotal.textContent = formatMoney(totalSplitsPaid);
                 elTotal.style.color = totalSplitsPaid > 0 ? '#38bdf8' : '#94a3b8';
             }
-            const statsNet = Number(window._statsNetProfit);
-            let inProgress = (window._statsNetProfit !== undefined && !Number.isNaN(statsNet))
-                ? statsNet
-                : ((rows && rows[0])
-                    ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
-                    : 0);
-            const actualNet = inProgress - totalSplitsPaid;
+            let periodNet = 0;
+            let openSplit = 0;
+            if (rows && rows.length) {
+                periodNet = parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                openSplit = parseFloat(String((rows[0].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+            } else {
+                const statsNet = Number(window._statsNetProfit);
+                if (window._statsNetProfit !== undefined && !Number.isNaN(statsNet)) {
+                    periodNet = statsNet;
+                }
+            }
+            const actualNet = periodNet - openSplit;
             if (elNet) {
                 elNet.textContent = formatMoney(actualNet);
                 elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
@@ -9358,24 +9373,25 @@
                         // Override the most recent row's net profit with live value.
                         // Recompute open-period split only when there is no manual override.
                         if (rows.length && window._statsNetProfit !== undefined) {
-                            const latestNet = Number(window._statsNetProfit) || 0;
+                            const rawLatestNet = Number(window._statsNetProfit) || 0;
+                            const latestPct = _normSplitPct(rows[0].split_pct);
+                            // Prefer server baseline; fall back to last prior row with split > 0.
+                            let baseline = (window._lastSplitNetProfit !== undefined && !Number.isNaN(Number(window._lastSplitNetProfit)))
+                                ? Number(window._lastSplitNetProfit)
+                                : 0;
+                            if (baseline === 0) {
+                                for (let i = 1; i < rows.length; i++) {
+                                    const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+                                    if (psPrior > 0) {
+                                        baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                                        break;
+                                    }
+                                }
+                            }
+                            const latestNet = _capNetForProfitSplit(rawLatestNet, baseline);
                             rows[0].low = formatMoney(latestNet);
 
                             if (!rows[0].profit_split_override) {
-                                const latestPct = _normSplitPct(rows[0].split_pct);
-                                // Prefer server baseline; fall back to last prior row with split > 0.
-                                let baseline = (window._lastSplitNetProfit !== undefined && !Number.isNaN(Number(window._lastSplitNetProfit)))
-                                    ? Number(window._lastSplitNetProfit)
-                                    : 0;
-                                if (baseline === 0) {
-                                    for (let i = 1; i < rows.length; i++) {
-                                        const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
-                                        if (psPrior > 0) {
-                                            baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-                                            break;
-                                        }
-                                    }
-                                }
                                 let latestSplit = 0;
                                 if (latestNet > 0 && latestNet > baseline) {
                                     latestSplit = (latestNet - baseline) * latestPct / 100;
