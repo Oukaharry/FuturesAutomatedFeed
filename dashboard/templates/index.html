@@ -2559,7 +2559,7 @@
                     <thead>
                         <tr>
                             <th style="text-align: left; padding-left: 20px;">Date</th>
-                            <th style="text-align: left; padding-left: 20px;">Net Profit in Progress</th>
+                            <th style="text-align: left; padding-left: 20px;">Net After Profit Splits</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.12); color: #60a5fa;">Split %</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
                         </tr>
@@ -9194,7 +9194,22 @@
             return net;
         }
 
-        /** Header net = newest period row (matches table). Minus open-period split only — not lifetime splits. */
+        /** Sum profit splits on this row and all older periods (table is newest-first). */
+        function _cumulativeProfitSplitsFromRow(rows, startIdx) {
+            let total = 0;
+            for (let j = startIdx; j < rows.length; j++) {
+                total += parseFloat(String((rows[j].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+            }
+            return total;
+        }
+
+        /** Table display: period-end gross net minus splits paid through that period (matches header on latest row). */
+        function _netAfterSplitsDisplay(rows, idx) {
+            const gross = parseFloat(String((rows[idx].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+            return gross - _cumulativeProfitSplitsFromRow(rows, idx);
+        }
+
+        /** Header = Stats net in progress minus all profit splits in the history table (incl. current period row). */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
@@ -9209,18 +9224,13 @@
                 elTotal.textContent = formatMoney(totalSplitsPaid);
                 elTotal.style.color = totalSplitsPaid > 0 ? '#38bdf8' : '#94a3b8';
             }
-            let periodNet = 0;
-            let openSplit = 0;
-            if (rows && rows.length) {
-                periodNet = parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-                openSplit = parseFloat(String((rows[0].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
-            } else {
-                const statsNet = Number(window._statsNetProfit);
-                if (window._statsNetProfit !== undefined && !Number.isNaN(statsNet)) {
-                    periodNet = statsNet;
-                }
-            }
-            const actualNet = periodNet - openSplit;
+            const statsNet = Number(window._statsNetProfit);
+            const inProgress = (window._statsNetProfit !== undefined && !Number.isNaN(statsNet))
+                ? statsNet
+                : ((rows && rows.length)
+                    ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
+                    : 0);
+            const actualNet = inProgress - totalSplitsPaid;
             if (elNet) {
                 elNet.textContent = formatMoney(actualNet);
                 elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
@@ -9412,7 +9422,9 @@
                             const fromDate = (r.from_date || '').trim();
                             const npRaw = (r.low || '$0.00').trim();
                             const npNum = parseFloat(npRaw.replace(/[^0-9.-]/g, '')) || 0;
-                            const npColor = npNum >= 0 ? '#e2e8f0' : '#f87171';
+                            const npDisplayNum = _netAfterSplitsDisplay(rows, idx);
+                            const npDisplay = formatMoney(npDisplayNum);
+                            const npColor = npDisplayNum >= 0 ? '#e2e8f0' : '#f87171';
                             // Normalize split % (default/fallback is 50%).
                             // Per-period overrides in split_pct_overrides are honored; otherwise 50%.
                             const spRaw = _normSplitPct(r.split_pct);
@@ -9422,7 +9434,7 @@
                                     <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
                                     <td class="${isLatestRow ? '' : 'np-editable-cell'}" data-from-date="${fromDate}" data-value="${npNum}"
                                         style="text-align: left; padding-left: 20px; color: ${npColor}; position: relative; ${isLatestRow ? '' : 'cursor: pointer;'}">
-                                        <span class="np-display">${npRaw}</span>
+                                        <span class="np-display">${npDisplay}</span>
                                         <span class="np-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
                                     </td>
                                     <td class="sp-editable-cell" data-from-date="${fromDate}" data-value="${spRaw}"
@@ -9439,7 +9451,7 @@
                             } else {
                                 psHtml += `<tr>
                                     <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
-                                    <td style="text-align: left; padding-left: 20px; color: ${npColor};">${npRaw}</td>
+                                    <td style="text-align: left; padding-left: 20px; color: ${npColor};">${npDisplay}</td>
                                     <td style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.08); color: #60a5fa;">${spRaw}%</td>
                                     <td style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor};">${psRaw || '$0'}</td>
                                 </tr>`;

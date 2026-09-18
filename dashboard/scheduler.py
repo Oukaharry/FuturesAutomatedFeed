@@ -587,18 +587,20 @@ def update_all_clients_watermarks():
         clients = get_all_clients()  # Returns a dict: {client_id: client_data}
         today_str = datetime.now().strftime('%Y-%m-%d')
         
+        from dashboard.watermark_service import canonical_client_stats_net
+
         for client_id, client in clients.items():
             try:
-                # Pull net profit directly from stored statistics
-                # (already includes discrepancy from the last data push)
                 stored_stats = client.get('statistics', {})
                 if not isinstance(stored_stats, dict):
                     logging.info(f"Skipping {client_id}: no statistics data")
                     continue
 
-                net_profit = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
+                net_profit = canonical_client_stats_net(client)
                 if net_profit is None:
-                    net_profit = stored_stats.get('profitability_completed', {}).get('net_profit')
+                    net_profit = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
+                    if net_profit is None:
+                        net_profit = stored_stats.get('profitability_completed', {}).get('net_profit')
                 if net_profit is None:
                     logging.info(f"Skipping {client_id}: no net_profit in statistics")
                     continue

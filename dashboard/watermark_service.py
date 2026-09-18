@@ -604,15 +604,17 @@ def _monthly_profit_split_amount(net_profit, last_net_at_split, split_pct):
 
 
 def _cap_period_net_if_watermark_spike(net_profit, prev_period_net, in_range):
-    """Reject end-of-period net jumps caused by stale/inflated daily watermarks."""
+    """Reject end-of-period net jumps caused by stale/inflated daily watermarks.
+
+    Only caps when daily history looks unreliable (lone spike vs mostly negative).
+    Do not cap real month-over-month gains (e.g. Nikita +$16k 6/20→7/20).
+    """
     prev = float(prev_period_net or 0.0)
     net = float(net_profit or 0.0)
-    if prev <= 0 or net <= prev + 15000:
+    if prev <= 0 or net <= prev:
         return net
     vals = [float(v) for (_, v) in (in_range or [])]
     if vals and _daily_watermarks_unreliable(vals):
-        return prev
-    if net - prev > 15000:
         return prev
     return net
 
