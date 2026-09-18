@@ -6645,7 +6645,10 @@ def api_get_watermark_history(client_id):
         return jsonify({"status": "error", "message": "Unauthorized access to client waterlog"}), 403
 
     try:
-        from dashboard.watermark_service import get_watermark_history, get_lower_watermark, save_daily_profit
+        from dashboard.watermark_service import (
+            get_watermark_history, get_lower_watermark, save_daily_profit,
+            canonical_client_stats_net,
+        )
         from dashboard.database import get_client_data
 
         # --- Always snapshot today's live net profit so the Low Watermark is current ---
@@ -6653,14 +6656,14 @@ def api_get_watermark_history(client_id):
         try:
             client_data = get_client_data(client_id)
             if client_data:
-                # Pull net profit directly from stored statistics
-                # (already includes discrepancy from the last data push)
-                stored_stats = client_data.get('statistics', {})
-                live_net = None
-                if isinstance(stored_stats, dict):
-                    live_net = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
-                    if live_net is None:
-                        live_net = stored_stats.get('profitability_completed', {}).get('net_profit')
+                # Same formula as Stats tab / profit-share API (incl. hedging discrepancy).
+                live_net = canonical_client_stats_net(client_data)
+                if live_net is None:
+                    stored_stats = client_data.get('statistics', {})
+                    if isinstance(stored_stats, dict):
+                        live_net = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
+                        if live_net is None:
+                            live_net = stored_stats.get('profitability_completed', {}).get('net_profit')
                 if live_net is not None:
                     # Do not overwrite a sane auto watermark with an inflated live snapshot.
                     history = get_watermark_history(client_id, days=3)
