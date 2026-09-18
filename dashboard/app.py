@@ -9652,27 +9652,42 @@ def _norm_quality_account_text(raw) -> str:
     return re.sub(r'\s+', ' ', v).strip()
 
 
-# Quality scan: skip day-marker checks when Account # cells are status labels (case-insensitive).
-_QUALITY_SKIP_ACCOUNT_PHRASES = ('moved to live', 'dashboard lock')
-_QUALITY_SKIP_ACCOUNT_SUBSTRINGS = ('restricted', 'pause', 'ban')
+# Quality scan: skip row when any cell contains these status labels (case-insensitive).
+_QUALITY_SKIP_STATUS_PHRASES = (
+    'moved to live',
+    'dashboard lock',
+    'maxed out',
+    'maxd out',  # common typo
+)
+_QUALITY_SKIP_STATUS_SUBSTRINGS = ('restricted', 'pause', 'ban')
 
 
-def _quality_row_has_skip_account_marker(ev) -> bool:
-    """True when Account # cells contain a status label — skip day-placeholder quality flags."""
+def _quality_row_has_skip_status_marker(ev) -> bool:
+    """True when any eval cell (account, hedge, status, etc.) contains a skip status label."""
     if not isinstance(ev, dict):
         return False
-    blobs = [
-        ev.get('Account #'),
-        ev.get('Account #.1'),
-        ev.get('Account Number'),
-    ]
-    text = _norm_quality_account_text(' '.join(str(s or '') for s in blobs))
+    parts = []
+    for key, val in ev.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if val is None:
+            continue
+        s = str(val).strip()
+        if s:
+            parts.append(s)
+    if not parts:
+        return False
+    text = _norm_quality_account_text(' '.join(parts))
     if not text:
         return False
-    for phrase in _QUALITY_SKIP_ACCOUNT_PHRASES:
+    for phrase in _QUALITY_SKIP_STATUS_PHRASES:
         if phrase in text:
             return True
-    return any(sub in text for sub in _QUALITY_SKIP_ACCOUNT_SUBSTRINGS)
+    return any(sub in text for sub in _QUALITY_SKIP_STATUS_SUBSTRINGS)
+
+
+# Backward-compatible alias (account-only name from first implementation).
+_quality_row_has_skip_account_marker = _quality_row_has_skip_status_marker
 
 
 def _quality_row_payout_hedge_without_weekday(ev) -> bool:
@@ -10002,6 +10017,10 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                 # "Payout" written in a funded hedge cell and no weekday placeholder:
                 # waiting on payout, not a missing-day / SOP row.
                 if _quality_row_payout_hedge_without_weekday(ev):
+                    continue
+
+                # Ban / pause / restricted / moved-to-live anywhere on the row (incl. hedge cells).
+                if _quality_row_has_skip_status_marker(ev):
                     continue
 
                 # Quality scan gating for newly added rows:
@@ -10392,7 +10411,6 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                     and not _inactive_p1
                     and not _inactive_p2
                     and status_p1
-                    and not _quality_row_has_skip_account_marker(ev)
                 ):
                     # Downtime/current-day markers should follow Kenyan day boundaries (midnight EAT).
                     _allowed_abbrs = _allowed_trading_day_abbrs(now_eat)
