@@ -584,11 +584,97 @@ def _period_end_net_from_dailies(in_range, prev_period_net, *, period_complete, 
     return vals[-1]
 
 
+def _parse_money_cell(s):
+    if s is None:
+        return 0.0
+    t = str(s).replace('$', '').replace(',', '').strip()
+    if not t or t.lower() == 'nan':
+        return 0.0
+    try:
+        return float(t)
+    except ValueError:
+        return 0.0
+
+
 def _monthly_profit_split_amount(net_profit, last_net_at_split, split_pct):
     effective_base = max(float(last_net_at_split or 0.0), 0.0)
     if net_profit > effective_base and net_profit > 0:
         return (net_profit - effective_base) * float(split_pct) / 100.0
     return 0.0
+
+
+def _cap_period_net_if_watermark_spike(net_profit, prev_period_net, in_range):
+    """Reject end-of-period net jumps caused by stale/inflated daily watermarks."""
+    prev = float(prev_period_net or 0.0)
+    net = float(net_profit or 0.0)
+    if prev <= 0 or net <= prev + 15000:
+        return net
+    vals = [float(v) for (_, v) in (in_range or [])]
+    if vals and _daily_watermarks_unreliable(vals):
+        return prev
+    if net - prev > 15000:
+        return prev
+    return net
+
+
+def _last_paid_split_net_from_periods(periods):
+    """Net at end of the most recent period that paid profit split > 0 (incl. overrides)."""
+    last = 0.0
+    for p in periods:
+        if _parse_money_cell(p.get('profit_split')) > 0:
+            last = _parse_money_cell(p.get('low'))
+    return last
+
+
+def _apply_profit_split_overrides_to_periods(periods, ps_overrides):
+    if not ps_overrides:
+        return
+    for period in periods:
+        key = period.get('from_date')
+        if key in ps_overrides:
+            val = ps_overrides[key]
+            period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
+            period['profit_split_override'] = True
+
+
+def _parse_us_date(s):
+    from datetime import datetime as _dt
+    try:
+        parts = str(s or '').strip().split('/')
+        if len(parts) != 3:
+            return None
+        return _dt(int(parts[2]), int(parts[0]), int(parts[1])).date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _reconcile_profit_share_splits(periods, ps_overrides, today=None):
+    """Recompute splits in chronological order so paid overrides advance the baseline."""
+    if today is None:
+        today = _date_cls.today()
+    last_net_at_split = 0.0
+    for p in periods:
+        to_d = _parse_us_date(p.get('to_date'))
+        period_complete = bool(to_d and to_d <= today)
+        net = _parse_money_cell(p.get('low'))
+        try:
+            pct = float(p.get('split_pct') or 50)
+        except (TypeError, ValueError):
+            pct = 50.0
+        key = p.get('from_date')
+        if not period_complete:
+            if not p.get('profit_split_override') and key not in ps_overrides:
+                p['profit_split'] = '$0'
+            continue
+        if p.get('profit_split_override') or (key in ps_overrides):
+            ps = float(ps_overrides[key]) if key in ps_overrides else _parse_money_cell(p.get('profit_split'))
+            p['profit_split'] = f"${ps:,.0f}" if ps > 0 else '$0'
+        else:
+            ps = _monthly_profit_split_amount(net, last_net_at_split, pct)
+            p['profit_split'] = f"${ps:,.0f}" if ps > 0 else '$0'
+        if ps > 0:
+            last_net_at_split = net
+    return last_net_at_split
 
 
 def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0, _bulk=None, _live_net=None):
@@ -641,6 +727,9 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
         monthly_np_key = _fmt_date(month_start)
         if monthly_np_key in np_overrides:
             net_profit = np_overrides[monthly_np_key]
+        elif period_complete:
+            net_profit = _cap_period_net_if_watermark_spike(
+                net_profit, prev_period_net, in_range)
 
         monthly_split_pct = client_split_pct
         if monthly_np_key in spct_overrides:
@@ -661,13 +750,9 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
             if profit_split > 0:
                 last_net_at_split = net_profit
 
-    if ps_overrides:
-        for period in result:
-            key = period['from_date']
-            if key in ps_overrides:
-                val = ps_overrides[key]
-                period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
-                period['profit_split_override'] = True
+    _apply_profit_split_overrides_to_periods(result, ps_overrides)
+    _reconcile_profit_share_splits(result, ps_overrides, today=today)
+    last_net_at_split = _last_paid_split_net_from_periods(result)
 
     return {
         'periods': result,
@@ -868,6 +953,9 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
         monthly_np_key = _fmt_date(month_start)
         if monthly_np_key in np_overrides:
             net_profit = np_overrides[monthly_np_key]
+        elif period_complete:
+            net_profit = _cap_period_net_if_watermark_spike(
+                net_profit, prev_period_net, in_range)
 
         # Apply per-period split pct override
         monthly_split_pct = client_split_pct
@@ -890,16 +978,9 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
             if profit_split > 0:
                 last_net_at_split = net_profit
 
-    # Net profit overrides are now applied during HWM calculation above
-    # (no post-processing needed)
-
-    if ps_overrides:
-        for period in result:
-            key = period['from_date']
-            if key in ps_overrides:
-                val = ps_overrides[key]
-                period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
-                period['profit_split_override'] = True
+    _apply_profit_split_overrides_to_periods(result, ps_overrides)
+    _reconcile_profit_share_splits(result, ps_overrides, today=today)
+    last_net_at_split = _last_paid_split_net_from_periods(result)
 
     return {
         'periods': result,

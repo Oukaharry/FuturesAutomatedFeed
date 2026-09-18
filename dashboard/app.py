@@ -10115,7 +10115,7 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
 
                 # Detect "double dip" — MFF/TopStep accounts with an activation fee
                 # These are reset at funded stage so eval-phase fields are intentionally blank
-                _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
+                _dd_firms = ('my funded futures', 'mff', 'mffu builder', 'topstep', 'top step', 'topstepx')
                 activation_fee = str(ev.get('Activation Fee', '') or '').strip()
                 is_double_dip = (
                     prop_firm.lower() in _dd_firms

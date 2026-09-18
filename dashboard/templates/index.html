@@ -4577,7 +4577,9 @@
                     if (currentData.evaluations) {
                         currentData.evaluations.forEach(ev => {
                             const pf = (ev['Prop Firm'] || '').toLowerCase().replace(/[\s_]/g, '');
-                            if (pf === 'mffu' || pf === 'mffuflex' || pf === 'myfundedfx') {
+                            if (pf === 'mffubuilder' || pf === 'mffubuilder50k') {
+                                ev['Prop Firm'] = 'MFFU Builder';
+                            } else if (pf === 'mffu' || pf === 'mffuflex' || pf === 'myfundedfx') {
                                 ev['Prop Firm'] = 'My Funded Futures';
                             } else if (pf === 'topstep' || pf === 'topstep' || pf === 'v2') {
                                 ev['Prop Firm'] = 'Topstep';
@@ -5781,6 +5783,7 @@
                         'mffu': 'My Funded Futures', 'mffuflex': 'My Funded Futures',
                         'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',
                         'mff': 'My Funded Futures',
+                        'mffubuilder': 'MFFU Builder', 'mffubuilder50k': 'MFFU Builder',
                         'topstep': 'Topstep',
                         'topsteprtp': 'Topstep',
                         'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
@@ -5799,6 +5802,7 @@
                     function normFirm(name) {
                         if (!name) return 'Unknown';
                         const key = name.trim().toLowerCase().replace(/[\s_]/g, '');
+                        if (key.includes('mffubuilder')) return 'MFFU Builder';
                         return firmMap[key] || name.trim();
                     }
                     function mergeStatKeys(obj) {
@@ -6490,7 +6494,7 @@
                 
                 // Predefined Prop Firms
                 const firms = [
-                    'My Funded Futures', 'Funding Ticks', 'TradeDay', 
+                    'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay', 
                     'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
@@ -7642,7 +7646,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -9180,7 +9184,17 @@
         let waterlogPollTimer = null;
         let waterlogCustomPeriod = null; // { start_date, end_date } when superadmin filter is active
 
-        /** Profit Splits Paid so far = sum of all Profit Split rows (including current period). Actual net = net in progress − that sum. */
+        /** Ignore stale daily-watermark spikes vs last paid split baseline (matches server). */
+        function _capNetForProfitSplit(latestNet, baseline) {
+            const net = Number(latestNet) || 0;
+            const base = Number(baseline) || 0;
+            if (base > 0 && net - base > 15000) {
+                return base;
+            }
+            return net;
+        }
+
+        /** Header net = newest period row (matches table). Minus open-period split only — not lifetime splits. */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
@@ -9195,13 +9209,18 @@
                 elTotal.textContent = formatMoney(totalSplitsPaid);
                 elTotal.style.color = totalSplitsPaid > 0 ? '#38bdf8' : '#94a3b8';
             }
-            const statsNet = Number(window._statsNetProfit);
-            let inProgress = (window._statsNetProfit !== undefined && !Number.isNaN(statsNet))
-                ? statsNet
-                : ((rows && rows[0])
-                    ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
-                    : 0);
-            const actualNet = inProgress - totalSplitsPaid;
+            let periodNet = 0;
+            let openSplit = 0;
+            if (rows && rows.length) {
+                periodNet = parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                openSplit = parseFloat(String((rows[0].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+            } else {
+                const statsNet = Number(window._statsNetProfit);
+                if (window._statsNetProfit !== undefined && !Number.isNaN(statsNet)) {
+                    periodNet = statsNet;
+                }
+            }
+            const actualNet = periodNet - openSplit;
             if (elNet) {
                 elNet.textContent = formatMoney(actualNet);
                 elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
@@ -9358,24 +9377,25 @@
                         // Override the most recent row's net profit with live value.
                         // Recompute open-period split only when there is no manual override.
                         if (rows.length && window._statsNetProfit !== undefined) {
-                            const latestNet = Number(window._statsNetProfit) || 0;
+                            const rawLatestNet = Number(window._statsNetProfit) || 0;
+                            const latestPct = _normSplitPct(rows[0].split_pct);
+                            // Prefer server baseline; fall back to last prior row with split > 0.
+                            let baseline = (window._lastSplitNetProfit !== undefined && !Number.isNaN(Number(window._lastSplitNetProfit)))
+                                ? Number(window._lastSplitNetProfit)
+                                : 0;
+                            if (baseline === 0) {
+                                for (let i = 1; i < rows.length; i++) {
+                                    const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+                                    if (psPrior > 0) {
+                                        baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                                        break;
+                                    }
+                                }
+                            }
+                            const latestNet = _capNetForProfitSplit(rawLatestNet, baseline);
                             rows[0].low = formatMoney(latestNet);
 
                             if (!rows[0].profit_split_override) {
-                                const latestPct = _normSplitPct(rows[0].split_pct);
-                                // Prefer server baseline; fall back to last prior row with split > 0.
-                                let baseline = (window._lastSplitNetProfit !== undefined && !Number.isNaN(Number(window._lastSplitNetProfit)))
-                                    ? Number(window._lastSplitNetProfit)
-                                    : 0;
-                                if (baseline === 0) {
-                                    for (let i = 1; i < rows.length; i++) {
-                                        const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
-                                        if (psPrior > 0) {
-                                            baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-                                            break;
-                                        }
-                                    }
-                                }
                                 let latestSplit = 0;
                                 if (latestNet > 0 && latestNet > baseline) {
                                     latestSplit = (latestNet - baseline) * latestPct / 100;
@@ -9855,6 +9875,7 @@
         function _propFirmDisplayName(propFirm) {
             const map = {
                 'My Funded Futures': 'MFFU',
+                'MFFU Builder': 'MFFU Builder',
                 'FundedNext': 'Funded Next',
                 'Funded Next Flex': 'Funded Next',
                 'Topstep': 'TopStep',
@@ -9871,7 +9892,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};

@@ -1594,6 +1594,8 @@ class TradeOpssAIApp:
     PROP_FIRM_COLORS = {
         "My Funded Futures": "#3B8ED0",
         "MFFU":             "#3B8ED0",
+        "MFFU Builder":     "#D4A017",
+        "MFFU Builder 50K": "#D4A017",
         "TopStep":          "#DA3633",
         "TopStep RTP":      "#EA580C",   # amber-orange — child of Topstep, distinct from standard red
         "Apex":             "#E67E22",
@@ -5303,6 +5305,7 @@ class TradeOpssAIApp:
 
     _DETECTED_PROP_FIRM_LABEL = {
         "MFFU": "My Funded Futures",
+        "MFFU Builder 50K": "MFFU Builder",
         "Funded Next": "FundedNext",
         "TopStep": "Topstep",
         "Trade Day": "TradeDay",
@@ -5442,7 +5445,7 @@ class TradeOpssAIApp:
         """Determine current phase display name and blueprint key for an evaluation."""
         challenge_status = self._cell(ev.get("Status P1")).lower()
         funded_status = self._cell(ev.get("Status")).lower()
-        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
+        has_funded_acct = bool(self._cell_account(ev.get("Account #.1")))
         passed_funded = self._has_passed_to_funded(ev)
 
         # Check if farming data exists — look for Hedge Day cell data with or without
@@ -5450,13 +5453,19 @@ class TradeOpssAIApp:
         has_farming_marker = bool(self._cell(ev.get("Prop Day 1")))
         has_hedge_day_data = False
         has_hedge_day_placeholder = False
-        for i in range(1, 35):
+        has_prop_day_placeholder = False
+        for i in range(1, 61):
             val = self._cell(ev.get(f"Hedge Day {i}"))
             if val and val not in ("—", "-"):
                 has_hedge_day_data = True
                 if self._parse_day_token(val) is not None:
                     has_hedge_day_placeholder = True
                     break
+        for i in range(1, 61):
+            val = self._cell(ev.get(f"Prop Day {i}"))
+            if val and val not in ("—", "-") and self._parse_day_token(val) is not None:
+                has_prop_day_placeholder = True
+                break
 
         # Funded columns take priority: if a funded Hedge Result N.1 slot still holds an
         # active day-name placeholder, the row is still in the Funded phase even if
@@ -5467,8 +5476,12 @@ class TradeOpssAIApp:
                 if val and self._parse_day_token(val) is not None:
                     return "Funded", "funded_trade1"
 
-        # Farming if: (1) explicit marker + data, OR (2) day placeholder exists
-        if (has_farming_marker and has_hedge_day_data) or has_hedge_day_placeholder:
+        # Farming if: hedge/prop day placeholders or prop-day grid in use
+        if (
+            (has_farming_marker and has_hedge_day_data)
+            or has_hedge_day_placeholder
+            or has_prop_day_placeholder
+        ):
             return "Farming", "farming"
         # Both Account # + Account #.1 → eval passed; never trade challenge leg.
         if passed_funded:
@@ -6073,14 +6086,20 @@ class TradeOpssAIApp:
         elif current_phase == "Double Dip":
             return list(self._FUNDED_HEDGE_FIELDS)
         elif current_phase == "Farming":
-            return [f"Hedge Day {i}" for i in range(1, 61)]
+            return list(self._FARMING_SCAN_FIELDS)
         return []
+
+    # Farming SCAN/trade cells: hedge leg + prop-firm day placeholders (Prop Day 21 = FRIDAY, etc.)
+    _FARMING_SCAN_FIELDS = (
+        [f"Hedge Day {i}" for i in range(1, 61)]
+        + [f"Prop Day {i}" for i in range(1, 61)]
+    )
 
     # All possible field sets for day placeholder scanning (phase → fields)
     _ALL_PHASE_FIELD_SETS = [
         ("Challenge",  [f"Hedge Result {i}" for i in range(1, 6)]),
         ("Funded",     list(_FUNDED_HEDGE_FIELDS)),
-        ("Farming",    [f"Hedge Day {i}" for i in range(1, 61)]),
+        ("Farming",    list(_FARMING_SCAN_FIELDS)),
     ]
 
     def _count_completed_trades(self, ev, current_phase):
@@ -6115,16 +6134,28 @@ class TradeOpssAIApp:
 
         return completed, len(fields), next_empty
 
+    _ACCOUNT_PLACEHOLDERS = frozenset({
+        "-", "—", "–", "--", "n/a", "na", "none", "tbd", "pending",
+    })
+
+    @classmethod
+    def _cell_account(cls, value, default=""):
+        """Account # cell — treat dashboard dash placeholders as empty."""
+        s = cls._cell(value, default)
+        if s.lower() in cls._ACCOUNT_PLACEHOLDERS:
+            return ""
+        return s
+
     def _has_passed_to_funded(self, ev) -> bool:
         """True when the row has both challenge and funded account numbers."""
-        ch = self._cell(ev.get("Account #"))
-        fu = self._cell(ev.get("Account #.1"))
+        ch = self._cell_account(ev.get("Account #"))
+        fu = self._cell_account(ev.get("Account #.1"))
         return bool(ch and fu)
 
     def _primary_trade_account(self, ev) -> str:
         """Account number to trade — funded leg when challenge is already passed."""
-        ch = self._cell(ev.get("Account #"))
-        fu = self._cell(ev.get("Account #.1"))
+        ch = self._cell_account(ev.get("Account #"))
+        fu = self._cell_account(ev.get("Account #.1"))
         if self._has_passed_to_funded(ev):
             return fu
         return fu or ch or "—"
@@ -6143,15 +6174,15 @@ class TradeOpssAIApp:
         Example: row A has eval + funded (passed); row B still lists only the
         old eval account — row B must not appear in Active Trades.
         """
-        ch = self._cell(ev.get("Account #"))
-        fu = self._cell(ev.get("Account #.1"))
+        ch = self._cell_account(ev.get("Account #"))
+        fu = self._cell_account(ev.get("Account #.1"))
         if not ch or fu:
             return False
         for other in all_evals:
             if other is ev or other.get("_deleted"):
                 continue
-            if (self._cell(other.get("Account #")) == ch
-                    and self._cell(other.get("Account #.1"))):
+            if (self._cell_account(other.get("Account #")) == ch
+                    and self._cell_account(other.get("Account #.1"))):
                 return True
         return False
 
@@ -6170,8 +6201,8 @@ class TradeOpssAIApp:
 
     def _is_funded_only_row(self, ev) -> bool:
         """Row lists only Account #.1 (funded leg) — no challenge number."""
-        ch = self._cell(ev.get("Account #"))
-        fu = self._cell(ev.get("Account #.1"))
+        ch = self._cell_account(ev.get("Account #"))
+        fu = self._cell_account(ev.get("Account #.1"))
         return bool(fu) and not ch
 
     def _on_funded_leg(self, ev) -> bool:
@@ -6180,9 +6211,9 @@ class TradeOpssAIApp:
 
     def _funded_leg_exhausted(self, ev) -> bool:
         """Funded hedge track finished — dollar results, no day placeholders left."""
-        if not self._cell(ev.get("Account #.1")):
+        if not self._cell_account(ev.get("Account #.1")):
             return False
-        
+
         # Detect current phase to check the right fields
         phase_display, _ = self._detect_eval_phase(ev)
         
@@ -6209,20 +6240,22 @@ class TradeOpssAIApp:
         return results >= 2 and placeholders == 0
 
     def _build_lifecycle_registry(self, all_evals):
-        """Challenge → funded pairs and funded suffixes from graduated rows."""
+        """Challenge → funded account ids from rows that actually graduated."""
         graduated_ch = set()
-        funded_suffixes = set()
+        funded_accounts = set()
         for ev in all_evals:
             if ev.get("_deleted"):
                 continue
-            ch = self._cell(ev.get("Account #"))
-            fu = self._cell(ev.get("Account #.1"))
-            if ch and fu:
-                graduated_ch.add(ch)
-                graduated_ch.add(self._acct_suffix(ch))
-                funded_suffixes.add(fu)
-                funded_suffixes.add(self._acct_suffix(fu))
-        return graduated_ch, funded_suffixes
+            ch = self._cell_account(ev.get("Account #"))
+            fu = self._cell_account(ev.get("Account #.1"))
+            if not (ch and fu):
+                continue
+            p1 = self._cell(ev.get("Status P1")).lower()
+            if p1 in ("", "-", "—", "not started"):
+                continue
+            graduated_ch.add(ch.lower())
+            funded_accounts.add(fu.lower())
+        return graduated_ch, funded_accounts
 
     def _is_superseded_lifecycle_row(self, ev, all_evals) -> bool:
         """Skip duplicate lifecycle legs (challenge row after funded account exists).
@@ -6231,8 +6264,9 @@ class TradeOpssAIApp:
         The dashboard may still have a stale challenge-only row OR a completed
         funded row — only the current, tradeable leg should appear once.
         """
-        ch = self._cell(ev.get("Account #"))
-        fu = self._cell(ev.get("Account #.1"))
+        ch = self._cell_account(ev.get("Account #"))
+        fu = self._cell_account(ev.get("Account #.1"))
+        ch_key = ch.lower() if ch else ""
 
         if self._on_funded_leg(ev) and self._funded_leg_exhausted(ev):
             return True
@@ -6240,14 +6274,14 @@ class TradeOpssAIApp:
         if self._is_superseded_challenge_row(ev, all_evals):
             return True
 
-        graduated_ch, funded_suffixes = self._build_lifecycle_registry(all_evals)
+        graduated_ch, funded_accounts = self._build_lifecycle_registry(all_evals)
 
         # Challenge-only row whose Account # already graduated on another row
-        if ch and not fu:
-            if ch in graduated_ch or self._acct_suffix(ch) in graduated_ch:
+        if ch_key and not fu:
+            if ch_key in graduated_ch:
                 return True
             # Funded number mistakenly listed alone in Account # column
-            if ch in funded_suffixes or self._acct_suffix(ch) in funded_suffixes:
+            if ch_key in funded_accounts:
                 return True
 
         return False
@@ -6319,7 +6353,16 @@ class TradeOpssAIApp:
         """
         passed_funded = self._has_passed_to_funded(ev)
         if passed_funded or self._is_funded_only_row(ev):
-            return self._funded_leg_tradeable(ev, weekday)
+            if self._funded_leg_tradeable(ev, weekday):
+                return True
+            # Funded rows in farming still queue weekdays in Hedge Day / Prop Day cols.
+            farming_sets = [("Farming", list(self._FARMING_SCAN_FIELDS))]
+            today_ok, found_any = self._scan_day_placeholders(ev, farming_sets, weekday)
+            if today_ok:
+                return True
+            if found_any:
+                return False
+            return False
 
         phase_sets = self._phase_field_sets_for_scan(ev)
         today_scoped, found_any_scoped = self._scan_day_placeholders(
@@ -6914,8 +6957,8 @@ class TradeOpssAIApp:
         """
         p1 = self._cell(ev.get("Status P1")).lower()
         funded = self._cell(ev.get("Status")).lower()
-        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
-        has_challenge_acct = bool(self._cell(ev.get("Account #")))
+        has_funded_acct = bool(self._cell_account(ev.get("Account #.1")))
+        has_challenge_acct = bool(self._cell_account(ev.get("Account #")))
 
         p1_inactive = any(kw in p1 for kw in self._INACTIVE_KEYWORDS) if p1 else False
         funded_inactive = any(kw in funded for kw in (*self._INACTIVE_KEYWORDS, "complete")) if funded else False
@@ -7189,12 +7232,13 @@ class TradeOpssAIApp:
                         continue
 
                     # Must have at least one account number
-                    if not self._cell(ev.get("Account #")) and not self._cell(ev.get("Account #.1")):
+                    if (not self._cell_account(ev.get("Account #"))
+                            and not self._cell_account(ev.get("Account #.1"))):
                         skipped_count += 1
                         continue
 
                     # Dual-account rows must have a funded account to trade
-                    if self._has_passed_to_funded(ev) and not self._cell(ev.get("Account #.1")):
+                    if self._has_passed_to_funded(ev) and not self._cell_account(ev.get("Account #.1")):
                         skipped_dual += 1
                         continue
 

@@ -1346,6 +1346,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
                 "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
                 "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
                 "mff": "My Funded Futures",
+                "mffubuilder": "MFFU Builder",
+                "mffubuilder50k": "MFFU Builder",
                 "topstep": "Topstep",
                 "topsteprtp": "TopStep RTP",
                 "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",

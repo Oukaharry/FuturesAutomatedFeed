@@ -796,6 +796,8 @@ def normalize_prop_firm_name(name):
         "mff": "My Funded Futures",
         "mffu": "My Funded Futures",
         "mffuflex": "My Funded Futures",
+        "mffubuilder": "MFFU Builder",
+        "mffubuilder50k": "MFFU Builder",
         "fundedfuturesfamily": "Funded Futures Family",
         "fff": "Funded Futures Family",
         "lucid": "Lucid",
@@ -808,6 +810,8 @@ def normalize_prop_firm_name(name):
         return MAPPING[normalized]
         
     # Check if key starts with... (optional, logic for variations)
+    if "mffubuilder" in normalized:
+        return "MFFU Builder"
     if "myfundedfutures" in normalized:
         return "My Funded Futures"
     if "fundednextflex" in normalized:
