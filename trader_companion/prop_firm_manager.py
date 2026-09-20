@@ -2546,6 +2546,25 @@ class PropFirmManager:
             return "100k"
         return "50k"
     
+    @staticmethod
+    def _same_firm_phase_fallback(strategy_configs: Dict, phase_key: str) -> Tuple[str, Dict]:
+        """Nearest phase within the SAME blueprint, so TP/SL never leaks across firms."""
+        key = str(phase_key or "")
+        if key.startswith("challenge_trade"):
+            candidates = ["challenge_trade1"]
+        elif key.startswith("funded_trade"):
+            candidates = ["funded_trade1"]
+        elif key.startswith("farming"):
+            # A no-hedge firm has no farming stage; its own challenge sizing is
+            # far closer than another firm's farming config.
+            candidates = ["farming", "challenge_trade1", "funded_trade1"]
+        else:
+            candidates = ["challenge_trade1", "funded_trade1"]
+        for candidate in candidates:
+            if candidate != key and strategy_configs.get(candidate):
+                return candidate, strategy_configs[candidate]
+        return "", {}
+
     def get_strategy_config(self, firm_code: str, phase_key: str, size_key: str = "50k") -> Dict:
         """Get strategy configuration for specific prop firm and phase."""
         # Normalize size_key: "$50,000" -> "50k", "$100,000" -> "100k", etc.
@@ -2557,9 +2576,16 @@ class PropFirmManager:
         
         phase_config = strategy_configs.get(phase_key, {})
         if not phase_config:
-            self.logger.warning(f"Phase '{phase_key}' not found for '{firm_code}', using MFFU_Flex default")
-            mffu_configs = self.firm_blueprints["MFFU_Flex"]["strategy_configs"]
-            phase_config = mffu_configs.get(phase_key, {})
+            alt_key, phase_config = self._same_firm_phase_fallback(
+                strategy_configs, phase_key)
+            if phase_config:
+                self.logger.warning(
+                    f"Phase '{phase_key}' not defined for '{firm_code}' — using its own "
+                    f"'{alt_key}' config rather than another firm's blueprint")
+            else:
+                self.logger.warning(f"Phase '{phase_key}' not found for '{firm_code}', using MFFU_Flex default")
+                mffu_configs = self.firm_blueprints["MFFU_Flex"]["strategy_configs"]
+                phase_config = mffu_configs.get(phase_key, {})
 
         self.logger.info(f"[DEBUG get_strategy_config] phase_config keys: {list(phase_config.keys()) if phase_config else 'None'}")
 
@@ -2568,6 +2594,11 @@ class PropFirmManager:
             # For farming phase, try to fallback to 50k first before using MFFU_Flex fallback
             if phase_key == "farming" and size_key != "50k" and "50k" in phase_config:
                 self.logger.info(f"Farming config not found for '{size_key}', using 50k farming config instead")
+                config = phase_config["50k"]
+            elif phase_config.get("50k"):
+                self.logger.warning(
+                    f"Size '{size_key}' not defined for '{firm_code}/{phase_key}' — "
+                    f"using its own 50k config rather than another firm's blueprint")
                 config = phase_config["50k"]
             else:
                 self.logger.warning(f"Config not found for '{firm_code}/{phase_key}/{size_key}', using MFFU_Flex fallback")

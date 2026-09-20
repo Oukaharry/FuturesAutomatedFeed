@@ -64,6 +64,23 @@ def test_rapid_daily_shares_funded_next_login_but_not_its_blueprint():
     assert app._resolve_firm_code("FundedNext Rapid Daily") == "FundedNext Rapid Daily"
 
 
+def test_rapid_daily_undefined_phases_never_borrow_another_blueprint():
+    """A phase Rapid Daily does not define must not fall back to MFFU_Flex."""
+    mgr = PropFirmManager()
+    size = "$50,000"
+
+    for phase in ("challenge_trade2", "challenge_trade3", "challenge_trade4",
+                  "farming", "funded_trade9"):
+        config = mgr.get_strategy_config("FundedNext Rapid Daily", phase, size)
+        other = mgr.get_strategy_config("MFFU_Flex", phase, size)
+
+        assert config["tradovate_qty"] == 2, phase
+        assert config["tradovate_symbol"] == "NQZ6", phase
+        # SL must stay inside the $1,000 daily-loss limit (100 ticks on 2 NQ).
+        assert config["tradovate_sl_ticks"] <= 100, phase
+        assert config["tradovate_sl_ticks"] != other.get("tradovate_sl_ticks"), phase
+
+
 def test_ml_mode_requires_password_when_configured(monkeypatch):
     app = object.__new__(TradeOpssAIApp)
     app.ml_mode_var = type("Var", (), {"get": lambda self: True})()
