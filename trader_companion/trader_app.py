@@ -6851,6 +6851,42 @@ class TradeOpssAIApp:
 
         return True, "\n".join(msgs)
 
+    @staticmethod
+    def _normalize_phase_for_profit(current_phase: str) -> str:
+        """Map dashboard phase labels to keys used for hedge-field P/L sums."""
+        cp = str(current_phase or "").strip()
+        return {
+            "Challenge Phase": "Challenge",
+            "Funded Phase": "Funded",
+            "Farming Phase": "Farming",
+            "Min Trading Days": "Farming",
+            "Qualifying Days": "Farming",
+            "Double Dip Phase": "Double Dip",
+        }.get(cp, cp)
+
+    def _sum_phase_hedge_fields(self, ev, current_phase) -> float:
+        phase = self._normalize_phase_for_profit(current_phase)
+        total = 0.0
+        fields = []
+        if phase == "Challenge":
+            fields = [f"Hedge Result {i}" for i in range(1, 6)]
+        elif phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
+            fields = list(self._FUNDED_HEDGE_FIELDS)
+        elif phase == "Farming":
+            fields = [f"Hedge Day {i}" for i in range(1, 61)]
+        elif phase == "Double Dip":
+            fields = list(self._FUNDED_HEDGE_FIELDS)
+        for f in fields:
+            val = ev.get(f, None)
+            if val is None or val == "" or val == "—":
+                continue
+            try:
+                cleaned = str(val).replace("$", "").replace(",", "").strip()
+                total += float(cleaned)
+            except (ValueError, TypeError):
+                continue
+        return total
+
     def _get_current_phase_profit(self, ev, current_phase, broker_account=None, acct_size=None, live_equity=None, acct_num=None):
         """Get the current P/L for the active phase.
 
@@ -6863,6 +6899,9 @@ class TradeOpssAIApp:
         trade's own account instead of whatever account happens to be active in
         the broker UI. When None we fall back to the DOM-scraped active account.
         """
+        hedge_total = self._sum_phase_hedge_fields(ev, current_phase)
+        norm_phase = self._normalize_phase_for_profit(current_phase)
+
         # ── 1. Try live broker equity ──
         equity = None
         equity_src = None
@@ -6886,36 +6925,20 @@ class TradeOpssAIApp:
             # Firm-aware starting balance.  Critical for MFFU funded
             # accounts which start at $0 — using $50K here would make
             # the TP adjuster think we are -$50K down and inflate TP.
-            starting = self._resolve_starting_balance(ev, current_phase, acct_size)
+            starting = self._resolve_starting_balance(ev, norm_phase, acct_size)
             live_profit = equity - starting
             audit("trader.phase_profit.live", acct_num=str(acct_num or ""),
                   phase=str(current_phase), equity=equity, starting=starting,
                   live_profit=live_profit, source=equity_src)
             if abs(live_profit) > 0.01:
                 return live_profit
+            # Flat live read but dashboard already logged prior legs — do not
+            # treat stage profit as zero (inflates TP on challenge trade 2+).
+            if abs(hedge_total) > 0.01:
+                return hedge_total
+            return live_profit
 
-        # ── 2. Fallback: sum eval hedge result fields ──
-        total = 0.0
-        fields = []
-        if current_phase == "Challenge":
-            fields = [f"Hedge Result {i}" for i in range(1, 6)]
-        elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
-            fields = list(self._FUNDED_HEDGE_FIELDS)
-        elif current_phase == "Farming":
-            fields = [f"Hedge Day {i}" for i in range(1, 61)]
-        elif current_phase == "Double Dip":
-            fields = list(self._FUNDED_HEDGE_FIELDS)
-
-        for f in fields:
-            val = ev.get(f, None)
-            if val is None or val == "" or val == "—":
-                continue
-            try:
-                cleaned = str(val).replace("$", "").replace(",", "").strip()
-                total += float(cleaned)
-            except (ValueError, TypeError):
-                continue
-        return total
+        return hedge_total
 
     def _get_next_phase(self, firm_code, current_display):
         """Get the next phase display name from trading_phases progression."""
@@ -7918,6 +7941,11 @@ class TradeOpssAIApp:
             try:
                 _bal = None
                 if broker_account:
+                    if hasattr(broker_account, "switch_account"):
+                        try:
+                            broker_account.switch_account(account_name_contains=acct_num)
+                        except Exception:
+                            pass
                     _stats = broker_account.get_account_stats()
                     _bal_str = _stats.get("Balance", "")
                     if _bal_str and _bal_str not in ("N/A", "Error", ""):
@@ -8240,9 +8268,16 @@ class TradeOpssAIApp:
                     self.log(f"⚠ Adjust {acct_num}: could not resolve account_id ({_re_err}) — using active-account reads")
                 if hasattr(broker_account, 'get_min_equity'):
                     try:
-                        account_min_eq = broker_account.get_min_equity(account_id=target_account_id)
+                        me_kw = {}
+                        if target_account_id is not None:
+                            me_kw["account_id"] = target_account_id
+                        elif acct_num and not hasattr(broker_account, "_resolve_api_account_id"):
+                            me_kw["account_name_contains"] = acct_num
+                        account_min_eq = broker_account.get_min_equity(**me_kw)
+                    except TypeError:
+                        account_min_eq = broker_account.get_min_equity()
                     except Exception as _me_err:
-                        self.log(f"⚠ Adjust {acct_num}: get_min_equity(account_id={target_account_id}) failed — {_me_err}")
+                        self.log(f"⚠ Adjust {acct_num}: get_min_equity failed — {_me_err}")
 
         scoped = isinstance(account_min_eq, dict)
         scoped_net_liq = float(account_min_eq['net_liq']) if (scoped and account_min_eq.get('net_liq') is not None) else None
@@ -8483,8 +8518,16 @@ class TradeOpssAIApp:
             min_eq = account_min_eq
             if is_farming and min_eq is None and broker_account and hasattr(broker_account, 'get_min_equity'):
                 try:
-                    min_eq = broker_account.get_min_equity()
-                    if isinstance(min_eq, dict):
+                    me_kw = {}
+                    if target_account_id is not None:
+                        me_kw["account_id"] = target_account_id
+                    elif acct_num and not hasattr(broker_account, "_resolve_api_account_id"):
+                        me_kw["account_name_contains"] = acct_num
+                    try:
+                        min_eq = broker_account.get_min_equity(**me_kw)
+                    except TypeError:
+                        min_eq = broker_account.get_min_equity()
+                    if isinstance(min_eq, dict) and not me_kw:
                         self.log(f"⚠ SL floor/TMDL {acct_num}: using LEGACY get_min_equity() "
                                  f"(not account-scoped) — netLiq=${min_eq.get('net_liq')}", "WARN")
                 except Exception as _sle:
@@ -9183,16 +9226,43 @@ class TradeOpssAIApp:
         if stop_when_done:
             self.root.after(0, self._complete_auto_trade)
 
+    _AUTO_TRADE_PROP_KEEPALIVE_SEC = 45
+
+    def _keep_prop_brokers_alive(self):
+        """Light touch on connected prop dashboards during long auto-trade waits."""
+        for firm_name, conn in (getattr(self, "_broker_connections", None) or {}).items():
+            account = conn.get("account")
+            if not account:
+                continue
+            try:
+                if hasattr(account, "is_connected") and not account.is_connected():
+                    continue
+                if hasattr(account, "_refresh_api_token"):
+                    account._refresh_api_token()
+                elif hasattr(account, "get_account_stats"):
+                    account.get_account_stats()
+            except Exception as exc:
+                try:
+                    self.log(f"⚠ Keepalive {firm_name}: {exc}", "WARN")
+                except Exception:
+                    pass
+
     def _auto_trade_loop(self):
         """Background thread: schedule, then keep scanning until all rows are traded."""
         from datetime import datetime, timedelta, timezone
         EAT = timezone(timedelta(hours=3))
 
+        self._auto_trade_waiting_gate = True
+        last_keepalive = time.time()
         while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
             now = datetime.now(EAT)
             if now >= self._auto_trade_scheduled_dt:
                 break
+            if time.time() - last_keepalive >= self._AUTO_TRADE_PROP_KEEPALIVE_SEC:
+                last_keepalive = time.time()
+                self._keep_prop_brokers_alive()
             self._auto_trade_stop.wait(timeout=1)
+        self._auto_trade_waiting_gate = False
 
         if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
             return
@@ -9885,6 +9955,11 @@ class TradeOpssAIApp:
                     try:
                         _bal_auto = None
                         if broker_account:
+                            if hasattr(broker_account, "switch_account"):
+                                try:
+                                    broker_account.switch_account(account_name_contains=acct_num)
+                                except Exception:
+                                    pass
                             _stats_auto = broker_account.get_account_stats()
                             _bal_str_auto = _stats_auto.get("Balance", "")
                             if _bal_str_auto and _bal_str_auto not in ("N/A", "Error", ""):
