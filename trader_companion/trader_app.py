@@ -5226,16 +5226,43 @@ class TradeOpssAIApp:
         "fundednextrapiddaily": "Funded Next",
         "mffu": "MFFU",
         "my funded futures": "MFFU",
+        # Same firm, same direction — MFFU Live only differs by broker login.
+        "mffu live": "MFFU",
+        "my funded futures live": "MFFU",
         "lucid": "Lucid",
         "lucid trading": "Lucid",
         "lucidmaxx": "Lucid",
+        # TopStep RTP is the same firm as TopStep: one login, one direction.
+        "topstep": "Topstep",
+        "top step": "Topstep",
+        "topstep rtp": "Topstep",
+        "top step rtp": "Topstep",
+        "topsteprtp": "Topstep",
     }
+
+    # Families whose live accounts sit behind a SEPARATE broker login, so they
+    # need their own credentials row rather than reusing the simulation one.
+    _LIVE_LOGIN_FAMILIES = {"MFFU"}
+    _LIVE_KEY_SUFFIX = " Live"
 
     def _broker_login_family(self, firm_name):
         """Canonical broker-login group for a prop-firm label (default: itself)."""
         name = str(firm_name or "").strip()
         key = name.lower().replace("_", " ").strip()
         return self._BROKER_LOGIN_FAMILIES.get(key, name)
+
+    def _is_live_connection_key(self, connection_key):
+        """True for the synthetic '<Family> Live' credentials row."""
+        return str(connection_key or "").endswith(self._LIVE_KEY_SUFFIX)
+
+    def _broker_connection_key(self, firm_name, live=False):
+        """Credentials/session row for a firm label, honouring separate live logins."""
+        if self._is_live_connection_key(firm_name):
+            return firm_name
+        family = self._broker_login_family(firm_name)
+        if live and family in self._LIVE_LOGIN_FAMILIES:
+            return f"{family}{self._LIVE_KEY_SUFFIX}"
+        return family
 
     def _resolve_firm_code(self, prop_firm_name, default="MFFU_Flex"):
         """Resolve a dashboard 'Prop Firm' label to a blueprint firm code.
@@ -9536,6 +9563,11 @@ class TradeOpssAIApp:
         rows_by_firm = defaultdict(list)
         for row_data in rows:
             firm_name = row_data["eval"].get("Prop Firm", row_data["firm_code"])
+            # Live accounts on a separate-login family run on their own session.
+            session_key = self._broker_connection_key(
+                firm_name, live=self._is_live_account(row_data.get("eval") or {}))
+            if self._is_live_connection_key(session_key):
+                firm_name = session_key
             rows_by_firm[firm_name].append(row_data)
 
         # Seed any missing firm-side directions from the current UI signal so
@@ -10279,6 +10311,15 @@ class TradeOpssAIApp:
                 seen.add(connection_key)
                 firms.append(connection_key)
 
+        # Families with a separate live login always get their own row so the
+        # credentials can be entered before a live account shows up.
+        for family in list(firms):
+            if family in self._LIVE_LOGIN_FAMILIES:
+                live_key = f"{family}{self._LIVE_KEY_SUFFIX}"
+                if live_key not in seen:
+                    seen.add(live_key)
+                    firms.append(live_key)
+
         if not firms:
             if CTK_AVAILABLE:
                 ctk.CTkLabel(self._broker_rows_frame,
@@ -10364,7 +10405,8 @@ class TradeOpssAIApp:
                     if pf_key.lower() in aliases:
                         pa = pf_val
                         break
-            if not pa and pa_unmatched:
+            if not pa and pa_unmatched and not self._is_live_connection_key(display_firm):
+                # Never hand leftover credentials to a real-money row.
                 pa = pa_unmatched.pop(0)
             pre_user = (pa.get("tradovate_username") or "").strip()
             pre_pass = (pa.get("tradovate_password") or "").strip()
@@ -10518,11 +10560,18 @@ class TradeOpssAIApp:
 
         user = conn["user_entry"].get().strip()
         pwd = conn["pass_entry"].get().strip()
-        # An account flagged Live on the dashboard forces the live login path,
-        # regardless of the global Mode selector.
-        mode = "Live" if self._firm_has_live_account(firm_name) else self.trading_mode_var.get()
+        # The dedicated '<Family> Live' row is always live. Otherwise a firm
+        # flagged Live on the dashboard forces the live path, unless that
+        # family keeps its live accounts behind a separate login row.
+        if self._is_live_connection_key(firm_name):
+            mode = "Live"
+        elif (firm_name not in self._LIVE_LOGIN_FAMILIES
+              and self._firm_has_live_account(firm_name)):
+            mode = "Live"
+        else:
+            mode = self.trading_mode_var.get()
         if mode == "Live":
-            self.log(f"⚠️ {firm_name} has a LIVE account — using real-money login path", "WARNING")
+            self.log(f"⚠️ {firm_name} is connecting on the REAL-MONEY login path", "WARNING")
 
         if not user or not pwd:
             messagebox.showerror("Error", f"Enter username and password for {firm_name}")
@@ -12276,9 +12325,14 @@ class TradeOpssAIApp:
         # 5. Fall back to the configured default broker.
         return default
 
-    def _get_broker_for_firm(self, firm_name):
+    def _get_broker_for_firm(self, firm_name, live=False):
         """Get the connected broker account for a specific prop firm."""
-        connection_key = getattr(self, "_broker_firm_aliases", {}).get(firm_name, firm_name)
+        aliases = getattr(self, "_broker_firm_aliases", {}) or {}
+        if live or self._is_live_connection_key(firm_name):
+            # A live account must never fall back to the simulation login.
+            connection_key = self._broker_connection_key(firm_name, live=True)
+        else:
+            connection_key = aliases.get(firm_name, self._broker_login_family(firm_name))
         conn = self._broker_connections.get(connection_key)
         if conn and conn.get("account"):
             return conn["account"]
