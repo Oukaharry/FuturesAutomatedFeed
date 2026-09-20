@@ -5311,6 +5311,10 @@ class TradeOpssAIApp:
             return "MFFU Builder 50K"
         if "mffu" in norm or "my funded futures" in norm:
             return "MFFU_Flex"
+        # Rapid Daily is a distinct blueprint and must be matched before the
+        # generic FundedNext checks, which would otherwise swallow it.
+        if "rapiddaily" in compact:
+            return "FundedNext Rapid Daily"
         if "fundednextflex" in compact or "funded next flex" in norm:
             return "Funded Next Flex"
         if "fundednext" in compact or "funded next" in norm:
@@ -5319,8 +5323,6 @@ class TradeOpssAIApp:
             return "Funded Futures Family"
         if "ftmofuturespro" in compact or "ftmopro" in compact or "ftmofutures" in compact or compact == "ftmo":
             return "FTMO Futures Pro"
-        if "rapiddaily" in compact:
-            return "FundedNext Rapid Daily"
         if "tradeifyselect" in compact or ("tradeify" in compact and "addon" in compact):
             return "Tradeify Select"
         if "blueguardian" in compact:
