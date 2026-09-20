@@ -2546,6 +2546,23 @@ class PropFirmManager:
             return "100k"
         return "50k"
     
+    # Live (real-money) accounts trade one fixed setup, whatever phase cell the
+    # day placeholder happens to land on.
+    LIVE_ACCOUNT_CONFIG: Dict = {
+        "tradovate_symbol": "NQZ6",
+        "tradovate_qty": 2,
+        "tradovate_tp_ticks": 540,
+        "tradovate_sl_ticks": 200,
+        "mt5_volume": 15,
+        "mt5_tp_points": 46,
+        "mt5_sl_points": 139,
+        "disable_tp_adjustment": True,
+    }
+
+    def get_live_account_config(self) -> Dict:
+        """Fixed blueprint for a live account — never phase or balance dependent."""
+        return dict(self.LIVE_ACCOUNT_CONFIG)
+
     @staticmethod
     def _same_firm_phase_fallback(strategy_configs: Dict, phase_key: str) -> Tuple[str, Dict]:
         """Nearest phase within the SAME blueprint, so TP/SL never leaks across firms."""

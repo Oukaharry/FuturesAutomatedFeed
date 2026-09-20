@@ -4884,6 +4884,10 @@ class TradeOpssAIApp:
                 self.log(f"↪ {self._primary_trade_account(ev)}: trade resolved — "
                          f"moved pending {current} → {corrected}")
 
+            # Runs last so it catches rows failed earlier (including by hand on
+            # the dashboard) and rows this pass just marked failed.
+            force_fields.extend(self._scrub_failed_row_day_placeholders(evaluations))
+
             if not force_fields:
                 return
             requests.post(
@@ -5402,6 +5406,12 @@ class TradeOpssAIApp:
                 return True
         return False
 
+    def _live_account_config(self, ev):
+        """Fixed live blueprint for this row, or None when it is not a live account."""
+        if not self.prop_firm_mgr or not self._is_live_account(ev):
+            return None
+        return self.prop_firm_mgr.get_live_account_config()
+
     def _clear_system_day_placeholders(self, ev):
         """Remove weekday placeholders the companion queued (keep $0 / P&L)."""
         if not isinstance(ev, dict):
@@ -5425,11 +5435,37 @@ class TradeOpssAIApp:
             cleared.append(key)
         return cleared
 
+    def _row_trading_is_over(self, ev):
+        """True when neither the challenge nor the funded leg can trade again.
+
+        A failed challenge that already produced a funded account is NOT over —
+        the funded leg keeps trading and must keep its placeholders.
+        """
+        if not isinstance(ev, dict):
+            return False
+        p1 = self._cell(ev.get("Status P1")).lower()
+        funded = self._cell(ev.get("Status")).lower()
+        has_funded_acct = bool(self._cell_account(ev.get("Account #.1")))
+        p1_dead = any(kw in p1 for kw in self._INACTIVE_KEYWORDS) if p1 else False
+        funded_dead = any(kw in funded for kw in self._INACTIVE_KEYWORDS) if funded else False
+        if funded_dead:
+            return True
+        return p1_dead and not has_funded_acct
+
     def _scrub_failed_row_day_placeholders(self, evaluations):
-        """Clear queued weekday cells on every failed row before dashboard push."""
+        """Clear queued weekday cells on dead rows. Returns the cleared field names."""
+        cleared = []
         for ev in evaluations or []:
-            if isinstance(ev, dict) and self._row_is_terminal_failure(ev):
-                self._clear_system_day_placeholders(ev)
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            if not self._row_trading_is_over(ev):
+                continue
+            fields = self._clear_system_day_placeholders(ev)
+            if fields:
+                cleared.extend(fields)
+                self.log(f"🧹 {self._primary_trade_account(ev)}: account failed — "
+                         f"cleared {len(fields)} day placeholder(s)")
+        return cleared
 
     # ── Funded-phase starting balance map ─────────────────────────────
     # Some prop firms reset the funded balance to a value that differs from
@@ -7970,7 +8006,8 @@ class TradeOpssAIApp:
         # Get trade config from blueprint
         config = None
         if self.prop_firm_mgr:
-            config = self.prop_firm_mgr.get_strategy_config(firm_code, phase_key, acct_size)
+            config = self._live_account_config(ev) or self.prop_firm_mgr.get_strategy_config(
+                firm_code, phase_key, acct_size)
         if not config:
             messagebox.showerror("Error", f"No blueprint config for {firm_code} / {phase_key} / {acct_size}")
             return
@@ -8276,6 +8313,11 @@ class TradeOpssAIApp:
         """
         if not self.prop_firm_mgr:
             return config
+        # A live account trades its fixed blueprint; balance/floor rules here are
+        # prop-firm drawdown maths that do not apply to real money.
+        if self._is_live_account(row_eval or {}):
+            self.log(f"🔒 {acct_num}: live account — keeping fixed TP/SL")
+            return config
         config = config.copy()
         if not config.get("tradovate_tp_ticks") and config.get("topstepx_tp_ticks"):
             config["tradovate_tp_ticks"] = config["topstepx_tp_ticks"]
@@ -8342,6 +8384,8 @@ class TradeOpssAIApp:
             if planned:
                 config = planned.copy()
                 self.log(f"📋 Using planned TP/SL for {acct_num}")
+            elif self._is_live_account(row_eval or {}):
+                self.log(f"🔒 {acct_num}: live account — TP/SL not randomized")
             else:
                 user_key = ""
                 if hasattr(self, "client_email_entry"):
@@ -8954,6 +8998,12 @@ class TradeOpssAIApp:
             plan_key = self._planned_trade_config_key(acct_num, firm_code, phase_key)
             config = self._planned_trade_configs.get(plan_key)
             if config is None:
+                # Live accounts are fixed — randomization would move TP off 540.
+                live_config = self._live_account_config(row.get("eval") or {})
+                if live_config:
+                    self._planned_trade_configs[plan_key] = live_config.copy()
+                    plans.append((row, live_config))
+                    continue
                 blueprint = self.prop_firm_mgr.get_strategy_config(
                     firm_code, phase_key, acct_size)
                 if not blueprint:
@@ -9952,8 +10002,10 @@ class TradeOpssAIApp:
 
                 config = None
                 if self.prop_firm_mgr:
-                    config = self.prop_firm_mgr.get_strategy_config(
-                        firm_code, phase_key, acct_size)
+                    config = self._live_account_config(row_data.get("eval") or {})
+                    if not config:
+                        config = self.prop_firm_mgr.get_strategy_config(
+                            firm_code, phase_key, acct_size)
                 if not config:
                     self.root.after(0, lambda an=acct_num, fc=firm_code, pk=phase_key, sz=acct_size: self.log(
                         f"❌ No blueprint: {an} ({fc}/{pk}/{sz}) — skipped", "ERROR"))
@@ -11929,14 +11981,14 @@ class TradeOpssAIApp:
         if not any_changed:
             return
 
-        self._scrub_failed_row_day_placeholders(all_evals)
+        scrubbed = self._scrub_failed_row_day_placeholders(all_evals)
 
         payload = {
             "email": email,
             "evaluations": all_evals,
             "statistics": {},
             "dropdown_options": {},
-            "force_fields": ["Status P1", "Status"],
+            "force_fields": ["Status P1", "Status"] + scrubbed,
         }
         try:
             resp = requests.post(
@@ -12219,7 +12271,7 @@ class TradeOpssAIApp:
             self.root.after(0, lambda c=status_updates, b=breached_count:
                 self.log(f"🌐 {firm_name}: {c} status update(s) ({b} breached) — pushing to dashboard..."))
 
-            self._scrub_failed_row_day_placeholders(all_evals)
+            scrubbed = self._scrub_failed_row_day_placeholders(all_evals)
 
             # Push to dashboard
             email = self.client_email_entry.get().strip()
@@ -12232,7 +12284,7 @@ class TradeOpssAIApp:
                 "evaluations": all_evals,
                 "statistics": {},
                 "dropdown_options": {},
-                "force_fields": ["Status P1", "Status"],
+                "force_fields": ["Status P1", "Status"] + scrubbed,
             }
 
             try:
