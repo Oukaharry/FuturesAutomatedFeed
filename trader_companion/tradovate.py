@@ -55,11 +55,16 @@ class TradovateAccount:
     # Set once per process after we sweep leftover throwaway fallback profiles.
     _fallback_sweep_done = False
 
+    @staticmethod
+    def normalize_trading_mode(mode):
+        """Callers say 'Live', 'live trading', 'LIVE'; internally it is 'Live Trading'."""
+        return "Live Trading" if "live" in str(mode or "").strip().lower() else "Simulation"
+
     def __init__(self, username, password, pair_id=None, trading_mode="Simulation"):
         self.username = username
         self.password = password
         self.pair_id = pair_id or "default"
-        self.trading_mode = trading_mode  # "Simulation" or "Live Trading"
+        self.trading_mode = self.normalize_trading_mode(trading_mode)
         self.logged_in = False
         self.driver = None
         self.first_trade_attempted = False

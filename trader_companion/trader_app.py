@@ -5351,6 +5351,28 @@ class TradeOpssAIApp:
                 return True
         return False
 
+    def _is_live_account(self, ev):
+        """True when either status cell is marked Live (real-money account)."""
+        if not isinstance(ev, dict):
+            return False
+        for field in ("Status P1", "Status"):
+            if self._cell(ev.get(field)).strip().lower() == "live":
+                return True
+        return False
+
+    def _firm_has_live_account(self, firm_name):
+        """True when any non-failed account routed to this broker is marked Live."""
+        aliases = getattr(self, "_broker_firm_aliases", {}) or {}
+        for ev in getattr(self, "_last_dashboard_evaluations", []) or []:
+            if not isinstance(ev, dict) or not self._is_live_account(ev):
+                continue
+            if self._row_is_terminal_failure(ev):
+                continue
+            label = self._cell(ev.get("Prop Firm"))
+            if aliases.get(label, label) == firm_name:
+                return True
+        return False
+
     def _clear_system_day_placeholders(self, ev):
         """Remove weekday placeholders the companion queued (keep $0 / P&L)."""
         if not isinstance(ev, dict):
@@ -10496,7 +10518,11 @@ class TradeOpssAIApp:
 
         user = conn["user_entry"].get().strip()
         pwd = conn["pass_entry"].get().strip()
-        mode = self.trading_mode_var.get()
+        # An account flagged Live on the dashboard forces the live login path,
+        # regardless of the global Mode selector.
+        mode = "Live" if self._firm_has_live_account(firm_name) else self.trading_mode_var.get()
+        if mode == "Live":
+            self.log(f"⚠️ {firm_name} has a LIVE account — using real-money login path", "WARNING")
 
         if not user or not pwd:
             messagebox.showerror("Error", f"Enter username and password for {firm_name}")
@@ -11741,7 +11767,10 @@ class TradeOpssAIApp:
             if not acct_key:
                 continue
 
-            # Skip accounts already passed or failed
+            # Skip accounts already passed or failed, and never overwrite a
+            # Live marker — it is a manual routing flag, not a computed status.
+            if current_check == "live":
+                continue
             if "pass" in current_check or any(kw in current_check for kw in ("fail", "breach", "delete", "closed", "ended", "lost")):
                 continue
 
@@ -12036,6 +12065,11 @@ class TradeOpssAIApp:
                 # Skip if already marked with a terminal status
                 if any(kw in current_status_check for kw in self._INACTIVE_KEYWORDS):
                     self.root.after(0, lambda: self.log(f"🔍 Status check: already inactive, skipping"))
+                    continue
+
+                # Live is a manual routing flag, not a computed status. Keep it
+                # unless the account actually breached.
+                if current_status_check == "live" and not (breached and breached != 0):
                     continue
 
                 if breached and breached != 0:

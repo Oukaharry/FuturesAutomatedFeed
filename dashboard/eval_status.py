@@ -1,6 +1,7 @@
 """Evaluation status helpers.
 
 Hit TP1–10 / Hit SL1–10 are in-progress markers, not terminal failures.
+Live marks a real-money account, which is likewise still running.
 Only Fail, Breach, Closed, Deleted (and Completed on funded) end a phase.
 """
 from __future__ import annotations
@@ -31,9 +32,16 @@ def is_hit_tp_sl_status(status: str) -> bool:
     return bool(_HIT_TP_SL_RE.match(str(status or '').strip()))
 
 
+LIVE_STATUS = 'Live'
+
+
+def is_live_status(status: str) -> bool:
+    return str(status or '').strip().lower() == LIVE_STATUS.lower()
+
+
 def is_terminal_eval_status(status: str, *, include_complete: bool = False) -> bool:
     s = str(status or '').strip().lower()
-    if not s or s in ('-', 'not started', 'in progress'):
+    if not s or s in ('-', 'not started', 'in progress', 'live'):
         return False
     if is_hit_tp_sl_status(s):
         return False
