@@ -3067,15 +3067,8 @@ class TradovateAccount:
 
             # EOD trailing drawdown combines the current SOD anchor with the
             # absolute floor reported by Tradovate's auto-liquidation record.
-            if trailing_max_drawdown > 0:
-                sod_floor = (net_liq_sod - trailing_max_drawdown) if net_liq_sod > 0 else 0
-                absolute_floor = (
-                    trailing_max_drawdown_limit - trailing_max_drawdown
-                    if trailing_max_drawdown_limit > 0 else 0
-                )
-                min_equity = max(sod_floor, absolute_floor)
-            else:
-                min_equity = 0
+            min_equity = self._min_equity_floor(
+                net_liq_sod, trailing_max_drawdown, trailing_max_drawdown_limit)
 
             drawdown_remaining = net_liq - min_equity if min_equity else net_liq
 
@@ -3098,6 +3091,63 @@ class TradovateAccount:
             print(f"[MIN EQUITY] Failed to get min equity: {e}")
             traceback.print_exc()
             return None
+
+    @staticmethod
+    def _min_equity_floor(net_liq_sod, trailing_max_drawdown, trailing_max_drawdown_limit):
+        """EOD trailing floor: the higher of the SOD anchor and the absolute floor."""
+        if not trailing_max_drawdown or trailing_max_drawdown <= 0:
+            return 0
+        sod_floor = (net_liq_sod - trailing_max_drawdown) if net_liq_sod > 0 else 0
+        absolute_floor = (
+            trailing_max_drawdown_limit - trailing_max_drawdown
+            if trailing_max_drawdown_limit > 0 else 0
+        )
+        return max(sod_floor, absolute_floor)
+
+    def get_min_equity_map(self):
+        """Minimum equity per account under this login, keyed by account name.
+
+        Tradovate's own drawdown floor, so breach detection needs neither a
+        per-firm dashboard scraper nor a hardcoded threshold.
+        """
+        try:
+            accounts = self._api_fetch("/account/list")
+            if not accounts or not isinstance(accounts, list):
+                return {}
+
+            autoliq_by_acct = {}
+            for al in (self._api_fetch("/userAccountAutoLiq/list") or []):
+                autoliq_by_acct[al.get('accountId', al.get('account'))] = al
+
+            out = {}
+            for acct in accounts:
+                aid = acct.get('id')
+                name = acct.get('name', '')
+                if not aid or not name:
+                    continue
+                snapshot = self._api_fetch(
+                    "/cashBalance/getCashBalanceSnapshot", "POST", {"accountId": aid}) or {}
+                net_liq = snapshot.get('netLiq', 0) or 0
+                net_liq_sod = snapshot.get('netLiqSOD', 0) or 0
+                al = autoliq_by_acct.get(aid, {})
+                tmd = al.get('trailingMaxDrawdown', 0) or 0
+                tmdl = al.get('trailingMaxDrawdownLimit', 0) or 0
+                min_equity = self._min_equity_floor(net_liq_sod, tmd, tmdl)
+                out[name] = {
+                    'account_id': aid,
+                    'net_liq': net_liq,
+                    'net_liq_sod': net_liq_sod,
+                    'min_equity': min_equity,
+                    'trailing_max_drawdown': tmd,
+                    'trailing_max_drawdown_limit': tmdl,
+                    'trailing_mode': al.get('trailingMaxDrawdownMode', ''),
+                    'drawdown_remaining': (net_liq - min_equity) if min_equity else net_liq,
+                }
+            print(f"[MIN EQUITY MAP] {len(out)} account(s) resolved")
+            return out
+        except Exception as e:
+            print(f"[MIN EQUITY MAP] failed: {e}")
+            return {}
 
     def place_order_api(self, symbol, side, qty, order_type="Market", price=None,
                         stop_price=None, tp=None, sl=None, account_id=None):
