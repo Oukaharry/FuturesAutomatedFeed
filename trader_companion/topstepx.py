@@ -4470,7 +4470,7 @@ class TopStepXAccount:
             self.logger.warning(f"[SOD] Could not persist/read TopStep SOD balance: {e}")
             return None
 
-    def get_min_equity(self):
+    def get_min_equity(self, account_id=None, account_name_contains=None):
         """Static-formula trailing drawdown min-equity for TopStep funded.
 
         TopStepX's REST API does not expose trailing drawdown directly the way
@@ -4488,11 +4488,20 @@ class TopStepXAccount:
         of being skipped. The min_equity formula itself is unchanged and does
         not use the SOD value.
 
+        Pass ``account_name_contains`` (dashboard account token) so farming
+        TP/SL uses the same sub-account as the queued trade, not whichever
+        account happens to be active in the UI.
+
         Returns dict with the same shape as TradovateAccount.get_min_equity()
         so callers can treat both uniformly. Returns None if balance can't be
         resolved.
         """
         try:
+            if account_name_contains or account_id:
+                self.switch_account(
+                    account_id=account_id,
+                    account_name_contains=account_name_contains,
+                )
             stats = self.get_account_stats()
             balance_str = (stats or {}).get("Balance", "")
             if not balance_str or balance_str in ("N/A", "Error", ""):

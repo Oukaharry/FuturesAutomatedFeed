@@ -3198,10 +3198,15 @@ class PropFirmManager:
         this stage.  Used to adjust TP so the trade doesn't overshoot or
         undershoot the stage target.
         """
-        phase_map = {"Challenge": "Challenge", "Funded": "Funded",
-                     "Farming": "Farming", "Double Dip": "Double Dip",
-                     "Payout 1": "Funded", "Payout 2": "Funded",
-                     "Payout 3": "Funded", "Payout 4": "Funded"}
+        phase_map = {
+            "Challenge": "Challenge", "Challenge Phase": "Challenge",
+            "Funded": "Funded", "Funded Phase": "Funded",
+            "Farming": "Farming", "Farming Phase": "Farming",
+            "Min Trading Days": "Farming", "Qualifying Days": "Farming",
+            "Double Dip": "Double Dip", "Double Dip Phase": "Double Dip",
+            "Payout 1": "Funded", "Payout 2": "Funded",
+            "Payout 3": "Funded", "Payout 4": "Funded",
+        }
         firm_orders = self._PHASE_TRADE_ORDER.get(firm_code, {})
         if current_phase in firm_orders:
             phase_group = current_phase
@@ -4329,6 +4334,9 @@ class PropFirmManager:
                 cfg["tradovate_symbol"] = "NQZ6"
                 cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
                 cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
+                # Lucid eval uses fixed per-account TP/SL; dynamic TP-by-stage
+                # would inflate trade 2 toward ~2× ticks (~$3k) when live P/L reads 0.
+                cfg["disable_tp_adjustment"] = True
             elif phase.startswith("funded_trade1"):
                 account_id = str(account_key or "default")
                 target = self._random_state_value(
@@ -4519,7 +4527,7 @@ class PropFirmManager:
         if original_sl > 0 and is_farming_phase:
             sl_factor = self._random_state_value(
                 account_id, f"generic_{phase_id}_sl_factor", sl_low, sl_high)
-            new_sl = max(10, int(round(original_sl * sl_factor)))
+            new_sl = max(10, min(600, int(round(original_sl * sl_factor))))
             if "tradovate_sl_ticks" in cfg:
                 cfg["tradovate_sl_ticks"] = new_sl
             elif "topstepx_sl_ticks" in cfg:
