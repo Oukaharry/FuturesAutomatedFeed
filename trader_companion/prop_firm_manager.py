@@ -3442,7 +3442,10 @@ class PropFirmManager:
         else:
             hard_stop = self._HARD_STOP_THRESHOLDS.get(firm_code, 50000.0)
 
-        if current_balance <= hard_stop:
+        # Several firms have a hard stop equal to the $50,000 starting balance,
+        # so an untouched account would read as a breach. It cannot have
+        # breached while still at or above what it started with.
+        if current_balance <= hard_stop and current_balance < starting_balance:
             return "Fail"
 
         return "In Progress"
