@@ -9648,6 +9648,26 @@ def _norm_quality_account_text(raw) -> str:
     return re.sub(r'\s+', ' ', v).strip()
 
 
+def _quality_row_is_live_money(ev) -> bool:
+    """True when the row is on a real-money / live broker account (not eval-sheet SOP).
+
+    Matches dashboard semantics (Status ``Live`` = teal real-money row) and common
+    placeholders like ``LIVE ACCOUNT`` in Account #. Alphanumeric live ids (e.g.
+    TopStep ``TOPX…``) are included when Status is Live even though they are not
+    digits-only.
+    """
+    if not isinstance(ev, dict):
+        return False
+    for key in ('Status P1', 'Status', 'Status Funded'):
+        if str(ev.get(key) or '').strip().lower() == 'live':
+            return True
+    for key in ('Account #', 'Account #.1', 'Account Number'):
+        text = _norm_quality_account_text(ev.get(key))
+        if text in ('live', 'live account') or text.startswith('live account '):
+            return True
+    return False
+
+
 # Quality scan: skip row when any cell contains these status labels (case-insensitive).
 _QUALITY_SKIP_STATUS_PHRASES = (
     'moved to live',
@@ -10078,9 +10098,12 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                         break
                 has_both_phase_accounts = bool(acct_num_local and acct_num2_local)
 
-                # Live funded broker rows (digits-only Account #.1 / funded id): traders are not in eval workflow;
-                # skip sheet SOP flags except weekday-of-day tracking (and any client/global issues like downtime).
-                is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
+                # Live / real-money rows: digits-only broker ids OR Status Live / LIVE ACCOUNT.
+                # Eval-sheet SOP (activation fee, phase-1 dates, weekdays, etc.) does not apply.
+                is_live_funded_numeric_row = (
+                    _max_out_row_is_live_numeric_account(ev)
+                    or _quality_row_is_live_money(ev)
+                )
 
                 # Exit strict "new row" gating once farming/prop-day P&L, hedge text markers
                 # (e.g. "FARM SECTION"), or both phase account numbers are present — not only
@@ -10293,7 +10316,8 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                                        'detail': f'{row_label}: Active but no account number',
                                        'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
 
-                # Empty Activation Fee on funded rows (Alpha Futures: activation optional — purchase fee only)
+                # Empty Activation Fee on funded rows (Alpha Futures: activation optional — purchase fee only).
+                # Real-money rows (Status Live / LIVE ACCOUNT) skip via is_live_funded_numeric_row.
                 activation = str(ev.get('Activation Fee', '') or '').strip()
                 _is_alpha_futures = prop_firm.lower().replace(' ', '') == 'alphafutures'
                 if (
