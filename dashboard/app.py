@@ -2231,14 +2231,14 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
         if not _eval_push_field_blocked(evaluation, funded_field, phase_code='FD'):
             current = str(evaluation.get(funded_field) or '').strip()
             if not current or current in ('-', '—'):
+                # PAYOUT blocks trading until the withdrawal is actually seen in
+                # the balance history; the companion then swaps in a day marker.
                 last_date = datetime.strptime(normalized_days[-1][0], '%Y-%m-%d').date()
-                next_date = last_date + timedelta(days=1)
-                while next_date.weekday() >= 5:
-                    next_date += timedelta(days=1)
-                evaluation[funded_field] = next_date.strftime('%A').upper()
+                evaluation[funded_field] = 'PAYOUT'
+                evaluation[f'_{funded_field} Payout Due'] = last_date.strftime('%Y-%m-%d')
                 match_log.append(
-                    f"✅ Row {row_num} | Prop Progress 5/5 → {funded_field} "
-                    f"{evaluation[funded_field]} (Funded Trade 2)"
+                    f"💰 Row {row_num} | Prop Progress 5/5 → {funded_field} "
+                    f"PAYOUT (request payout before Funded Trade 2)"
                 )
     else:
         # A Tradovate-side close bypasses the companion's order callback, so

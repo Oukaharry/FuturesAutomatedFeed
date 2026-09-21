@@ -4887,6 +4887,7 @@ class TradeOpssAIApp:
             # Runs last so it catches rows failed earlier (including by hand on
             # the dashboard) and rows this pass just marked failed.
             force_fields.extend(self._scrub_failed_row_day_placeholders(evaluations))
+            force_fields.extend(self._release_payout_placeholders(evaluations))
 
             if not force_fields:
                 return
@@ -5951,6 +5952,64 @@ class TradeOpssAIApp:
 
     def _payout_count(self, account_number):
         return len(self._detect_payouts(account_number))
+
+    _PAYOUT_MARKER = "PAYOUT"
+
+    def _payout_marker_field(self, ev):
+        """Hedge Result column holding a bare PAYOUT marker, if any."""
+        for key, val in (ev or {}).items():
+            if not isinstance(key, str) or not key.startswith("Hedge Result"):
+                continue
+            if self._cell(val).strip().upper() == self._PAYOUT_MARKER:
+                return key
+        return None
+
+    def _payout_due_since(self, ev, field):
+        """Earliest payout date that may release the marker, or None for any.
+
+        A marker typed by hand carries no anchor, so fall back to the newest
+        dated activity on the row; a bare row releases on any payout at all.
+        """
+        anchor = self._cell(ev.get(f"_{field} Payout Due")).strip()
+        if anchor:
+            return anchor
+        dates = [
+            self._cell(value).strip() for key, value in ev.items()
+            if isinstance(key, str) and key.startswith("_") and key.endswith(" Date")
+        ]
+        dates = [d for d in dates if d]
+        return max(dates) if dates else None
+
+    def _release_payout_placeholders(self, evaluations):
+        """Swap PAYOUT for a day marker once the withdrawal shows in the balance.
+
+        Returns the field names changed so the caller can force them on push.
+        """
+        changed = []
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            field = self._payout_marker_field(ev)
+            if not field:
+                continue
+            account = self._primary_trade_account(ev)
+            if not account:
+                continue
+            due_since = self._payout_due_since(ev, field)
+            landed = [(d, amt) for d, amt in self._detect_payouts(account)
+                      if not due_since or str(d) >= due_since]
+            if not landed:
+                continue
+            label = self._WEEKDAY_LABELS[kenya_today().weekday()]
+            if kenya_today().weekday() >= 5:
+                label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+            ev[field] = label
+            ev.pop(f"_{field} Payout Due", None)
+            changed.append(field)
+            paid_on, amount = landed[-1]
+            self.log(f"💰 {account}: payout ${amount:,.2f} on {paid_on} — "
+                     f"{field} → {label}, trading resumes")
+        return changed
 
     def _payout_target_reached(self, account_number, firm_code):
         """True once the firm's configured payout count has been banked."""

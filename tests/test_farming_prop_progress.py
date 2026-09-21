@@ -25,7 +25,7 @@ def test_farming_prop_progress_advances_only_for_profitable_days():
     assert evaluation["Hedge Day 2"] == "THURSDAY"
 
 
-def test_fifth_profitable_farming_day_queues_funded_trade_two():
+def test_fifth_profitable_farming_day_queues_a_payout_request():
     evaluation = {
         "Prop Day 1": "100.00",
         "_Prop Day 1 Date": "2026-09-10",
@@ -45,7 +45,9 @@ def test_fifth_profitable_farming_day_queues_funded_trade_two():
     assert complete
     assert evaluation["Prop Progress 4"] == "5/5 9/15/26"
     assert evaluation["Hedge Day 6"] == ""
-    assert evaluation["Hedge Result 2.1"] == "WEDNESDAY"
+    # Funded Trade 2 stays blocked until the payout is requested and lands.
+    assert evaluation["Hedge Result 2.1"] == "PAYOUT"
+    assert evaluation["_Hedge Result 2.1 Payout Due"] == "2026-09-15"
 
 
 def test_cleared_prop_progress_is_not_regenerated_without_a_prop_day_clear():
