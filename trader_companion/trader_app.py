@@ -7323,6 +7323,63 @@ class TradeOpssAIApp:
             pass
         return None
 
+    def _partition_evaluations_for_scan(self, evaluations, today_wd):
+        """Split dashboard rows into (tradeable today, worth connecting, skip counts).
+
+        Connecting is the wider set: every live account keeps a broker session so
+        balances and statuses keep flowing even on days it must not trade.
+        """
+        active_evals = []
+        connect_evals = []
+        skipped = {"inactive": 0, "no_day": 0, "superseded": 0,
+                   "dual": 0, "funded_done": 0, "lifecycle": 0}
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                skipped["inactive"] += 1
+                continue
+
+            # Lifecycle dedup — same eval at challenge vs funded stage
+            if self._is_superseded_lifecycle_row(ev, evaluations):
+                skipped["lifecycle"] += 1
+                continue
+
+            # Status gate (fail/completed) — dashboard flag or local fallback
+            if "_is_active" in ev:
+                is_active = ev["_is_active"]
+            else:
+                is_active = self._is_eval_active(ev)
+            if not is_active:
+                skipped["inactive"] += 1
+                continue
+
+            # Must have at least one account number
+            if (not self._cell_account(ev.get("Account #"))
+                    and not self._cell_account(ev.get("Account #.1"))):
+                skipped["inactive"] += 1
+                continue
+
+            self._sync_prop_firm_from_account(ev)
+            connect_evals.append(ev)
+
+            # Dashboard _is_active ignores weekday + funded completion nuance
+            if self._on_funded_leg(ev) and not self._funded_leg_tradeable(ev, today_wd):
+                skipped["funded_done"] += 1
+                continue
+
+            # Dual-account rows must have a funded account to trade
+            if self._has_passed_to_funded(ev) and not self._cell_account(ev.get("Account #.1")):
+                skipped["dual"] += 1
+                continue
+
+            # Day placeholder gate — always applied at SCAN (even when
+            # dashboard _is_active is true; that flag ignores weekdays).
+            if not self._has_placeholder_for_weekday(ev, today_wd):
+                skipped["no_day"] += 1
+                continue
+
+            active_evals.append(ev)
+        return active_evals, connect_evals, skipped
+
     def _load_active_trades(self):
         """Fetch evaluations from dashboard and populate the active trades list."""
         email = self.client_email_entry.get().strip()
@@ -7365,66 +7422,23 @@ class TradeOpssAIApp:
 
                 # Filter using dashboard's _is_active flag (source of truth)
                 # Falls back to local _is_eval_active() if flag missing
-                active_evals = []
-                skipped_count = 0
-                skipped_day = 0
-                skipped_super = 0
-                skipped_dual = 0
-                skipped_funded_done = 0
-                skipped_lifecycle = 0
                 today_wd = kenya_today().weekday()
                 wd_names = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-                for ev in evaluations:
-                    if ev.get("_deleted"):
-                        skipped_count += 1
-                        continue
-
-                    # Lifecycle dedup — same eval at challenge vs funded stage
-                    if self._is_superseded_lifecycle_row(ev, evaluations):
-                        skipped_lifecycle += 1
-                        continue
-
-                    # Status gate (fail/completed) — dashboard flag or local fallback
-                    if "_is_active" in ev:
-                        is_active = ev["_is_active"]
-                    else:
-                        is_active = self._is_eval_active(ev)
-
-                    # Dashboard _is_active ignores weekday + funded completion nuance
-                    if is_active and self._on_funded_leg(ev):
-                        if not self._funded_leg_tradeable(ev, today_wd):
-                            skipped_funded_done += 1
-                            continue
-
-                    if not is_active:
-                        skipped_count += 1
-                        continue
-
-                    # Must have at least one account number
-                    if (not self._cell_account(ev.get("Account #"))
-                            and not self._cell_account(ev.get("Account #.1"))):
-                        skipped_count += 1
-                        continue
-
-                    # Dual-account rows must have a funded account to trade
-                    if self._has_passed_to_funded(ev) and not self._cell_account(ev.get("Account #.1")):
-                        skipped_dual += 1
-                        continue
-
-                    # Day placeholder gate — always applied at SCAN (even when
-                    # dashboard _is_active is true; that flag ignores weekdays).
-                    if not self._has_placeholder_for_weekday(ev, today_wd):
-                        skipped_day += 1
-                        continue
-
-                    self._sync_prop_firm_from_account(ev)
-                    active_evals.append(ev)
+                active_evals, connect_evals, skipped = self._partition_evaluations_for_scan(
+                    evaluations, today_wd)
+                skipped_count = skipped["inactive"]
+                skipped_day = skipped["no_day"]
+                skipped_super = skipped["superseded"]
+                skipped_dual = skipped["dual"]
+                skipped_funded_done = skipped["funded_done"]
+                skipped_lifecycle = skipped["lifecycle"]
 
                 active_evals = self._dedupe_active_by_primary_account(active_evals)
 
                 self.root.after(0, lambda t=len(evaluations), a=len(active_evals),
                                 s=skipped_count, d=skipped_day, g=skipped_super,
                                 u=skipped_dual, fd=skipped_funded_done, lc=skipped_lifecycle,
+                                c=len(connect_evals),
                                 w=wd_names[today_wd]:
                     self.log(
                         f"📊 {t} total evaluations → {a} active for {w} today, "
@@ -7433,13 +7447,15 @@ class TradeOpssAIApp:
                         + (f", {g} skipped (eval passed → funded elsewhere)" if g else "")
                         + (f", {u} skipped (dual row missing funded acct)" if u else "")
                         + (f", {fd} skipped (funded leg done / no {w} in funded cols)" if fd else "")
-                        + (f", {lc} skipped (lifecycle duplicate / funded complete)" if lc else "")))
+                        + (f", {lc} skipped (lifecycle duplicate / funded complete)" if lc else "")
+                        + (f" | {c - a} account(s) connect for data only" if c > a else "")))
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
 
-                # Populate broker connection rows per prop firm
+                # Populate broker connection rows per prop firm — driven by every
+                # active account, not just the ones queued to trade today.
                 prop_accounts = data.get("prop_accounts", [])
-                self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
+                self.root.after(0, lambda ce=connect_evals, pa=prop_accounts: self._populate_broker_rows(ce, pa))
                 # Queue eligibility excludes $0.00 markers, so recover their
                 # close watches from the complete dashboard data separately.
                 self.root.after(1500, lambda evs=evaluations: self._resume_pending_farming_closes(evs))
@@ -7459,7 +7475,7 @@ class TradeOpssAIApp:
                 active_firms = list(dict.fromkeys(
                     f for f in (
                         (str(ev.get("Prop Firm")).strip() if ev.get("Prop Firm") is not None else "")
-                        for ev in active_evals
+                        for ev in connect_evals
                     ) if f
                 ))
                 if not RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
