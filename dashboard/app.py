@@ -2219,27 +2219,23 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             evaluation[progress_field] = f'{progress}/5 {progress_date}'
 
     completed = progress >= 5
+    payout_field = f'Hedge Day {slot + 1}'
     if completed:
-        # A fifth profitable farming day completes qualifying. Remove any
-        # speculative next farming day and queue the second funded trade.
+        # Qualifying is done. Drop any speculative next farming day and mark the
+        # next cell PAYOUT instead of a weekday, so the account stops trading
+        # until the admin requests it and the withdrawal actually lands.
         for day_num in range(1, 61):
             hedge_field = f'Hedge Day {day_num}'
             value = str(evaluation.get(hedge_field) or '').strip().upper()
             if value in ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'):
                 evaluation[hedge_field] = ''
-        funded_field = 'Hedge Result 2.1'
-        if not _eval_push_field_blocked(evaluation, funded_field, phase_code='FD'):
-            current = str(evaluation.get(funded_field) or '').strip()
-            if not current or current in ('-', '—'):
-                # PAYOUT blocks trading until the withdrawal is actually seen in
-                # the balance history; the companion then swaps in a day marker.
-                last_date = datetime.strptime(normalized_days[-1][0], '%Y-%m-%d').date()
-                evaluation[funded_field] = 'PAYOUT'
-                evaluation[f'_{funded_field} Payout Due'] = last_date.strftime('%Y-%m-%d')
-                match_log.append(
-                    f"💰 Row {row_num} | Prop Progress 5/5 → {funded_field} "
-                    f"PAYOUT (request payout before Funded Trade 2)"
-                )
+        if not _eval_push_field_blocked(evaluation, payout_field, phase_code='FA'):
+            evaluation[payout_field] = 'PAYOUT'
+            evaluation[f'_{payout_field} Payout Due'] = date
+            match_log.append(
+                f"💰 Row {row_num} | Prop Progress 5/5 → {payout_field} PAYOUT "
+                f"(request payout — trading paused)"
+            )
     else:
         # A Tradovate-side close bypasses the companion's order callback, so
         # reconcile its next daily placeholder from the latest recorded P/L.

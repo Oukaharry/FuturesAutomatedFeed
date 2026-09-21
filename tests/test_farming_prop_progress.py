@@ -44,10 +44,10 @@ def test_fifth_profitable_farming_day_queues_a_payout_request():
     assert written == 1
     assert complete
     assert evaluation["Prop Progress 4"] == "5/5 9/15/26"
+    # The speculative next farming day is replaced by the payout prompt.
     assert evaluation["Hedge Day 6"] == ""
-    # Funded Trade 2 stays blocked until the payout is requested and lands.
-    assert evaluation["Hedge Result 2.1"] == "PAYOUT"
-    assert evaluation["_Hedge Result 2.1 Payout Due"] == "2026-09-15"
+    assert evaluation["Hedge Day 5"] == "PAYOUT"
+    assert evaluation["_Hedge Day 5 Payout Due"] == "2026-09-15"
 
 
 def test_cleared_prop_progress_is_not_regenerated_without_a_prop_day_clear():

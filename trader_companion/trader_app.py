@@ -5954,11 +5954,12 @@ class TradeOpssAIApp:
         return len(self._detect_payouts(account_number))
 
     _PAYOUT_MARKER = "PAYOUT"
+    _PAYOUT_MARKER_PREFIXES = ("Hedge Result", "Hedge Day")
 
     def _payout_marker_field(self, ev):
-        """Hedge Result column holding a bare PAYOUT marker, if any."""
+        """Hedge cell holding a bare PAYOUT marker, if any."""
         for key, val in (ev or {}).items():
-            if not isinstance(key, str) or not key.startswith("Hedge Result"):
+            if not isinstance(key, str) or not key.startswith(self._PAYOUT_MARKER_PREFIXES):
                 continue
             if self._cell(val).strip().upper() == self._PAYOUT_MARKER:
                 return key
@@ -7981,11 +7982,14 @@ class TradeOpssAIApp:
         return rows_by_firm, affordable, skipped, free, required_total
 
     def _eval_has_payout(self, ev):
-        """Check if any hedge result field contains 'payout' text."""
+        """Check if any hedge cell contains 'payout' text."""
         if not ev:
             return False
         for key, val in ev.items():
-            if "hedge result" in key.lower() and isinstance(val, str) and "payout" in val.lower():
+            if not isinstance(key, str) or not isinstance(val, str):
+                continue
+            k = key.lower()
+            if ("hedge result" in k or "hedge day" in k) and "payout" in val.lower():
                 return True
         return False
 
