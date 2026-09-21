@@ -44,18 +44,18 @@ If either side hits those tokens, the row is **inactive** for purposes like **Em
 
 **Bypass / nuance:** Typos or non-standard status strings (e.g. “passed” vs “pass”, custom text) may be treated as **still active**, which can **increase** flags (e.g. weekday tracking).
 
-### 2.3 Live funded numeric row (`is_live_funded_numeric_row`)
+### 2.3 Live / real-money row (`is_live_funded_numeric_row`)
 
-When `_max_out_row_is_live_numeric_account(ev)` is **True**, almost all **sheet SOP** row checks are **skipped** for that row. The intent: eval-sheet workflow does not apply when the trader is on a **broker numeric** funded/live account.
+When the row is treated as **live / real-money**, almost all **sheet SOP** row checks are **skipped**. Eval-sheet workflow (activation fee, phase-1 dates, weekday placeholders, etc.) does not apply.
 
-**Detection logic (summary):**
+**Detection (either is enough):**
 
-- Cleans placeholders: empty, `none`, `-`, em dashes, `n/a`, `tbd`, `pending`, etc.
-- **Funded account `Account #.1`** (or eval `Account #` when `.1` is empty) must look like a **positive whole number** (digits only, or float that is an integer), including JSON numeric types.
+1. **`_max_out_row_is_live_numeric_account(ev)`** — funded `Account #.1` (or eval `Account #`) is a **digits-only** broker id (JSON numeric types included).
+2. **`_quality_row_is_live_money(ev)`** — **Status P1** or **Status** / **Status Funded** is exactly **`Live`** (dashboard “real money” teal row), **or** account cells normalize to **`live account`** (e.g. eval `Account #` = `LIVE ACCOUNT.` with alphanumeric funded id like `TOPX…`).
 
-**Still applies on live numeric rows:** client-level checks (no data, MT5 push, hedging mismatch, credentials). Row-level **weekday-of-day** style tracking is explicitly allowed to continue per code comments (in practice many row checks are behind `not is_live_funded_numeric_row`).
+**Still applies on live rows:** client-level checks (no data, MT5 push, hedging mismatch, credentials).
 
-**Bypass:** Prefix eval-style IDs on funded cells so the row no longer looks “numeric-only”; the scan will then apply full SOP checks (may create **more** issues, not fewer).
+**Bypass:** Remove `Live` status and live-account placeholders if the row should follow full eval SOP again (will surface **more** flags, not fewer).
 
 ### 2.4 “Double dip” firms (MFF / TopStep)
 
@@ -217,9 +217,9 @@ health_score = max(0, 100 - deduction), rounded to 1 decimal
 | Field | Value |
 |-------|--------|
 | **Severity** | `medium` |
-| **When** | Phase-2 status (`status_p2`) is one of `funded`, `live`, `payout`; activation field blank; not new-row strict; not live numeric. **Alpha Futures:** activation is optional — this check is skipped. |
+| **When** | Phase-2 status (`status_p2`) is one of `funded`, `live`, `payout`; activation field blank; not new-row strict; not a live/real-money row (§2.3). **Alpha Futures:** activation is optional — this check is skipped. |
 
-**Bypass:** Fill activation fee; use statuses outside that set; new-row strict / live numeric paths; use Alpha Futures (activation optional — only purchase/challenge `Fee` is enforced via **Empty Fee**).
+**Bypass:** Not required on **Status Live** / **LIVE ACCOUNT** real-money rows (§2.3). Otherwise fill activation fee (or `$0` if none), use statuses outside `funded`/`live`/`payout`, new-row strict, or Alpha Futures.
 
 ### 5.6 `Empty Fee`
 
