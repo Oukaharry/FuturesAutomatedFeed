@@ -1672,6 +1672,67 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             merged[key] = existing_val
 
 
+def _admin_slack_id_for_client(client_id):
+    """(admin_name, slack_user_id) for a client, either possibly blank."""
+    profile = get_client_profile(client_id) or {}
+    admin = profile.get('admin') or ''
+    data = SYSTEM_HIERARCHY.get('admins', {}).get(admin, {}) or {}
+    return admin, str(data.get('slack_user_id') or '').strip()
+
+
+def _send_admin_breach_alert(client_id, breaches):
+    """DM the client's admin that an account has breached its floor.
+
+    Falls back to an @-mention on the shared webhook when no bot token is
+    configured, since an incoming webhook cannot open a DM.
+    """
+    if not breaches:
+        return 0
+    from dashboard.scheduler import send_slack_message
+
+    admin, slack_id = _admin_slack_id_for_client(client_id)
+    sent = 0
+    for breach in breaches:
+        if not isinstance(breach, dict):
+            continue
+        line = (
+            f":rotating_light: *Account breached* — {breach.get('prop_firm', '?')} "
+            f"`{breach.get('account', '?')}`\n"
+            f"Client: *{client_id}*  |  Phase: {breach.get('phase', '?')}\n"
+            f"Balance ${float(breach.get('balance') or 0):,.2f} is at or below "
+            f"the ${float(breach.get('floor') or 0):,.2f} floor."
+        )
+        target = _slack_dm(slack_id, line) if slack_id else False
+        if not target:
+            mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
+            send_slack_message(f"{mention}\n{line}")
+        sent += 1
+    return sent
+
+
+def _slack_dm(slack_user_id, text):
+    """Real DM via chat.postMessage. False when no bot token is configured."""
+    token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
+    if not token:
+        try:
+            token = str(get_setting('slack_bot_token') or '').strip()
+        except Exception:
+            token = ''
+    if not token or not slack_user_id:
+        return False
+    try:
+        resp = requests.post(
+            'https://slack.com/api/chat.postMessage',
+            headers={'Authorization': f'Bearer {token}'},
+            json={'channel': slack_user_id, 'text': text},
+            timeout=15,
+        )
+        return bool((resp.json() or {}).get('ok'))
+    except Exception as exc:
+        app.logger.warning(f"Slack DM failed: {exc}")
+        return False
+
+
 def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
     """Detect evaluation rows the dashboard is trying to add (CREATE).
 
@@ -6191,9 +6252,15 @@ def api_client_push():
     else:
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
-    
-    # Normalize Account Size values to standard format
-    evaluations = normalize_evaluations(evaluations)
+
+    breach_alerts = data.get('breach_alerts') or []
+    if breach_alerts:
+        try:
+            announced = _send_admin_breach_alert(client_id, breach_alerts)
+            app.logger.warning(
+                f"🚨 {client_id}: announced {announced} account breach(es) to the admin")
+        except Exception as exc:
+            app.logger.error(f"Breach alert failed for {client_id}: {exc}")
     
     # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
