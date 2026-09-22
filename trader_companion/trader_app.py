@@ -38,9 +38,8 @@ RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
 RELEASE_DISABLE_PUSH_BILLING = True
 # M1 push to dashboard removed — local mt5_market_feed still powers indicators/ML.
 RELEASE_DISABLE_M1_DASHBOARD_PUSH = True
-# AI/ML direction is now mandatory for every trade (auto-trade is the only
-# execution path, and entries are randomized — see _start_auto_trade).
-RELEASE_DISABLE_ML = True
+# Windows companions score the ML ensemble directly from their connected MT5.
+RELEASE_DISABLE_ML = False
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -7803,22 +7802,12 @@ class TradeOpssAIApp:
             self.trades_count_var.set("[ 0 ]")
             return
 
-        # One ML reading drives every broker-login family.
         firms_seen = set()
         for ev in evaluations:
             pf = ev.get("Prop Firm")
             nm = str(pf).strip() if pf is not None else ""
             firms_seen.add(nm or "Unknown")
         self._active_trade_firms = firms_seen
-
-        firm_bias = self._get_firm_directions({self._broker_login_family(f) for f in firms_seen})
-        self._auto_trade_firm_sides = firm_bias
-        if firm_bias:
-            bias_parts = []
-            for f, s in sorted(firm_bias.items()):
-                arrow = "▲" if s == "buy" else "▼"
-                bias_parts.append(f"{arrow} {f}: {s.upper()}")
-            self.log(f"🤖 ML direction: {', '.join(bias_parts)}")
         self.log(f"Rendering {len(evaluations)} active trade row(s)…")
 
         for idx, ev in enumerate(evaluations):
@@ -7852,7 +7841,7 @@ class TradeOpssAIApp:
                 glow_border, glow_bg, glow_fg = self._PHASE_GLOW.get(
                     current_display, ("#475569", "#0A0F1A", "#94A3B8"))
 
-                bias = self._resolve_firm_bias(prop_firm_name, firm_bias)
+                bias = None
 
                 if CTK_AVAILABLE:
                     row_bg = "#050D18" if idx % 2 == 0 else "#071020"
@@ -8010,6 +7999,8 @@ class TradeOpssAIApp:
                 canvas.configure(scrollregion=canvas.bbox("all"))
         except Exception:
             pass
+
+        self._refresh_ai_direction_async(firms_seen)
 
         if self.hedge_mode_var.get() == "Hedging":
             self.root.after(400, self._refresh_mt5_margin_after_scan)
@@ -9232,32 +9223,23 @@ class TradeOpssAIApp:
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
         self._auto_trade_side_lock_logged = set()
-        self._auto_trade_use_signal = False
+        self._auto_trade_use_signal = True
 
         firms_in_rows = set()
         for rd in self._active_trade_rows:
             pf = (rd.get("eval") or {}).get("Prop Firm", "Unknown")
             firms_in_rows.add(str(pf).strip() or "Unknown")
 
-        # Keyed by broker-login family (not raw dashboard label) so
-        # firms sharing one login always get the same random direction.
-        family_names = {self._broker_login_family(f) for f in firms_in_rows}
-        self._auto_trade_firm_sides = self._get_firm_directions(family_names)
-        dir_lines = []
-        for firm, s in sorted(self._auto_trade_firm_sides.items()):
-            arrow = "▲" if s == "buy" else "▼"
-            dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
-        self.auto_trade_firms_var.set("\n".join(dir_lines))
-        mode_label = "random dirs per firm family"
+        self._auto_trade_firm_sides = {}
+        self.auto_trade_firms_var.set("  🧠 ML direction resolves at entry time")
+        mode_label = "ML direction at entry time"
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
         self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
-        self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
-        for firm, s in self._auto_trade_firm_sides.items():
-            self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
+        self.log(f"⏰ Auto-trade scheduled at {time_str} ({mode_label})")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -9959,21 +9941,8 @@ class TradeOpssAIApp:
 
         self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
-        sig = self._compute_signal_strength(max_age_sec=0) if use_signal else {}
-        if use_signal and sig.get("ready"):
-            self.log(f"📊 Signal: {sig['label']} — highly recommended "
-                     f"{str(sig.get('recommended', '')).upper()}")
-        elif use_signal:
-            self.log(f"📊 Signal: {sig.get('label', '—')} ({sig.get('detail', '')})")
-
         if use_signal:
-            allowed, lean, dom, volatile, gate_msg = self._auto_batch_gate_allowed()
-            if not allowed:
-                self.log(f"⛔ Auto-trade gate: {gate_msg}", "WARN")
-                self._ai_trace("WARN", f"auto-trade blocked at execute — {gate_msg}")
-                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
-                return
-            self.log(f"✅ Auto-trade gate passed — {gate_msg}")
+            self.log("🧠 Resolving the connected MT5 ML direction at entry time")
         else:
             self.log("🎲 Auto-trade using daily random direction per prop firm")
 
@@ -13099,7 +13068,31 @@ class TradeOpssAIApp:
             pass
 
     def _refresh_ai_direction_async(self, firms):
-        pass
+        """Show a current MT5 ML snapshot without preselecting the entry side."""
+        if not firms or getattr(self, "_ai_direction_refresh_running", False):
+            return
+        self._ai_direction_refresh_running = True
+        families = {self._broker_login_family(firm) for firm in firms}
+
+        def _read_direction():
+            try:
+                direction = self._direct_mt5_ml_direction(
+                    self._resolve_mt5_hedge_symbol() or "ustech")
+                if direction not in ("buy", "sell"):
+                    return
+
+                def _apply():
+                    for row_data in list(getattr(self, "_active_trade_rows", []) or []):
+                        firm = (row_data.get("eval") or {}).get("Prop Firm", "")
+                        if self._broker_login_family(firm) in families:
+                            self._style_direction_buttons(row_data, direction)
+                    self.log(f"🧠 Current MT5 ML bias: {direction.upper()}")
+
+                self.root.after(0, _apply)
+            finally:
+                self._ai_direction_refresh_running = False
+
+        threading.Thread(target=_read_direction, daemon=True).start()
 
     def _style_direction_buttons(self, row_data, bias):
         """Re-style a row's direction and status badges to highlight the auto direction."""
@@ -14794,14 +14787,32 @@ class TradeOpssAIApp:
     BLEND_DEADZONE_VOLATILE = 0.07  # tighter deadzone when vol is high
 
     def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=None):
-        """Live ML direction broadcast by the MT5-connected companion.
+        """Resolve a direction from the connected MT5 ML ensemble at entry time."""
+        return self._direct_mt5_ml_direction(mt5_symbol)
 
-        The ensemble runs where MT5 is attached and publishes to the
-        dashboard; every companion reads the same result here. Returns
-        "buy"/"sell", or None when nothing was published inside the lookback
-        window — there is NO random fallback.
-        """
-        return self._broadcast_direction()
+    def _direct_mt5_ml_direction(self, mt5_symbol):
+        """Return the live MT5 ensemble direction, or None until its model is ready."""
+        if not self._ensure_mt5_for_signals():
+            self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
+            return None
+        try:
+            from trader_companion.signals.ml_direction import (
+                ensure_trained_async, get_ml_direction,
+            )
+            result = get_ml_direction(symbol=mt5_symbol or "ustech")
+        except Exception as exc:
+            self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
+            return None
+        if not result.get("ready"):
+            ensure_trained_async(mt5_symbol or "ustech", log_fn=self.log)
+            self.log("🧠 ML model is training — no trade direction yet", "WARN")
+            return None
+        direction = str(result.get("direction") or "").lower()
+        if direction in ("buy", "sell"):
+            self.log(f"🧠 MT5 ML direction: {direction.upper()} "
+                     f"(confidence {result.get('confidence')})")
+            return direction
+        return None
 
         # Display-only input — dashboard trade-history ML (NEVER used to decide)
         insights = self._get_dashboard_ml_insights()
