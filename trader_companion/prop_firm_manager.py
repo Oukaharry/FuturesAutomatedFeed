@@ -3087,6 +3087,42 @@ class PropFirmManager:
         "evaluation_failed", "account_blown", "payout_complete", "cycle_complete",
     })
 
+    # Challenge floors follow the FundedNext Rapid Daily model unless a firm
+    # publishes its own. Funded floors come from _HARD_STOP_THRESHOLDS so the
+    # breach check and get_lock_level's SL sizing cannot drift apart.
+    DEFAULT_CHALLENGE_FLOOR = 48000.0
+    DEFAULT_FUNDED_FLOOR = 50100.0
+    _CHALLENGE_FLOOR_RULES = ("evaluation_hard_floor", "cycle1_hard_floor")
+    _FUNDED_FLOOR_RULES = (
+        "funded_cycle_hard_floor", "funded_floor", "funded_floor_locked_at",
+        "funded_floor_locked_after_payout1",
+        "funded_floor_locked_after_first_payout", "cycle2_5_hard_floor",
+    )
+
+    def get_breach_floor(self, firm_code: str, phase: str = "Funded") -> float:
+        """Balance at or below which this account is breached.
+
+        A 0.0 hard stop is a real floor, not a missing one — TopStep funded
+        accounts start at $0 and so can never breach on balance alone.
+        """
+        rules = (self.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        if str(phase or "").strip().lower().startswith("challenge"):
+            keys = self._CHALLENGE_FLOOR_RULES
+            default = self.DEFAULT_CHALLENGE_FLOOR
+        else:
+            if firm_code in self._HARD_STOP_THRESHOLDS:
+                return float(self._HARD_STOP_THRESHOLDS[firm_code])
+            keys = self._FUNDED_FLOOR_RULES
+            default = self.DEFAULT_FUNDED_FLOOR
+        for key in keys:
+            value = rules.get(key)
+            if value:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+        return default
+
     def resolve_next_phase_key(self, firm_code: str, current_key: str,
                                outcome: str):
         """Next blueprint key from the firm's outcome state machine.

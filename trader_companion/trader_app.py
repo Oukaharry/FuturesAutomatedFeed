@@ -1718,6 +1718,8 @@ class TradeOpssAIApp:
         self._last_dashboard_evaluations = []
         self._pending_farming_closes = {}  # Accounts whose companion farming trade is awaiting closure.
         self._farming_close_poll_active = False
+        self._pending_breach_alerts = []   # Breaches the dashboard has not announced yet.
+        self._breach_alerts_sent = set()
 
         self._show_login_screen()
         
@@ -4889,8 +4891,10 @@ class TradeOpssAIApp:
             force_fields.extend(self._scrub_failed_row_day_placeholders(evaluations))
             force_fields.extend(self._release_payout_placeholders(evaluations))
 
-            if not force_fields:
+            breaches = list(self._pending_breach_alerts)
+            if not force_fields and not breaches:
                 return
+            self._pending_breach_alerts.clear()
             requests.post(
                 f"{dashboard_url}/api/client/push",
                 json={
@@ -4899,6 +4903,7 @@ class TradeOpssAIApp:
                     "statistics": {},
                     "dropdown_options": {},
                     "force_fields": force_fields,
+                    "breach_alerts": breaches,
                 },
                 headers=_companion_request_headers(),
                 timeout=30,
@@ -5643,20 +5648,47 @@ class TradeOpssAIApp:
         if balance <= 0:
             return None, None
 
-        floor = rules.get("funded_cycle_hard_floor") or rules.get("funded_floor")
-        blown = bool(floor) and balance <= float(floor)
+        # A row carrying only Account #.1 is still funded, so the phase test
+        # cannot be _has_passed_to_funded — that needs both account numbers.
+        on_funded = self._on_funded_leg(ev)
+        phase = "Funded" if on_funded else "Challenge"
+        floor = mgr.get_breach_floor(firm_code, phase)
+        blown = balance <= float(floor)
         payouts = self._payout_count(account)
         target = rules.get("payout_count")
 
         if blown and target and payouts >= int(target):
             return "Completed", f"{payouts} payout(s) banked and balance {balance:,.2f} at floor"
         if blown:
-            return "Fail", f"balance {balance:,.2f} at or below floor {float(floor):,.2f}"
+            self._record_breach_alert(ev, firm_code, phase, balance, floor)
+            return "Fail", (f"{phase.lower()} balance {balance:,.2f} at or below "
+                            f"floor {float(floor):,.2f}")
 
         goal = rules.get("evaluation_goal") or rules.get("first_funded_target")
-        if goal and not self._has_passed_to_funded(ev) and balance >= float(goal):
+        if goal and not on_funded and balance >= float(goal):
             return "Pass", f"balance {balance:,.2f} reached evaluation goal {float(goal):,.2f}"
         return None, None
+
+    def _record_breach_alert(self, ev, firm_code, phase, balance, floor):
+        """Queue a breach for the dashboard to announce to the client's admin."""
+        if not hasattr(self, "_breach_alerts_sent"):
+            self._breach_alerts_sent = set()
+        if not hasattr(self, "_pending_breach_alerts"):
+            self._pending_breach_alerts = []
+        account = self._primary_trade_account(ev)
+        key = f"{account}|{phase}"
+        if key in self._breach_alerts_sent:
+            return
+        self._breach_alerts_sent.add(key)
+        self._pending_breach_alerts.append({
+            "account": account,
+            "prop_firm": self._cell(ev.get("Prop Firm")) or firm_code,
+            "phase": phase,
+            "balance": round(float(balance), 2),
+            "floor": round(float(floor), 2),
+        })
+        self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
+                 f"below floor {float(floor):,.2f}", "ERROR")
 
     def _outcome_gate_blocks(self, ev, firm_code, phase_key):
         """True when a phase needs a prior outcome the account did not have.
