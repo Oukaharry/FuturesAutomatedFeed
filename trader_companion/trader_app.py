@@ -10829,7 +10829,10 @@ class TradeOpssAIApp:
                         self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
                         return
                     account = TopStepXAccount(user, pwd)
-                    account.login()
+                    if not account.login():
+                        raise RuntimeError(
+                            "TopStepX login failed after all retries; check credentials or retry."
+                        )
                 elif platform == "AlphaTrader":
                     if not ALPHATRADER_AVAILABLE:
                         err = _ALPHATRADER_IMPORT_ERROR or 'unknown reason'
