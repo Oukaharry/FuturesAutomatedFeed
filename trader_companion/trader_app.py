@@ -5335,6 +5335,32 @@ class TradeOpssAIApp:
                          values=["All Trades", "Buy Only", "Sell Only"],
                          state='readonly', width=12).pack(side="left")
 
+        self.signal_mode_var = tk.StringVar(value="ML (password required)")
+        self.random_signal_scope_var = tk.StringVar(value="Unique per prop firm")
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(opts_row, text="Signal:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(18, 4))
+            ctk.CTkComboBox(opts_row, variable=self.signal_mode_var,
+                            values=["ML (password required)", "Random"],
+                            state="readonly", width=178, height=32,
+                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
+                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 8))
+            ctk.CTkComboBox(opts_row, variable=self.random_signal_scope_var,
+                            values=["Unique per prop firm", "Same for all prop firms"],
+                            state="readonly", width=190, height=32,
+                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
+                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left")
+        else:
+            ttk.Label(opts_row, text="Signal:").pack(side="left", padx=(16, 4))
+            ttk.Combobox(opts_row, textvariable=self.signal_mode_var,
+                         values=["ML (password required)", "Random"],
+                         state='readonly', width=20).pack(side="left", padx=(0, 8))
+            ttk.Combobox(opts_row, textvariable=self.random_signal_scope_var,
+                         values=["Unique per prop firm", "Same for all prop firms"],
+                         state='readonly', width=24).pack(side="left")
+
     # ── Phase detection helpers ──
 
     _FIRM_MAP = {
@@ -9219,11 +9245,19 @@ class TradeOpssAIApp:
         offset_minutes = random.randint(0, 120)
         scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
 
+        signal_mode = self.signal_mode_var.get()
+        self._auto_trade_use_signal = signal_mode == "ML (password required)"
+        if self._auto_trade_use_signal and not self._ml_mode_enabled():
+            self.log("⛔ Enable ML and enter its password before scheduling ML trades", "WARN")
+            messagebox.showwarning(
+                "Enable ML Required",
+                "Select Enable ML beside Settings and enter the ML password before scheduling ML trades.")
+            return
+        self._auto_trade_random_scope = self.random_signal_scope_var.get()
         self._auto_trade_scheduled_dt = scheduled_eat
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
         self._auto_trade_side_lock_logged = set()
-        self._auto_trade_use_signal = True
 
         firms_in_rows = set()
         for rd in self._active_trade_rows:
@@ -9231,8 +9265,15 @@ class TradeOpssAIApp:
             firms_in_rows.add(str(pf).strip() or "Unknown")
 
         self._auto_trade_firm_sides = {}
-        self.auto_trade_firms_var.set("  🧠 ML direction resolves at entry time")
-        mode_label = "ML direction at entry time"
+        if self._auto_trade_use_signal:
+            self.auto_trade_firms_var.set("  🧠 ML direction resolves at entry time")
+            mode_label = "ML direction at entry time"
+        else:
+            shared = self._auto_trade_random_scope == "Same for all prop firms"
+            self.auto_trade_firms_var.set(
+                "  🎲 One random direction for all prop firms" if shared else
+                "  🎲 One random direction per prop firm")
+            mode_label = "shared random direction" if shared else "random direction per prop firm"
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
@@ -10345,11 +10386,16 @@ class TradeOpssAIApp:
                     if locked_side in ("buy", "sell"):
                         side = locked_side
                     else:
+                        random_key = (
+                            "__shared_random_direction__"
+                            if getattr(self, "_auto_trade_random_scope", "") == "Same for all prop firms"
+                            else family_key
+                        )
                         with firm_sides_lock:
-                            side = firm_sides.get(family_key)
+                            side = firm_sides.get(random_key)
                             if side not in ("buy", "sell"):
                                 side = random.choice(["buy", "sell"])
-                                firm_sides[family_key] = side
+                                firm_sides[random_key] = side
 
                 config = None
                 if self.prop_firm_mgr:
@@ -14917,6 +14963,8 @@ class TradeOpssAIApp:
             config["account_size"] = self.acct_size_var.get()
             config["hedge_mode"] = self.hedge_mode_var.get()
             config["direction"] = self.direction_var.get()
+            config["signal_mode"] = self.signal_mode_var.get()
+            config["random_signal_scope"] = self.random_signal_scope_var.get()
             config["strategy"] = self.strategy_var.get()
         
         config_path = os.path.join(os.path.dirname(__file__), "trader_config.json")
@@ -14976,6 +15024,10 @@ class TradeOpssAIApp:
                         self.hedge_mode_var.set(config['hedge_mode'])
                     if config.get('direction'):
                         self.direction_var.set(config['direction'])
+                    if config.get('signal_mode'):
+                        self.signal_mode_var.set(config['signal_mode'])
+                    if config.get('random_signal_scope'):
+                        self.random_signal_scope_var.set(config['random_signal_scope'])
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])
                 
