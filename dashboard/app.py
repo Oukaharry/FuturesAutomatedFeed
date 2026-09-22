@@ -2149,6 +2149,41 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
     return None
 
 
+# Qualifying-day rules per prop firm, taken verbatim from the blueprint pack.
+# min_profit 0 means the firm only requires a minimum number of trading days,
+# so any closed day counts. Firms absent here fall back to _FARMING_RULES_DEFAULT.
+_FARMING_RULES = {
+    'topstep': {'days': 5, 'min_profit': 150.0},
+    'topsteprtp': {'days': 5, 'min_profit': 0.0},
+    'tradeify': {'days': 5, 'min_profit': 150.0},
+    'tradeifyselect': {'days': 5, 'min_profit': 150.0},
+    'tradeify50addon': {'days': 5, 'min_profit': 150.0},
+    'blueguardianreserve': {'days': 5, 'min_profit': 150.0},
+    'ftmofuturespro': {'days': 5, 'min_profit': 200.0},
+    'fundednext': {'days': 5, 'min_profit': 200.0},
+    'fundingticks': {'days': 6, 'min_profit': 200.0},
+    'alphafutures': {'days': 5, 'min_profit': 200.0},
+    'apex': {'days': 5, 'min_profit': 0.0},
+    'lucidmaxx': {'days': 5, 'min_profit': 0.0},
+}
+_FARMING_RULES_DEFAULT = {'days': 5, 'min_profit': 0.0}
+
+
+def _farming_rules_for(evaluation):
+    """Qualifying-day count and per-day profit floor for this row's prop firm."""
+    label = str((evaluation or {}).get('Prop Firm') or '')
+    compact = re.sub(r'[^a-z0-9]', '', label.lower())
+    if not compact:
+        return _FARMING_RULES_DEFAULT
+    if compact in _FARMING_RULES:
+        return _FARMING_RULES[compact]
+    # Longest key first so 'tradeifyselect' never resolves as plain 'tradeify'.
+    for key in sorted(_FARMING_RULES, key=len, reverse=True):
+        if key in compact:
+            return _FARMING_RULES[key]
+    return _FARMING_RULES_DEFAULT
+
+
 def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_log):
     """Persist Prop Day P/L and qualifying-day progress for one farming account."""
     normalized_days = []
@@ -2165,17 +2200,27 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     if not normalized_days:
         return 0, False
 
+    rules = _farming_rules_for(evaluation)
+    required = int(rules['days'])
+    min_profit = float(rules['min_profit'])
+    # Each payout starts a fresh cycle whose first qualifying day is the funded
+    # trade, so only count Prop Days recorded at or after the cycle's first slot.
+    try:
+        cycle_start = max(1, int(evaluation.get('_Farming Cycle Start') or 1))
+    except (TypeError, ValueError):
+        cycle_start = 1
+
     # Farming begins when the companion places this account's $0.00 marker.
     # Older Tradovate history must not consume Prop Day 1; use only the most
     # recent closed day and assign it to this evaluation's next free Prop Day.
     date, net_pnl = normalized_days[-1]
     slot = None
-    for candidate in range(1, 6):
+    for candidate in range(cycle_start, 61):
         if str(evaluation.get(f'_Prop Day {candidate} Date') or '').strip() == date:
             slot = candidate
             break
     if slot is None:
-        for candidate in range(1, 6):
+        for candidate in range(cycle_start, 61):
             if not str(evaluation.get(f'Prop Day {candidate}') or '').strip():
                 slot = candidate
                 break
@@ -2203,12 +2248,13 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     _clear_farming_payout_date_collisions(evaluation)
 
     progress = 1
-    for candidate in range(1, slot + 1):
+    for candidate in range(cycle_start, slot + 1):
         try:
             candidate_pnl = float(evaluation.get(f'Prop Day {candidate}') or 0)
         except (TypeError, ValueError):
             candidate_pnl = 0
-        if candidate_pnl > 0 and progress < 5:
+        qualifies = candidate_pnl > 0 and candidate_pnl >= min_profit
+        if qualifies and progress < required:
             progress += 1
         progress_field = f'Prop Progress {candidate}'
         if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
@@ -2216,9 +2262,15 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
                 str(evaluation.get(f'_Prop Day {candidate} Date') or date),
                 '%Y-%m-%d',
             ).strftime('%-m/%-d/%y')
-            evaluation[progress_field] = f'{progress}/5 {progress_date}'
+            evaluation[progress_field] = f'{progress}/{required} {progress_date}'
 
-    completed = progress >= 5
+    if min_profit and 0 < net_pnl < min_profit:
+        match_log.append(
+            f"⚠️ Row {row_num} | {prop_field} ${net_pnl:.2f} is below the "
+            f"${min_profit:.0f} qualifying minimum — day does not count"
+        )
+
+    completed = progress >= required
     payout_field = f'Hedge Day {slot + 1}'
     if completed:
         # Qualifying is done. Drop any speculative next farming day and mark the
@@ -2229,12 +2281,15 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             value = str(evaluation.get(hedge_field) or '').strip().upper()
             if value in ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'):
                 evaluation[hedge_field] = ''
+        # The next cycle's qualifying days start after this slot; its funded
+        # trade becomes day 1 again once the payout lands.
+        evaluation['_Farming Cycle Start'] = slot + 1
         if not _eval_push_field_blocked(evaluation, payout_field, phase_code='FA'):
             evaluation[payout_field] = 'PAYOUT'
             evaluation[f'_{payout_field} Payout Due'] = date
             match_log.append(
-                f"💰 Row {row_num} | Prop Progress 5/5 → {payout_field} PAYOUT "
-                f"(request payout — trading paused)"
+                f"💰 Row {row_num} | Prop Progress {progress}/{required} → "
+                f"{payout_field} PAYOUT (request payout — trading paused)"
             )
     else:
         # A Tradovate-side close bypasses the companion's order callback, so
@@ -2324,7 +2379,8 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
         if written:
             match_log.append(
                 f"✅ 🌾 Row {row_index + 2} | Tradovate farming reconciliation: "
-                f"{written} Prop Day(s), {'5/5 complete' if complete else 'next day queued'}"
+                f"{written} Prop Day(s), "
+                f"{'qualifying complete' if complete else 'next day queued'}"
             )
         reconciled_accounts.add(account_key)
 

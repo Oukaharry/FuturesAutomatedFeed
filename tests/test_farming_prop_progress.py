@@ -50,6 +50,86 @@ def test_fifth_profitable_farming_day_queues_a_payout_request():
     assert evaluation["_Hedge Day 5 Payout Due"] == "2026-09-15"
 
 
+def test_day_below_the_firm_minimum_does_not_advance_the_counter():
+    evaluation = {
+        "Prop Firm": "Blue Guardian Reserve",
+        "Prop Day 1": "152.00",
+        "_Prop Day 1 Date": "2026-09-14",
+    }
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 120.0}], 2, []
+    )
+
+    assert evaluation["Prop Day 2"] == "120.00"
+    # Prop Day 1 cleared $150, Prop Day 2 did not, so the count holds at 2/5.
+    assert evaluation["Prop Progress 1"] == "2/5 9/14/26"
+    assert evaluation["Prop Progress 2"] == "2/5 9/15/26"
+
+
+def test_firm_requiring_six_qualifying_days_is_not_complete_at_five():
+    evaluation = {
+        "Prop Firm": "Funding Ticks PRO+",
+        "Prop Day 1": "210.00",
+        "_Prop Day 1 Date": "2026-09-10",
+        "Prop Day 2": "210.00",
+        "_Prop Day 2 Date": "2026-09-11",
+        "Prop Day 3": "210.00",
+        "_Prop Day 3 Date": "2026-09-14",
+    }
+
+    written, complete = _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 210.0}], 2, []
+    )
+
+    assert written == 1
+    assert not complete
+    assert evaluation["Prop Progress 4"] == "5/6 9/15/26"
+    assert evaluation["Hedge Day 5"] == "WEDNESDAY"
+
+
+def test_second_payout_cycle_restarts_the_counter_in_the_next_slots():
+    evaluation = {
+        "Prop Day 1": "100.00",
+        "_Prop Day 1 Date": "2026-09-10",
+        "Prop Day 2": "100.00",
+        "_Prop Day 2 Date": "2026-09-11",
+        "Prop Day 3": "100.00",
+        "_Prop Day 3 Date": "2026-09-14",
+        "Prop Day 4": "100.00",
+        "_Prop Day 4 Date": "2026-09-15",
+        "_Farming Cycle Start": 5,
+    }
+
+    written, complete = _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-16", "net_pnl": 100.0}], 2, []
+    )
+
+    assert written == 1
+    assert not complete
+    assert evaluation["Prop Day 5"] == "100.00"
+    # Cycle 1's four days are behind us; this is the new cycle's first farm day.
+    assert evaluation["Prop Progress 5"] == "2/5 9/16/26"
+    assert "Prop Progress 1" not in evaluation
+
+
+def test_completing_a_cycle_records_where_the_next_cycle_starts():
+    evaluation = {
+        "Prop Day 1": "100.00",
+        "_Prop Day 1 Date": "2026-09-10",
+        "Prop Day 2": "100.00",
+        "_Prop Day 2 Date": "2026-09-11",
+        "Prop Day 3": "100.00",
+        "_Prop Day 3 Date": "2026-09-14",
+    }
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 100.0}], 2, []
+    )
+
+    assert evaluation["_Farming Cycle Start"] == 5
+
+
 def test_cleared_prop_progress_is_not_regenerated_without_a_prop_day_clear():
     evaluation = {
         "Prop Day 1": "100.00",

@@ -168,6 +168,7 @@ def _payout_row(**overrides):
         "Account #": "FNFT-1",
         "Account #.1": "FNFT-2",
         "Status P1": "Pass",
+        "Hedge Result 1.1": "1200.00",
         "Prop Day 4": "150.20",
         "Hedge Day 5": "PAYOUT",
         "_Hedge Day 5 Payout Due": "2026-09-21",
@@ -201,15 +202,26 @@ def test_older_payouts_do_not_release_the_marker():
     assert row["Hedge Day 5"] == "PAYOUT"
 
 
-def test_detected_payout_swaps_in_the_current_day_placeholder():
+def test_detected_payout_queues_the_next_funded_trade():
     app = _payout_app([("2026-08-14", 1500.0), ("2026-09-23", 2100.0)])
     row = _payout_row()
 
-    assert app._release_payout_placeholders([row]) == ["Hedge Day 5"]
-    assert row["Hedge Day 5"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
+    assert app._release_payout_placeholders([row]) == [
+        "Hedge Day 5", "Hedge Result 2.1"]
+    assert row["Hedge Day 5"] == ""
+    assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
     assert app._eval_has_payout(row) is False
     # The anchor is spent; a later pass must not re-release the same payout.
     assert "_Hedge Day 5 Payout Due" not in row
+
+
+def test_payout_keeps_the_row_tradeable_when_funded_columns_are_full():
+    app = _payout_app([("2026-09-23", 2100.0)])
+    full = {field: "100.00" for field in TradeOpssAIApp._FUNDED_HEDGE_FIELDS}
+    row = _payout_row(**full)
+
+    assert app._release_payout_placeholders([row]) == ["Hedge Day 5"]
+    assert row["Hedge Day 5"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
 
 
 def test_hand_typed_marker_waits_for_a_payout_after_the_last_dated_activity():
@@ -217,8 +229,9 @@ def test_hand_typed_marker_waits_for_a_payout_after_the_last_dated_activity():
     row = _payout_row(**{"_Prop Day 4 Date": "2026-09-21"})
     row.pop("_Hedge Day 5 Payout Due")
 
-    assert app._release_payout_placeholders([row]) == ["Hedge Day 5"]
-    assert row["Hedge Day 5"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
+    assert app._release_payout_placeholders([row]) == [
+        "Hedge Day 5", "Hedge Result 2.1"]
+    assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
 
 
 def test_hand_typed_marker_on_a_bare_row_releases_on_any_payout():
@@ -226,8 +239,9 @@ def test_hand_typed_marker_on_a_bare_row_releases_on_any_payout():
     row = _payout_row()
     row.pop("_Hedge Day 5 Payout Due")
 
-    assert app._release_payout_placeholders([row]) == ["Hedge Day 5"]
-    assert row["Hedge Day 5"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
+    assert app._release_payout_placeholders([row]) == [
+        "Hedge Day 5", "Hedge Result 2.1"]
+    assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
     assert app._eval_has_payout(row) is False
 
 

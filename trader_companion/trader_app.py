@@ -5981,9 +5981,18 @@ class TradeOpssAIApp:
         dates = [d for d in dates if d]
         return max(dates) if dates else None
 
-    def _release_payout_placeholders(self, evaluations):
-        """Swap PAYOUT for a day marker once the withdrawal shows in the balance.
+    def _next_funded_trade_field(self, ev):
+        """First unused funded hedge column — where the next funded trade lands."""
+        for field in self._FUNDED_HEDGE_FIELDS:
+            if not self._cell(ev.get(field)) or self._cell(ev.get(field)) in ("—", "-"):
+                return field
+        return None
 
+    def _release_payout_placeholders(self, evaluations):
+        """Clear PAYOUT once the withdrawal shows in the Tradovate balance.
+
+        The payout ends the farming cycle, so today's placeholder is queued on
+        the next funded trade rather than left on the farming cell.
         Returns the field names changed so the caller can force them on push.
         """
         changed = []
@@ -6004,12 +6013,21 @@ class TradeOpssAIApp:
             label = self._WEEKDAY_LABELS[kenya_today().weekday()]
             if kenya_today().weekday() >= 5:
                 label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
-            ev[field] = label
             ev.pop(f"_{field} Payout Due", None)
-            changed.append(field)
             paid_on, amount = landed[-1]
-            self.log(f"💰 {account}: payout ${amount:,.2f} on {paid_on} — "
-                     f"{field} → {label}, trading resumes")
+            next_field = self._next_funded_trade_field(ev)
+            if next_field:
+                ev[field] = ""
+                ev[next_field] = label
+                changed.extend([field, next_field])
+                self.log(f"💰 {account}: payout ${amount:,.2f} on {paid_on} — "
+                         f"{field} cleared, {next_field} → {label} (next funded trade)")
+            else:
+                # Funded columns are full; keep the row tradeable where it is.
+                ev[field] = label
+                changed.append(field)
+                self.log(f"💰 {account}: payout ${amount:,.2f} on {paid_on} — "
+                         f"no free funded column, {field} → {label}")
         return changed
 
     def _payout_target_reached(self, account_number, firm_code):
