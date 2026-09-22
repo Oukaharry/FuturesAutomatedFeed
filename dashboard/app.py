@@ -103,6 +103,42 @@ def _kenya_today_str():
     return _kenya_now().strftime('%Y-%m-%d')
 
 
+# Weekday placeholders the companion reads back as queued trades.
+_DAY_PLACEHOLDER_LABELS = (
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+)
+# A row added from 17:00 EAT onward has missed the session. The 17:00→01:00
+# overnight block and the 01:00→17:00 daytime block both resolve to the same
+# calendar day, so only the evening cutoff shifts the date.
+_NEW_ROW_SESSION_CUTOFF_HOUR = 17
+
+
+def _new_row_day_placeholder(now=None):
+    """Weekday label for a brand-new account's first challenge trade.
+
+    From 17:00 EAT the session is gone, so the trade queues for the next day.
+    Weekend dates roll to Monday because no firm trades then.
+    """
+    now = now or _kenya_now()
+    day = now.date()
+    if now.hour >= _NEW_ROW_SESSION_CUTOFF_HOUR:
+        day += timedelta(days=1)
+    if day.weekday() >= 5:
+        day += timedelta(days=7 - day.weekday())
+    return _DAY_PLACEHOLDER_LABELS[day.weekday()]
+
+
+def _seed_new_row_day_placeholder(row, now=None):
+    """Queue the first challenge trade on a new Not Started row."""
+    if not isinstance(row, dict):
+        return
+    if str(row.get('Status P1') or '').strip().lower() != 'not started':
+        return
+    if str(row.get('Hedge Result 1') or '').strip() not in ('', '-', '—'):
+        return
+    row['Hedge Result 1'] = _new_row_day_placeholder(now)
+
+
 # Daily summary submission windows run 02:05 EAT → 02:05 EAT (see get_summary_status_for_date).
 _SUMMARY_TRACKER_ROLLOVER_MINUTES = 2 * 60 + 5
 # Evening batch typically starts ~18:00 EAT; before that, show prior night if today empty.
@@ -13315,6 +13351,7 @@ def update_data():
                                     _r['Status P1'] = 'Not Started'
                                 if not str(_r.get('Status') or '').strip():
                                     _r['Status'] = '-'
+                                _seed_new_row_day_placeholder(_r)
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
@@ -13329,6 +13366,7 @@ def update_data():
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
                         import uuid as _uuid
                         new_row['_create_id'] = str(_uuid.uuid4())
+                        _seed_new_row_day_placeholder(new_row)
                         evaluations.append(new_row)
                     else:
                         log_action(
