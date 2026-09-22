@@ -5334,6 +5334,8 @@ class TradeOpssAIApp:
             return "Blue Guardian Reserve"
         if "lucidmaxx" in compact or "lucid maxx" in norm:
             return "LucidMaxx"
+        if "lucid" in compact:
+            return "Lucid"
 
         return default
 
@@ -8499,6 +8501,10 @@ class TradeOpssAIApp:
         except Exception as _rand_err:
             self.log(f"⚠ Trade randomization skipped for {acct_num}: {_rand_err}", "WARN")
 
+        if self._is_lucid_eval_phase(firm_code, phase_key) and self.prop_firm_mgr:
+            config = self.prop_firm_mgr.apply_lucid_eval_challenge_config(
+                config, account_key=acct_num)
+
         # Cross-check: does the resolved/active account match the trade target?
         _acct_match = None
         try:
@@ -8657,13 +8663,17 @@ class TradeOpssAIApp:
                     # firm with a strict consistency rule) set disable_tp_adjustment=True
                     # in their blueprint so the dynamic TP raise can never push a single
                     # trade over the 40% consistency ceiling.
-                    if config.get("disable_tp_adjustment"):
+                    if (config.get("disable_tp_adjustment")
+                            or self._is_lucid_eval_phase(firm_code, phase_key)):
                         self.log(
                             f"⏭ TP-by-stage {acct_num}: skipped — "
-                            f"disable_tp_adjustment=True in blueprint ({firm_code}/{phase_key})"
+                            f"{'Lucid eval' if self._is_lucid_eval_phase(firm_code, phase_key) else 'disable_tp_adjustment=True'} "
+                            f"({firm_code}/{phase_key})"
                         )
                         audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
-                              status="disabled_by_blueprint", firm=str(firm_code or ""),
+                              status=("disabled_lucid_eval" if self._is_lucid_eval_phase(firm_code, phase_key)
+                                      else "disabled_by_blueprint"),
+                              firm=str(firm_code or ""),
                               phase_key=str(phase_key or ""))
                     else:
                         current_profit = self._get_current_phase_profit(
@@ -9548,6 +9558,18 @@ class TradeOpssAIApp:
     # uses CONFIRMED bars instead of a half-formed candle that can flip.
     SIGNAL_BAR_ALIGN_WINDOW_SEC = 90
     SIGNAL_BAR_CLOSE_BUFFER_SEC = 2.0
+
+    @staticmethod
+    def _is_lucid_eval_phase(firm_code, phase_key):
+        """Lucid challenge uses fixed eval TP/SL — never TP-by-stage."""
+        f = str(firm_code or "").strip()
+        if f in ("Lucid", "LucidMaxx"):
+            pass
+        else:
+            compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
+            if compact not in ("lucid", "lucidmaxx") and not compact.startswith("lucid"):
+                return False
+        return str(phase_key or "").lower().startswith("challenge_trade")
 
     def _is_funded_phase_key(self, phase_key=None):
         """True for funded / double-dip / Apex payout trade keys."""

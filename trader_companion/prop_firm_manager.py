@@ -674,8 +674,9 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 151,
+                            "tradovate_tp_ticks": 152,
                             "tradovate_sl_ticks": 200,
+                            "disable_tp_adjustment": True,
                             "mt5_volume": 5,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 42
@@ -685,8 +686,9 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 151,
+                            "tradovate_tp_ticks": 152,
                             "tradovate_sl_ticks": 200,
+                            "disable_tp_adjustment": True,
                             "mt5_volume": 8,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 42
@@ -2485,6 +2487,8 @@ class PropFirmManager:
             normalized_code = "MFFU_Flex"
         elif firm_code in ("Trade Day", "Trade day"):
             normalized_code = "TradeDay"
+        elif firm_code in ("LucidMaxx", "Lucid Maxx"):
+            normalized_code = "Lucid"
 
         # Exact blueprint key — fast path.
         if normalized_code in self.firm_blueprints:
@@ -2518,6 +2522,9 @@ class PropFirmManager:
                 return self.firm_blueprints["Tradeify Select"]
             if "blueguardian" in compact:
                 return self.firm_blueprints["Blue Guardian Reserve"]
+            if "lucidmaxx" in compact or compact == "lucid":
+                if "Lucid" in self.firm_blueprints:
+                    return self.firm_blueprints["Lucid"]
 
         self.logger.warning(
             f"get_firm_info: unrecognised firm_code '{firm_code}' — "
@@ -3243,9 +3250,11 @@ class PropFirmManager:
           trade3 start = $2000
 
         This is the profit the account should already have when entering
-        this stage.  Used to adjust TP so the trade doesn't overshoot or
+        this stage. Used to adjust TP so the trade doesn't overshoot or
         undershoot the stage target.
         """
+        if self._firm_is_lucid(firm_code):
+            firm_code = "Lucid"
         phase_map = {
             "Challenge": "Challenge", "Challenge Phase": "Challenge",
             "Funded": "Funded", "Funded Phase": "Funded",
@@ -3940,6 +3949,35 @@ class PropFirmManager:
         """Continuous uniform draw, converted to integer ticks later."""
         return random.uniform(float(lo), float(hi))
 
+    @staticmethod
+    def _firm_is_lucid(firm_code: str) -> bool:
+        f = str(firm_code or "").strip()
+        if f in ("Lucid", "LucidMaxx"):
+            return True
+        compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
+        return compact in ("lucid", "lucidmaxx") or compact.startswith("lucid")
+
+    def apply_lucid_eval_challenge_config(self, config: Dict,
+                                          account_key: Optional[str] = None) -> Dict:
+        """Per-account Lucid challenge sizing; blocks TP-by-stage inflation."""
+        if not config or not isinstance(config, dict):
+            return config
+        cfg = config.copy()
+        account_id = str(account_key or "default")
+        state = self._account_random_state.setdefault(account_id, {})
+        qty = int(state.setdefault("lucid_eval_qty", random.choice((1, 2))))
+        cfg["tradovate_qty"] = qty
+        cfg["tradovate_symbol"] = "NQZ6"
+        cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
+        cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
+        cfg["disable_tp_adjustment"] = True
+        cfg.setdefault("_randomization", {}).update({
+            "policy": "lucid_flex_50k",
+            "draw": "EVAL_QTY_SPLIT",
+            "lucid_eval_qty": qty,
+        })
+        return cfg
+
     def randomize_trade_config(self, firm_code: str, phase_key: str, config: Dict,
                                account_key: Optional[str] = None,
                                balance: float = 50000.0,
@@ -3959,6 +3997,8 @@ class PropFirmManager:
 
         cfg = config.copy()
         firm = str(firm_code or "").strip()
+        if self._firm_is_lucid(firm):
+            firm = "Lucid"
         phase = str(phase_key or "").lower()
         symbol = str(cfg.get("tradovate_symbol") or cfg.get("topstepx_symbol") or "")
         is_farming = ("farming" in phase) or ("MNQ" in symbol.upper())
@@ -4378,16 +4418,7 @@ class PropFirmManager:
 
         if firm == "Lucid":
             if phase.startswith("challenge_trade"):
-                account_id = str(account_key or "default")
-                state = self._account_random_state.setdefault(account_id, {})
-                qty = int(state.setdefault("lucid_eval_qty", random.choice((1, 2))))
-                cfg["tradovate_qty"] = qty
-                cfg["tradovate_symbol"] = "NQZ6"
-                cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
-                cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
-                # Lucid eval uses fixed per-account TP/SL; dynamic TP-by-stage
-                # would inflate trade 2 toward ~2× ticks (~$3k) when live P/L reads 0.
-                cfg["disable_tp_adjustment"] = True
+                return self.apply_lucid_eval_challenge_config(cfg, account_key)
             elif phase.startswith("funded_trade1"):
                 account_id = str(account_key or "default")
                 target = self._random_state_value(
@@ -4429,8 +4460,14 @@ class PropFirmManager:
                     owner = self._lucid_funded_tp_owners.get(tp)
                 self._lucid_funded_tp_owners[tp] = account_id
                 cfg["tradovate_tp_ticks"] = tp
-                cfg["tradovate_sl_ticks"] = min(
-                    600, max(0, int(math.floor((balance - 50100.0) / 10.0))))
+                # SL = room above the $50,100 hard floor. If balance can't be
+                # read (defaults to $50k) or is below the floor, room is ≤0.
+                room = int(math.floor((balance - 50100.0) / 10.0))
+                cfg["tradovate_sl_ticks"] = min(600, max(0, room))
+                if room < 1:
+                    cfg["_skip_order_reason"] = (
+                        f"Lucid Trade 2+ has no room above the $50,100 floor "
+                        f"(live balance ${balance:,.2f}) — connect broker and retry")
                 cfg.setdefault("_randomization", {}).update({
                     "policy": "lucid_flex_50k",
                     "draw": "FT2_PLUS_OFFSET",
@@ -4439,6 +4476,7 @@ class PropFirmManager:
                     "cycle_start": cycle_start,
                     "friction_dollars": 17.0,
                     "balance": balance,
+                    "room_ticks": room,
                 })
             elif is_farming:
                 account_id = str(account_key or "default")
@@ -4518,8 +4556,12 @@ class PropFirmManager:
             elif phase.startswith("live_trade"):
                 cfg["tradovate_tp_ticks"] = 100
                 cfg["tradovate_qty"] = 2
-                cfg["tradovate_sl_ticks"] = min(
-                    600, int(math.floor((balance - 50100.0) / 10.0)))
+                room = int(math.floor((balance - 50100.0) / 10.0))
+                cfg["tradovate_sl_ticks"] = min(600, max(0, room))
+                if room < 1:
+                    cfg["_skip_order_reason"] = (
+                        f"Blue Guardian live trade has no room above the $50,100 floor "
+                        f"(live balance ${balance:,.2f}) — connect broker and retry")
                 cfg["disable_tp_adjustment"] = True
             return cfg
 
@@ -4593,6 +4635,10 @@ class PropFirmManager:
                 cfg["tradovate_sl_ticks"] = new_sl
             elif "topstepx_sl_ticks" in cfg:
                 cfg["topstepx_sl_ticks"] = new_sl
+            if room_ticks < 1:
+                cfg["_skip_order_reason"] = (
+                    f"Funded Next Flex Trade 2+ has no room above the $50,100 floor "
+                    f"(live balance ${balance:,.2f}) — connect broker and retry")
 
         cfg.setdefault("_randomization", {})
         cfg["_randomization"].update({
