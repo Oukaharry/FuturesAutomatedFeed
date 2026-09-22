@@ -548,6 +548,28 @@
     const traderEmail = {{ (trader_email or '')|tojson }};
     const traderAdmin = {{ (trader_admin or '')|tojson }};
     const isSuperAdminViewingTrader = {{ 'true' if is_super_admin else 'false' }};
+    // Must match server _summary_tracker_display_date_str (02:05 EAT windows — not UTC calendar date).
+    let SUMMARY_TRACKER_DEFAULT_DATE = {{ (summary_tracker_date or '')|tojson }};
+
+    function _summaryTrackerQueryDate() {
+        const input = document.getElementById('summaries-date-input');
+        const v = input && input.value ? String(input.value).trim() : '';
+        return v || SUMMARY_TRACKER_DEFAULT_DATE || '';
+    }
+
+    async function _refreshSummaryTrackerDefaultDate() {
+        try {
+            const resp = await fetch('/api/quality/summary_tracker_date');
+            const data = await resp.json();
+            if (data.status === 'success' && data.date) {
+                SUMMARY_TRACKER_DEFAULT_DATE = data.date;
+                const input = document.getElementById('summaries-date-input');
+                if (input && !input.value) {
+                    input.value = data.date;
+                }
+            }
+        } catch (_) {}
+    }
     let _traderAllClients = [];
     let _showAllClients = false;
 
@@ -848,9 +870,8 @@
             } else {
                 if (!_traderTabState.summaries.loaded) {
                     const input = document.getElementById('summaries-date-input');
-                    if (input && !input.value) {
-                        const d = new Date();
-                        input.value = d.toISOString().slice(0, 10);
+                    if (input && !input.value && SUMMARY_TRACKER_DEFAULT_DATE) {
+                        input.value = SUMMARY_TRACKER_DEFAULT_DATE;
                     }
                     loadTraderSummaries();
                 }
@@ -928,8 +949,7 @@
 
     async function loadTraderSummaries() {
         const body = document.getElementById('summaries-panel-body');
-        const dateInput = document.getElementById('summaries-date-input');
-        const date = dateInput && dateInput.value ? dateInput.value : new Date().toISOString().slice(0, 10);
+        const date = _summaryTrackerQueryDate();
         body.innerHTML = `<div style="text-align:center;padding:50px;color:#64748b;">
             <i class="fas fa-circle-notch fa-spin" style="font-size:1.4rem;color:#4ade80;display:block;margin-bottom:10px;"></i>
             Loading summary status…
@@ -1018,8 +1038,10 @@
                     navBadge.style.display = 'inline-block';
                 }
             }).catch(() => {});
-        const today = new Date().toISOString().slice(0, 10);
-        fetch(`/api/quality/trader_summary_status?trader=${encodeURIComponent(traderName)}&date=${today}`)
+        _refreshSummaryTrackerDefaultDate().then(() => {
+        const trackerDay = _summaryTrackerQueryDate();
+        if (!trackerDay) return;
+        fetch(`/api/quality/trader_summary_status?trader=${encodeURIComponent(traderName)}&date=${encodeURIComponent(trackerDay)}`)
             .then(r => r.json())
             .then(data => {
                 if (data.status !== 'success') return;
@@ -1035,6 +1057,7 @@
                     navBadge.style.display = 'inline-block';
                 }
             }).catch(() => {});
+        }).catch(() => {});
     })();
 
     async function copyClientEmail(event, el, email) {
