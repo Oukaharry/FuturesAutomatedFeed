@@ -5045,7 +5045,12 @@ class TradeOpssAIApp:
             email = self.client_email_entry.get().strip().lower()
         except Exception:
             pass
-        if not email or not self.dashboard_url:
+        dashboard_url = ""
+        try:
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+        except Exception:
+            pass
+        if not email or not dashboard_url:
             return
         try:
             if not self._ensure_mt5_for_signals():
@@ -5072,7 +5077,7 @@ class TradeOpssAIApp:
         signal["email"] = email
         try:
             published = direction_feed.publish(
-                self.dashboard_url, signal, headers=_companion_request_headers())
+                dashboard_url, signal, headers=_companion_request_headers())
         except Exception as exc:
             self.log(f"⚠ Direction broadcast failed: {exc}", "WARN")
             return
@@ -7798,7 +7803,7 @@ class TradeOpssAIApp:
             self.trades_count_var.set("[ 0 ]")
             return
 
-        # Random BUY/SELL per prop firm broker-login family (daily bias)
+        # One ML reading drives every broker-login family.
         firms_seen = set()
         for ev in evaluations:
             pf = ev.get("Prop Firm")
@@ -7808,11 +7813,12 @@ class TradeOpssAIApp:
 
         firm_bias = self._get_firm_directions({self._broker_login_family(f) for f in firms_seen})
         self._auto_trade_firm_sides = firm_bias
-        bias_parts = []
-        for f, s in sorted(firm_bias.items()):
-            arrow = "▲" if s == "buy" else "▼"
-            bias_parts.append(f"{arrow} {f}: {s.upper()}")
-        self.log(f"🎲 Direction bias (family-based random): {', '.join(bias_parts)}")
+        if firm_bias:
+            bias_parts = []
+            for f, s in sorted(firm_bias.items()):
+                arrow = "▲" if s == "buy" else "▼"
+                bias_parts.append(f"{arrow} {f}: {s.upper()}")
+            self.log(f"🤖 ML direction: {', '.join(bias_parts)}")
         self.log(f"Rendering {len(evaluations)} active trade row(s)…")
 
         for idx, ev in enumerate(evaluations):
@@ -13048,10 +13054,17 @@ class TradeOpssAIApp:
         cached_at = getattr(self, "_broadcast_direction_at", None)
         if cached_at is not None and now - cached_at < self._DIRECTION_FETCH_TTL_SEC:
             return getattr(self, "_broadcast_direction_cache", None)
+        dashboard_url = ""
+        try:
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+        except Exception:
+            pass
+        if not dashboard_url:
+            return None
         signal = None
         try:
             signal = direction_feed.fetch(
-                self.dashboard_url, headers=_companion_request_headers())
+                dashboard_url, headers=_companion_request_headers())
         except Exception as exc:
             self.log(f"⚠ Could not fetch direction signal: {exc}", "WARN")
         direction = direction_feed.direction_from(signal)
