@@ -17,7 +17,7 @@ import requests
 EAT = timezone(timedelta(hours=3))
 
 # The publisher scores every 5 minutes, so this always spans several reads.
-SIGNAL_MAX_AGE_SEC = 900
+SIGNAL_MAX_AGE_SEC = 60
 
 SETTING_KEY = "ml_direction_signal"
 PUBLISH_PATH = "/api/signals/direction"
