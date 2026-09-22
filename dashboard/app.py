@@ -2237,8 +2237,79 @@ def _farming_rules_for(evaluation):
     return _FARMING_RULES_DEFAULT
 
 
-def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_log):
+# Funded hedge columns, in the order the companion fills them. Slots 6 and 7
+# carry no ".1" suffix because those columns do not exist on the dashboard.
+_FUNDED_HEDGE_FIELDS = (
+    [f'Hedge Result {i}.1' for i in range(1, 6)]
+    + ['Hedge Result 6', 'Hedge Result 7']
+    + [f'Hedge Result {i}' for i in range(8, 31)]
+)
+
+
+def _pending_payout_field(evaluation):
+    """Hedge Day cell holding a PAYOUT prompt, if the row has one."""
+    for slot in range(1, 61):
+        field = f'Hedge Day {slot}'
+        if str(evaluation.get(field) or '').strip().upper() == 'PAYOUT':
+            return field
+    return None
+
+
+def _next_funded_hedge_field(evaluation):
+    """First unused funded hedge column."""
+    for field in _FUNDED_HEDGE_FIELDS:
+        if str(evaluation.get(field) or '').strip() in ('', '-', '—'):
+            return field
+    return None
+
+
+def _resume_after_manual_payout_clear(evaluation):
+    """Queue the next funded trade once a PAYOUT prompt is deleted by hand.
+
+    Clearing the prompt is how an admin signals the payout was taken, so the
+    account resumes on its funded leg rather than on another farming day.
+    Returns the field that was queued, or None.
+    """
+    cleared = set(evaluation.get('_cleared_fields') or [])
+    for slot in range(1, 61):
+        field = f'Hedge Day {slot}'
+        anchor = f'_{field} Payout Due'
+        if anchor not in evaluation or field not in cleared:
+            continue
+        if str(evaluation.get(field) or '').strip().upper() == 'PAYOUT':
+            continue
+        next_field = _next_funded_hedge_field(evaluation)
+        if not next_field:
+            return None
+        evaluation.pop(anchor, None)
+        # A farming day queued against the prompt's slot would trade twice.
+        if _weekday_abbrs_in_text(evaluation.get(field)):
+            evaluation[field] = ''
+        # The cleared prompt's own slot hosts the new cycle's first farming
+        # day, so the counter restarts there rather than carrying the old one.
+        evaluation['_Farming Cycle Start'] = slot
+        evaluation[next_field] = _new_row_day_placeholder()
+        return next_field
+    return None
+
+
+def _last_traded_hedge_day_slot(evaluation):
+    """Highest Hedge Day slot the companion has already traded.
+
+    On a fill the companion overwrites that cell's weekday placeholder with
+    $0.00, so it — not the first free Prop Day — says which farming day an
+    incoming P/L belongs to.
+    """
+    slot = None
+    for candidate in range(1, 61):
+        if _hedge_cell_currency_only(evaluation.get(f'Hedge Day {candidate}')):
+            slot = candidate
+    return slot
+
+
+def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_log, today=None):
     """Persist Prop Day P/L and qualifying-day progress for one farming account."""
+    today = today or _kenya_today_str()
     normalized_days = []
     for day in daily_pnl or []:
         date = str((day or {}).get('date') or '').strip()
@@ -2253,6 +2324,16 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     if not normalized_days:
         return 0, False
 
+    # An outstanding payout prompt means trading is paused, so no farming day
+    # may be recorded against it — that is what opens a phantom second cycle.
+    pending_payout = _pending_payout_field(evaluation)
+    if pending_payout:
+        match_log.append(
+            f"⏸ Row {row_num} | {pending_payout} is awaiting a payout — "
+            f"farming paused"
+        )
+        return 0, True
+
     rules = _farming_rules_for(evaluation)
     required = int(rules['days'])
     min_profit = float(rules['min_profit'])
@@ -2265,20 +2346,31 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
 
     # Farming begins when the companion places this account's $0.00 marker.
     # Older Tradovate history must not consume Prop Day 1; use only the most
-    # recent closed day and assign it to this evaluation's next free Prop Day.
+    # recent closed day and assign it to the Hedge Day that was actually traded.
     date, net_pnl = normalized_days[-1]
+    if date != today:
+        # Only the session that just closed may be recorded; replaying history
+        # is what back-filled days these accounts never traded.
+        match_log.append(
+            f"⏭ Row {row_num} | newest Tradovate day {date} is not today "
+            f"({today}) — nothing recorded"
+        )
+        return 0, False
     slot = None
-    for candidate in range(cycle_start, 61):
+    for candidate in range(1, 61):
         if str(evaluation.get(f'_Prop Day {candidate} Date') or '').strip() == date:
             slot = candidate
             break
     if slot is None:
-        for candidate in range(cycle_start, 61):
-            if not str(evaluation.get(f'Prop Day {candidate}') or '').strip():
-                slot = candidate
-                break
-    if slot is None:
-        return 0, True
+        slot = _last_traded_hedge_day_slot(evaluation)
+        if slot is None:
+            return 0, False
+        if str(evaluation.get(f'Prop Day {slot}') or '').strip():
+            # That farming day is already recorded and no newer trade has
+            # filled, so this is history repeating rather than a new day.
+            return 0, False
+    if slot < cycle_start:
+        return 0, False
 
     prop_field = f'Prop Day {slot}'
     if _eval_push_field_blocked(evaluation, prop_field, phase_code='FA'):
@@ -2405,7 +2497,7 @@ def _strip_farming_payout_date_collisions(evaluations):
     return cleared
 
 
-def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match_log):
+def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match_log, today=None):
     """Apply Tradovate farming history even when an MT5 hedge payload is empty."""
     placeholder_accounts = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
     reconciled_accounts = set()
@@ -2424,11 +2516,17 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
             or is_funded_phase_ended(funded_status)
         ):
             continue
+        resumed = _resume_after_manual_payout_clear(evaluation)
+        if resumed:
+            match_log.append(
+                f"▶️ Row {row_index + 2} | PAYOUT cleared by hand — next funded "
+                f"trade queued on {resumed}"
+            )
         daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
         if not daily_pnl or account_key in reconciled_accounts:
             continue
         written, complete = _write_farming_prop_days_and_progress(
-            evaluation, daily_pnl, row_index + 2, match_log)
+            evaluation, daily_pnl, row_index + 2, match_log, today=today)
         if written:
             match_log.append(
                 f"✅ 🌾 Row {row_index + 2} | Tradovate farming reconciliation: "
@@ -2438,7 +2536,7 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
         reconciled_accounts.add(account_key)
 
 
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None, tradovate_farming_days=None):
+def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None, tradovate_farming_days=None, today=None):
     """
     Update evaluation hedge result fields from aggregated MT5 comment data OR raw deals.
     
@@ -2460,7 +2558,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     if evaluations:
         _strip_farming_payout_date_collisions(evaluations)
     if evaluations and tradovate_farming_days:
-        _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, tradovate_match_log)
+        _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, tradovate_match_log, today=today)
         _strip_farming_payout_date_collisions(evaluations)
     
     # -------------------------------------------------------------------------
