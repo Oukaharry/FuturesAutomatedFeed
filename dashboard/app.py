@@ -1712,6 +1712,8 @@ def _send_admin_breach_alert(client_id, breaches):
 
 def _slack_dm(slack_user_id, text):
     """Real DM via chat.postMessage. False when no bot token is configured."""
+    import requests
+    from dashboard.database import get_setting
     token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
     if not token:
         try:
