@@ -22,7 +22,7 @@ class Config:
     APP_VERSION = '1.0.1'
     # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
     # Empty env leftover from the old disable flag still means current version.
-    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.1') or '1.12.1'
+    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.2') or '1.12.2'
     
     # Session Configuration
     SESSION_TYPE = 'filesystem'  # Options: 'filesystem', 'redis', 'sqlalchemy'
