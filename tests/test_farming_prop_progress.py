@@ -130,6 +130,51 @@ def test_completing_a_cycle_records_where_the_next_cycle_starts():
     assert evaluation["_Farming Cycle Start"] == 5
 
 
+def test_a_firm_without_farming_days_is_payable_after_the_funded_trade():
+    evaluation = {"Prop Firm": "FundedNext Rapid Daily"}
+
+    written, complete = _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 100.0}], 2, []
+    )
+
+    assert written == 1
+    assert complete
+    assert evaluation["Prop Progress 1"] == "1/1 9/15/26"
+    assert evaluation["Hedge Day 2"] == "PAYOUT"
+
+
+def test_rapid_daily_does_not_inherit_the_fundednext_farming_rule():
+    evaluation = {"Prop Firm": "FundedNext Rapid Daily 50K"}
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 100.0}], 2, []
+    )
+
+    assert evaluation["Prop Progress 1"].startswith("1/1")
+
+
+def test_mffu_flex_uses_the_farming_tp_minimum():
+    evaluation = {"Prop Firm": "My Funded Futures"}
+
+    _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 120.0}], 2, []
+    )
+
+    # $120 is short of the $150 the farming TP covers, so the day does not count.
+    assert evaluation["Prop Progress 1"] == "1/5 9/15/26"
+
+
+def test_mffu_builder_is_not_swallowed_by_the_mffu_farming_rule():
+    evaluation = {"Prop Firm": "MFFU Builder 50K"}
+
+    _, complete = _write_farming_prop_days_and_progress(
+        evaluation, [{"date": "2026-09-15", "net_pnl": 120.0}], 2, []
+    )
+
+    assert complete
+    assert evaluation["Prop Progress 1"].startswith("1/1")
+
+
 def test_cleared_prop_progress_is_not_regenerated_without_a_prop_day_clear():
     evaluation = {
         "Prop Day 1": "100.00",

@@ -2150,8 +2150,13 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
 
 
 # Qualifying-day rules per prop firm, taken verbatim from the blueprint pack.
-# min_profit 0 means the firm only requires a minimum number of trading days,
-# so any closed day counts. Firms absent here fall back to _FARMING_RULES_DEFAULT.
+# A firm either farms or it does not: farming firms need 5 qualifying days
+# (Funding Ticks is the lone exception at 6), and firms with no farming
+# requirement use days 1 so the funded trade alone clears the payout.
+# Where the pack states no minimum in words it is read off the farming TP,
+# which is always the minimum plus a small commission buffer (154→150,
+# 204→200, 207→200, 104→100). min_profit 0 means the firm only counts
+# trading days. Firms absent here fall back to _FARMING_RULES_DEFAULT.
 _FARMING_RULES = {
     'topstep': {'days': 5, 'min_profit': 150.0},
     'topsteprtp': {'days': 5, 'min_profit': 0.0},
@@ -2165,6 +2170,18 @@ _FARMING_RULES = {
     'alphafutures': {'days': 5, 'min_profit': 200.0},
     'apex': {'days': 5, 'min_profit': 0.0},
     'lucidmaxx': {'days': 5, 'min_profit': 0.0},
+    # Minimum derived from the farming TP rather than a stated figure.
+    'mffu': {'days': 5, 'min_profit': 150.0},
+    'myfundedfutures': {'days': 5, 'min_profit': 150.0},
+    'lucid': {'days': 5, 'min_profit': 150.0},
+    'toponefutures': {'days': 5, 'min_profit': 250.0},
+    'fundedfuturesfamily': {'days': 5, 'min_profit': 200.0},
+    'fff': {'days': 5, 'min_profit': 200.0},
+    # No farming stage — payout is due as soon as the funded trade closes.
+    'fundednextrapiddaily': {'days': 1, 'min_profit': 0.0},
+    'mffubuilder': {'days': 1, 'min_profit': 0.0},
+    'mffurapideod': {'days': 1, 'min_profit': 0.0},
+    'tradeday': {'days': 1, 'min_profit': 0.0},
 }
 _FARMING_RULES_DEFAULT = {'days': 5, 'min_profit': 0.0}
 
