@@ -18,7 +18,7 @@ DIST_DIR = os.path.join(PROJECT_ROOT, 'dist')
 BUILD_DIR = os.path.join(PROJECT_ROOT, 'build')
 STAGE_DIR = os.path.join(BUILD_DIR, '_stage')
 WINDOWS_WORKFLOW = 'build-windows.yml'
-WINDOWS_ARTIFACT_DIR = os.path.join(PROJECT_ROOT, 'dist-windows')
+WINDOWS_ARTIFACT_DIR = DIST_DIR
 
 # ML-only signal artifacts — omitted from trader (no-AI) builds.
 TRADER_EXCLUDE_SIGNALS = frozenset({
