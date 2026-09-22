@@ -15,10 +15,20 @@ def _signal(direction="buy", age_sec=0):
             "published_at": published.isoformat(timespec="seconds")}
 
 
-def _app():
+class _Entry:
+    """Stands in for the Tk entry the real app reads the dashboard URL from."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def get(self):
+        return self._value
+
+
+def _app(url="http://dash"):
     app = TradeOpssAIApp.__new__(TradeOpssAIApp)
     app.log = lambda *a, **k: None
-    app.dashboard_url = "http://dash"
+    app.url_entry = _Entry(url)
     return app
 
 
@@ -157,3 +167,19 @@ def test_the_execution_path_returns_none_rather_than_guessing(monkeypatch):
     monkeypatch.setattr(direction_feed, "fetch", lambda *a, **k: None)
 
     assert _app()._get_signal_direction("USTECH") is None
+
+
+def test_the_dashboard_url_comes_from_the_connection_entry(monkeypatch):
+    # Reading it from anywhere else raised AttributeError on every live fetch.
+    seen = []
+    monkeypatch.setattr(direction_feed, "fetch",
+                        lambda url, **k: seen.append(url) or _signal("buy"))
+
+    assert _app("http://configured/")._broadcast_direction() == "buy"
+    assert seen == ["http://configured"]
+
+
+def test_no_configured_dashboard_means_no_direction(monkeypatch):
+    monkeypatch.setattr(direction_feed, "fetch", lambda *a, **k: _signal("buy"))
+
+    assert _app("   ")._broadcast_direction() is None
