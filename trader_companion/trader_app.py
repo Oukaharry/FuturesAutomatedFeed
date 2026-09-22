@@ -4917,7 +4917,20 @@ class TradeOpssAIApp:
         self._last_hourly_farming_refresh = now
         self.log("🌾 Hourly farming scan — refreshing Tradovate Net P/L")
         self.push_data(full_prop_refresh=True)
-        self._apply_outcome_corrections()
+
+    # A payout lands hours before the next hourly farming scan would notice it.
+    _OUTCOME_CORRECTION_INTERVAL_SEC = 300
+
+    def _run_outcome_corrections_if_due(self):
+        """Reconcile placeholders and released payouts on a short cycle."""
+        if not self.auto_push_enabled:
+            return
+        now = time.monotonic()
+        last = getattr(self, "_last_outcome_correction", None)
+        if last is not None and now - last < self._OUTCOME_CORRECTION_INTERVAL_SEC:
+            return
+        self._last_outcome_correction = now
+        threading.Thread(target=self._apply_outcome_corrections, daemon=True).start()
 
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
@@ -4926,6 +4939,7 @@ class TradeOpssAIApp:
             try:
                 self.root.after(0, self.check_and_push_update)
                 self.root.after(0, self._run_hourly_farming_refresh_if_due)
+                self.root.after(0, self._run_outcome_corrections_if_due)
             except Exception as e:
                 # Thread-safe: can't call self.log from background thread directly
                 try:
@@ -6008,9 +6022,22 @@ class TradeOpssAIApp:
             if not account:
                 continue
             due_since = self._payout_due_since(ev, field)
-            landed = [(d, amt) for d, amt in self._detect_payouts(account)
+            detected = self._detect_payouts(account)
+            landed = [(d, amt) for d, amt in detected
                       if not due_since or str(d) >= due_since]
             if not landed:
+                # Without this the marker just sits there with no way to tell
+                # whether the balance was read, ignored, or never checked.
+                if account.lower() not in self._trade_outcome_history():
+                    self.log(f"💤 {account}: {field} still PAYOUT — no Tradovate "
+                             f"history for this account (firm connected?)", "WARN")
+                elif detected:
+                    self.log(f"💤 {account}: {field} still PAYOUT — newest balance "
+                             f"withdrawal is {detected[-1][0]}, need one on/after "
+                             f"{due_since}", "WARN")
+                else:
+                    self.log(f"💤 {account}: {field} still PAYOUT — no withdrawal "
+                             f"in the Tradovate balance yet")
                 continue
             label = self._WEEKDAY_LABELS[kenya_today().weekday()]
             if kenya_today().weekday() >= 5:
