@@ -52,8 +52,33 @@ class TradovateAccount:
     
     # Class-level registry to track Chrome instances per account
     _chrome_instances = {}
+    # One Selenium lock per Chrome instance: two firm rows on the same Tradovate
+    # login share a browser, so they must also share the lock that serialises it.
+    _instance_locks = {}
+    # Guards the two registries above so concurrent connects for the same login
+    # cannot both launch Chrome on the same (exclusive) profile directory.
+    _registry_guard = threading.Lock()
     # Set once per process after we sweep leftover throwaway fallback profiles.
     _fallback_sweep_done = False
+    # Presence of this tab is what "the trader is loaded" means everywhere below.
+    _ORDER_TICKET_TAB_XPATH = "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']"
+    # Alternative selectors for detecting a ready trading interface (Buy/Sell buttons, etc.)
+    _TRADING_UI_READY_XPATHS = [
+        "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']",
+        "//div[contains(@class, 'order-ticket')]",
+        "//span[text()='Order Ticket']",
+        # Buy/Sell Mkt buttons (visible in screenshot)
+        "//button[contains(text(), 'Buy Mkt')]",
+        "//button[contains(text(), 'Sell Mkt')]",
+        "//button[contains(@class, 'buy') and contains(text(), 'Buy')]",
+        "//button[contains(@class, 'sell') and contains(text(), 'Sell')]",
+        # Position indicator / account header elements
+        "//div[contains(@class, 'account-selector')]",
+        "//div[contains(@class, 'position')]//span[contains(@class, 'qty')]",
+        # Chart container (trader is loaded if chart is visible)
+        "//div[contains(@class, 'chart-container')]",
+        "//div[contains(@class, 'tv-chart')]",
+    ]
 
     @staticmethod
     def normalize_trading_mode(mode):
@@ -71,31 +96,45 @@ class TradovateAccount:
         self._first_stats_fetch = True
         self._placing_order = False  # Flag to block stats fetching during order placement
         self._login_timestamp = None  # Track when we logged in for debugging
-        self.lock = threading.RLock()  # Thread safety for Selenium operations
-        
-        # Create unique instance key using both username and pair_id
+
+        # Create unique instance key using both username and pair_id. Live keeps its
+        # own key (and therefore its own browser/profile) so a real-money session and
+        # a simulation session for the same login can never overwrite each other.
         instance_key = f"{username}_{self.pair_id}"
-        
-        # Check if Chrome instance already exists for this specific account+pair combination
-        if instance_key in self._chrome_instances:
-            logging.info(f"Reusing existing Chrome instance for account: {username} (Pair: {self.pair_id})")
-            existing_driver = self._chrome_instances[instance_key]
-            # Test if existing driver is still alive
+        if self.trading_mode == "Live Trading":
+            instance_key += "_live"
+        self.instance_key = instance_key
+
+        # Hold the registry guard across the whole lookup/launch so two threads
+        # connecting the same login (e.g. two prop-firm rows sharing credentials)
+        # never race into two Chrome launches on one profile directory.
+        with TradovateAccount._registry_guard:
+            # Thread safety for Selenium operations - shared with every other
+            # account object driving the same Chrome instance.
+            self.lock = TradovateAccount._instance_locks.setdefault(instance_key, threading.RLock())
+
+            # Check if Chrome instance already exists for this specific account+pair combination
+            if instance_key in TradovateAccount._chrome_instances:
+                logging.info(f"Reusing existing Chrome instance for account: {username} (Pair: {self.pair_id})")
+                existing_driver = TradovateAccount._chrome_instances[instance_key]
+                # Test if existing driver is still alive
+                try:
+                    existing_driver.current_url
+                    self.driver = existing_driver
+                    logging.info("Successfully connected to existing Chrome instance")
+                    return
+                except Exception:
+                    logging.info("Existing Chrome instance is dead, creating new one")
+                    # Remove dead instance from registry
+                    del TradovateAccount._chrome_instances[instance_key]
+
+            # Initialize driver with error handling
             try:
-                existing_driver.current_url
-                self.driver = existing_driver
-                logging.info("Successfully connected to existing Chrome instance")
-                return
-            except Exception:
-                logging.info("Existing Chrome instance is dead, creating new one")
-                # Remove dead instance from registry
-                del self._chrome_instances[instance_key]
-        
-        # Initialize driver with error handling
-        try:
-            self.driver = self._initialize_driver()
-        except Exception as e:
-            raise Exception(f"Failed to initialize WebDriver: {str(e)}. This may indicate VPS Chrome setup issues.")
+                self.driver = self._initialize_driver()
+            except Exception as e:
+                raise Exception(f"Failed to initialize WebDriver: {str(e)}. This may indicate VPS Chrome setup issues.")
+            TradovateAccount._chrome_instances[instance_key] = self.driver
+            logging.info(f"Chrome instance registered for Tradovate: {username} (Pair: {self.pair_id})")
 
     def _get_chromedriver_path(self):
         """Get the path to ChromeDriver executable - FAST VERSION (no compatibility check)"""
@@ -282,10 +321,10 @@ class TradovateAccount:
         # login starts with a throwaway profile, so Tradovate treats the connector as a
         # brand-new device and re-shows the "Complete your profile" / trading-mode gate
         # every time (and anything typed there is discarded on close).
-        # Key the folder on username + pair_id (matching the instance registry) so two
-        # concurrent instances never share a profile dir, which Chrome forbids
-        # ("user data directory is already in use") and would crash the launch.
-        safe_key = re.sub(r"[^A-Za-z0-9_-]", "_", f"{self.username}_{self.pair_id}")
+        # Key the folder on the instance key (username + pair_id, plus the live
+        # suffix) so two concurrent instances never share a profile dir, which Chrome
+        # forbids ("user data directory is already in use") and would crash the launch.
+        safe_key = re.sub(r"[^A-Za-z0-9_-]", "_", self.instance_key)
         profile_dir = os.path.join(tempfile.gettempdir(), "tradovate_profiles", safe_key)
         os.makedirs(profile_dir, exist_ok=True)
         chrome_options.add_argument(f"--user-data-dir={profile_dir}")
@@ -381,7 +420,7 @@ class TradovateAccount:
                     # to kill). Last resort: retry with a unique throwaway profile so the
                     # connect still works. This one session won't reuse the saved Tradovate
                     # cookies, so the onboarding gate may show once - but it won't block.
-                    fallback_key = re.sub(r"[^A-Za-z0-9_-]", "_", f"{self.username}_{self.pair_id}")
+                    fallback_key = re.sub(r"[^A-Za-z0-9_-]", "_", self.instance_key)
                     fallback_dir = os.path.join(tempfile.gettempdir(), "tradovate_profiles",
                                                 f"{fallback_key}_fallback_{int(time.time())}")
                     os.makedirs(fallback_dir, exist_ok=True)
@@ -604,6 +643,230 @@ class TradovateAccount:
             "validation_enabled": True
         }
 
+    def _current_trading_environment(self):
+        """'demo' | 'live' | None, read from the trader app's own auth state."""
+        try:
+            env = self.driver.execute_script(
+                "try { return (JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{}')"
+                ".environment) || ''; } catch (e) { return ''; }"
+            )
+        except Exception as e:
+            logging.debug(f"Could not read Tradovate environment: {e}")
+            return None
+        env = str(env or "").strip().lower()
+        return env or None
+
+    def _environment_matches_mode(self):
+        """True only when the open session is the environment this account asked for."""
+        env = self._current_trading_environment()
+        if not env:
+            return False
+        return env == ("live" if self.trading_mode == "Live Trading" else "demo")
+
+    def _trading_interface_present(self):
+        """True when this tab is already sitting on a loaded trader interface."""
+        try:
+            url = (self.driver.current_url or "").lower()
+        except Exception:
+            return False
+        if "tradovate.com" not in url or "/welcome" in url:
+            return False
+        # Check any of the known trading UI element selectors
+        for xpath in self._TRADING_UI_READY_XPATHS:
+            try:
+                if self.driver.find_elements(By.XPATH, xpath):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _focus_trading_window(self):
+        """Point the driver at a window that already shows the trader, if any."""
+        if self._trading_interface_present():
+            return True
+        try:
+            handles = list(self.driver.window_handles)
+            current = self.driver.current_window_handle
+        except Exception:
+            return False
+        for handle in handles:
+            if handle == current:
+                continue
+            try:
+                self.driver.switch_to.window(handle)
+            except Exception:
+                continue
+            if self._trading_interface_present():
+                logging.info("Active Tradovate trader found in another window - switching to it")
+                return True
+        try:
+            self.driver.switch_to.window(current)
+        except Exception:
+            pass
+        return False
+
+    def _session_has_api_token(self):
+        """True when Tradovate's web app has stored an API bearer token in this tab."""
+        try:
+            if not self.driver:
+                return False
+            return bool(self.driver.execute_script(
+                "try { var a = JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{}');"
+                " return !!(a && a.token); } catch (e) { return false; }"
+            ))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _stats_indicate_ready(stats):
+        """Connect / login succeeded when we have a real balance (DOM or API)."""
+        if not stats or not isinstance(stats, dict):
+            return False
+        bal = stats.get("Balance")
+        if bal in (None, "", "N/A", "Error"):
+            return False
+        acct = str(stats.get("Account Number") or "").strip()
+        if acct in ("", "Not Connected", "Error", "Trading..."):
+            # Balance without a scraped account label is still OK (API path).
+            return True
+        return True
+
+    def _fetch_account_stats_via_api(self, account_id=None):
+        """Read account + balance from Tradovate REST (same auth as order placement)."""
+        if not self.driver or not self._session_has_api_token():
+            return None
+        try:
+            account_name = None
+            if account_id is None:
+                account_id, account_name = self._get_account_for_api()
+            else:
+                for acct in (self._api_fetch("/account/list") or []):
+                    if acct.get("id") == account_id:
+                        account_name = acct.get("name")
+                        break
+            if not account_id:
+                return None
+            if not account_name:
+                try:
+                    account_name = self.get_active_account()
+                except Exception:
+                    account_name = None
+            snapshot = self._api_fetch(
+                "/cashBalance/getCashBalanceSnapshot", "POST", {"accountId": account_id}
+            ) or {}
+            net_liq = snapshot.get("netLiq")
+            if net_liq is None:
+                return None
+            label = (account_name or str(account_id)).strip()
+            if len(label) >= 13:
+                display_acct = label[:4] + "..." + label[-5:]
+            else:
+                display_acct = label
+            open_pnl = snapshot.get("openPnL")
+            return {
+                "Account Number": display_acct or label,
+                "Balance": f"${float(net_liq):,.2f}",
+                "Profit/Loss": (
+                    f"${float(open_pnl):,.2f}" if open_pnl is not None else "N/A"
+                ),
+                "Open Trades": "N/A",
+                "Symbol": "",
+                "Direction": "",
+                "_api_account_id": account_id,
+                "_api_account_name": account_name or label,
+            }
+        except Exception as e:
+            logging.debug(f"API account stats failed: {e}")
+            return None
+
+    def _confirm_trading_ready(self, timeout=0):
+        """Return account stats once the trader UI is up AND an account is connected.
+
+        Returns the stats dict on success, None otherwise. ``timeout`` > 0 waits that
+        long for trading UI elements; 0 checks the current page without waiting.
+
+        After sim launch the chart can render before the Order Ticket tab or DOM
+        balance widgets exist; the REST session often becomes ready first — poll both.
+        """
+        if timeout:
+            # Wait for ANY of the trading UI indicators to appear
+            found = False
+            try:
+                WebDriverWait(self.driver, timeout).until(
+                    EC.any_of(*[
+                        EC.visibility_of_element_located((By.XPATH, xpath))
+                        for xpath in self._TRADING_UI_READY_XPATHS
+                    ])
+                )
+                found = True
+            except Exception as e:
+                logging.info(f"Trading interface not visible yet after {timeout}s: {e}")
+            if found:
+                time.sleep(1)
+                self._wait_for_no_overlay(timeout=5)
+            else:
+                # Last chance: check if _trading_interface_present passes now
+                if not self._trading_interface_present() and not self._session_has_api_token():
+                    return None
+        elif not self._trading_interface_present() and not self._session_has_api_token():
+            return None
+
+        poll_seconds = 30 if timeout else 20
+        deadline = time.time() + poll_seconds
+        last = None
+        while time.time() < deadline:
+            try:
+                if self._session_has_api_token():
+                    api_stats = self._fetch_account_stats_via_api()
+                    if api_stats:
+                        last = api_stats
+                    if self._stats_indicate_ready(api_stats):
+                        logging.info("[CHECK] Tradovate session ready (API balance)")
+                        return api_stats
+                dom_stats = self.get_account_stats() or {}
+                if dom_stats:
+                    last = dom_stats
+                if self._stats_indicate_ready(dom_stats):
+                    logging.info("[CHECK] Tradovate session ready (DOM stats)")
+                    return dom_stats
+            except Exception as e:
+                logging.warning(f"Account stats poll failed: {e}")
+            time.sleep(2)
+
+        acct = (last or {}).get("Account Number")
+        bal = (last or {}).get("Balance")
+        logging.info(
+            f"Trading interface loaded but account not connected "
+            f"(Account: {acct}, Balance: {bal})"
+        )
+        return None
+
+    def _resume_active_session(self):
+        """Adopt a trading session that is already running in this Chrome instance.
+
+        Another firm row on the same login (or a previous connect) can leave the
+        trader fully loaded. Re-running the welcome -> 'Launch Simulation' funnel
+        there navigates away from a working session and then fails, because those
+        buttons only exist on the mode-selection page.
+        """
+        if not self.driver or not self._focus_trading_window():
+            return False
+        if not self._environment_matches_mode():
+            logging.info(
+                f"Open Tradovate session is not {self.trading_mode} - running full login"
+            )
+            return False
+        stats = self._confirm_trading_ready()
+        if not stats:
+            return False
+        self.logged_in = True
+        self._login_timestamp = time.time()
+        logging.info(
+            f"[CHECK] Reusing active Tradovate {self.trading_mode} session - "
+            f"Account: {stats.get('Account Number')}, Balance: {stats.get('Balance')}"
+        )
+        return True
+
     def login(self):
         """
         Perform full login sequence with robust error handling and retries.
@@ -619,6 +882,10 @@ class TradovateAccount:
                 self.password = "J5140A9013A9553tv="
 
             try:
+                # Never disturb a trader session that is already up in this Chrome.
+                if self._resume_active_session():
+                    return True
+
                 logging.info(f"Starting Tradovate login for user: {self.username}")
                 # Always open Tradovate in the first tab
                 self.driver.get("https://trader.tradovate.com/welcome")
@@ -630,7 +897,9 @@ class TradovateAccount:
                     WebDriverWait(self.driver, 10).until(  # MAXIMUM SPEED: Reduced from 15 to 10
                         EC.any_of(
                             EC.visibility_of_element_located((By.ID, "name-input")),
-                            EC.visibility_of_element_located((By.XPATH, "//h1[contains(text(), 'Select a Trading Mode')]"))
+                            EC.visibility_of_element_located((By.XPATH, "//h1[contains(text(), 'Select a Trading Mode')]")),
+                            # A still-valid session lands straight in the trader.
+                            EC.visibility_of_element_located((By.XPATH, self._ORDER_TICKET_TAB_XPATH))
                         )
                     )
                     logging.info("Login form or trading mode selection loaded successfully")
@@ -644,6 +913,11 @@ class TradovateAccount:
                     except:
                         pass
                     raise Exception("Login form or trading mode selection not accessible. Please check internet connection and try again.")
+
+                # Tradovate can restore a valid session straight into the trader, so
+                # there is no mode selection left to click through.
+                if self._resume_active_session():
+                    return True
 
                 # Check if already at trading mode selection
                 if self.driver.find_elements(By.XPATH, "//h1[contains(text(), 'Select a Trading Mode')]"):
@@ -733,37 +1007,33 @@ class TradovateAccount:
                     ]
                 
                 for attempt_func in access_attempts:
+                    # Tradovate can drop straight into the trader between attempts
+                    # (single-mode logins do this). Never click launch buttons on a
+                    # session that is already trading.
+                    if self._resume_active_session():
+                        connected = True
+                        break
+
+                    logging.info(f"Trying access method: {attempt_func.__name__}")
+                    launched = True
                     try:
-                        logging.info(f"Trying access method: {attempt_func.__name__}")
                         attempt_func()
-                        
-                        # Wait for trading interface to load with optimized timeout
-                        try:
-                            WebDriverWait(self.driver, 15).until(  # SPEED OPTIMIZATION: Reduced from 30 to 15
-                                EC.visibility_of_element_located((By.XPATH, "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']"))
-                            )
-                            time.sleep(1)  # SPEED OPTIMIZATION: Reduced from 2 to 1
-                            self._wait_for_no_overlay(timeout=5)  # SPEED OPTIMIZATION: Reduced from 10 to 5
-                            
-                            # Verify connection with account stats
-                            stats = self.get_account_stats()
-                            if (stats.get("Account Number") and 
-                                stats.get("Account Number") != "Not Connected" and 
-                                stats.get("Balance") not in ("N/A", "Error", None, "")):
-                                
-                                self.logged_in = True
-                                logging.info(f"[CHECK] Trading tab launched and account connected - login complete. Account: {stats.get('Account Number')}, Balance: {stats.get('Balance')}")
-                                connected = True
-                                break
-                            else:
-                                logging.info(f"Trading interface loaded but account not connected (Account: {stats.get('Account Number')}, Balance: {stats.get('Balance')}), trying next method...")
-                        except Exception as e:
-                            logging.error(f"Trading interface failed to load: {e}")
-                            self.logged_in = False
-                            
                     except Exception as e:
+                        launched = False
                         logging.warning(f"Access method failed: {e}")
-                        self.logged_in = False
+
+                    # A method that reported failure can still have landed its click
+                    # (the exception often comes from a later selector), so always
+                    # verify the interface - just with a shorter wait in that case.
+                    stats = self._confirm_trading_ready(timeout=15 if launched else 3)
+                    if stats:
+                        self.logged_in = True
+                        logging.info(f"[CHECK] Trading tab launched and account connected - login complete. Account: {stats.get('Account Number')}, Balance: {stats.get('Balance')}")
+                        connected = True
+                        break
+
+                    self.logged_in = False
+                    logging.info(f"{attempt_func.__name__} did not produce a ready session, trying next method...")
 
                 if not connected:
                     logging.error(f"[X] Could not connect to {self.trading_mode} after all methods.")
@@ -1029,13 +1299,13 @@ class TradovateAccount:
             time.sleep(1)
             self._dismiss_interstitial_pages(timeout=5)
 
-            # Wait for interface to load
+            # Wait for interface to load - use all known trading UI selectors
             logging.info("Waiting for LIVE TRADING interface to load...")
             WebDriverWait(self.driver, 60).until(
-                EC.any_of(
-                    EC.visibility_of_element_located((By.XPATH, "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']")),
-                    EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'order-ticket')]"))
-                )
+                EC.any_of(*[
+                    EC.visibility_of_element_located((By.XPATH, xpath))
+                    for xpath in self._TRADING_UI_READY_XPATHS
+                ])
             )
             logging.info("✓ LIVE TRADING interface loaded successfully")
             time.sleep(1)
@@ -1148,19 +1418,17 @@ class TradovateAccount:
             time.sleep(1)
             self._dismiss_interstitial_pages(timeout=5)
 
-            # Wait for simulation interface to load - REDUCED TIMEOUT
-            # Give 1 minute for the page to load after clicking (reduced from 5 minutes)
+            # Wait for simulation interface to load - use all known trading UI selectors
             logging.info("Waiting for simulation interface to load (up to 60 seconds)...")
             try:
-                WebDriverWait(self.driver, 60).until(  # Reduced from 300 to 60 seconds
-                    EC.any_of(
-                        EC.visibility_of_element_located((By.XPATH, "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']")),
-                        EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'order-ticket')]")),
-                        EC.visibility_of_element_located((By.XPATH, "//span[text()='Order Ticket']"))
-                    )
+                WebDriverWait(self.driver, 60).until(
+                    EC.any_of(*[
+                        EC.visibility_of_element_located((By.XPATH, xpath))
+                        for xpath in self._TRADING_UI_READY_XPATHS
+                    ])
                 )
                 logging.info("✓ Simulation trading interface loaded successfully")
-                time.sleep(1)  # Reduced from 2 to 1 second
+                time.sleep(1)
                 self._wait_for_no_overlay(timeout=10)
             except Exception as e:
                 logging.warning(f"Trading interface loading verification timed out after 60 seconds: {e}")
@@ -1460,6 +1728,15 @@ class TradovateAccount:
         except Exception as e:
             logging.error(f"Error closing browser: {e}")
         finally:
+            # Drop the shared registry entry so the next connect launches a fresh
+            # Chrome instead of adopting this dead driver.
+            try:
+                with TradovateAccount._registry_guard:
+                    key = getattr(self, "instance_key", None)
+                    if key and TradovateAccount._chrome_instances.get(key) is self.driver:
+                        del TradovateAccount._chrome_instances[key]
+            except Exception:
+                pass
             if self.logged_in:
                 print(f"[LOCK] Login state changed to False (browser closed) at {time.strftime('%H:%M:%S')}")
             self.logged_in = False
@@ -1599,17 +1876,24 @@ class TradovateAccount:
                     "Direction": ""
                 }
 
-                # Check for Order Ticket tab quickly
-                try:
-                    order_ticket_tabs = self.driver.find_elements(
-                        By.XPATH, "//li[contains(@class, 'lm_tab')]//span[text()='Order Ticket']"
-                    )
-                    if not order_ticket_tabs:
+                # Trader may show Buy/Sell + chart without the Order Ticket tab in DOM.
+                if not self._trading_interface_present():
+                    if not self._session_has_api_token():
                         stats["Account Number"] = "Not Connected"
                         return stats
+                    api_only = self._fetch_account_stats_via_api()
+                    return api_only or stats
+
+                # --- Account name from header selector (preferred) ---
+                try:
+                    active = self.get_active_account()
+                    if active:
+                        if len(active) >= 13:
+                            stats["Account Number"] = active[:4] + "..." + active[-5:]
+                        else:
+                            stats["Account Number"] = active
                 except Exception:
-                    stats["Account Number"] = "Not Connected"
-                    return stats
+                    pass
 
                 # --- Try to extract account number from visible elements ---
                 try:
@@ -1631,18 +1915,43 @@ class TradovateAccount:
                 except Exception:
                     pass
 
-                # --- Try to extract balance ---
+                # --- Try to extract balance (header EQUITY row or class-based widgets) ---
                 try:
-                    balance_elements = self.driver.find_elements(By.CSS_SELECTOR, "[class*='balance'], [class*='equity']")
-                    for el in balance_elements:
-                        balance_text = el.text
-                        import re
-                        balance_match = re.search(r'[\$]?([0-9,]+\.?[0-9]*)', balance_text)
-                        if balance_match:
-                            stats["Balance"] = f"${balance_match.group(1)}"
+                    import re
+                    for xpath in (
+                        "//*[normalize-space(text())='EQUITY']/following::*[contains(text(),'USD')][1]",
+                        "//*[contains(translate(text(),'equity','EQUITY'),'EQUITY')]/..//*[contains(text(),'USD')]",
+                    ):
+                        for el in self.driver.find_elements(By.XPATH, xpath):
+                            balance_text = (el.text or "").strip()
+                            balance_match = re.search(
+                                r'[\$]?([0-9][0-9,]*\.?[0-9]*)', balance_text.replace("USD", "")
+                            )
+                            if balance_match:
+                                stats["Balance"] = f"${balance_match.group(1)}"
+                                break
+                        if stats["Balance"] != "N/A":
                             break
+                    if stats["Balance"] == "N/A":
+                        balance_elements = self.driver.find_elements(
+                            By.CSS_SELECTOR, "[class*='balance'], [class*='equity']"
+                        )
+                        for el in balance_elements:
+                            balance_text = el.text
+                            balance_match = re.search(r'[\$]?([0-9,]+\.?[0-9]*)', balance_text)
+                            if balance_match:
+                                stats["Balance"] = f"${balance_match.group(1)}"
+                                break
                 except Exception:
                     pass
+
+                if not self._stats_indicate_ready(stats):
+                    api_stats = self._fetch_account_stats_via_api()
+                    if api_stats:
+                        for key in ("Account Number", "Balance", "Profit/Loss", "_api_account_id", "_api_account_name"):
+                            val = api_stats.get(key)
+                            if val not in (None, "", "N/A"):
+                                stats[key] = val
 
                 # --- Try to extract open trades ---
                 try:
