@@ -1,5 +1,6 @@
 import sys
 import os
+import hmac
 
 # Selenium/Chrome can fork after Tk/CoreFoundation has initialized on macOS.
 # Disable Apple's fork-safety abort so the browser companion can recover from
@@ -2264,7 +2265,81 @@ class TradeOpssAIApp:
             scroll.pack(fill="both", expand=True)
             parent = scroll
         self._build_dashboard_tab(parent)
+        self._build_ml_publisher_ui(parent)
         self._build_trading_engine_ui(parent)
+
+    def _build_ml_publisher_ui(self, parent):
+        """Password-gated switch that makes this companion the ML publisher.
+
+        Scoring the ensemble needs MT5 and is heavy, so exactly one machine
+        should run it; everyone else reads its broadcast.
+        """
+        self.ml_mode_var = tk.BooleanVar(value=False)
+
+        card = self._section_card(parent, "ML DIRECTION PUBLISHER", "🤖")
+        card.pack(fill="x", padx=4, pady=(4, 2))
+        inner = ctk.CTkFrame(card, fg_color="transparent") if CTK_AVAILABLE else \
+                tk.Frame(card, bg="#161B22")
+        inner.pack(fill="x", padx=10, pady=(2, 8))
+
+        self._ml_status_var = tk.StringVar(value="Disabled — this companion reads signals only")
+
+        if CTK_AVAILABLE:
+            self._ml_toggle_btn = ctk.CTkButton(
+                inner, text="Enable ML", width=120, height=32,
+                fg_color=self.C_ACCENT, hover_color=self.C_BG_THIRD,
+                text_color="#FFFFFF", font=("Segoe UI", 11, "bold"),
+                corner_radius=6, command=self._toggle_ml_publisher)
+            self._ml_toggle_btn.pack(side="left", padx=(0, 10))
+            ctk.CTkLabel(inner, textvariable=self._ml_status_var,
+                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM,
+                         anchor="w").pack(side="left", fill="x", expand=True)
+        else:
+            self._ml_toggle_btn = tk.Button(inner, text="Enable ML",
+                                            command=self._toggle_ml_publisher)
+            self._ml_toggle_btn.pack(side="left", padx=(0, 10))
+            tk.Label(inner, textvariable=self._ml_status_var,
+                     bg="#161B22", fg="#8B949E").pack(side="left")
+
+    def _toggle_ml_publisher(self):
+        """Unlock or disable ML publishing for this companion."""
+        if self._ml_mode_enabled():
+            self.ml_mode_var.set(False)
+            self._refresh_ml_publisher_ui()
+            self.log("🤖 ML publishing disabled — this companion now reads signals only")
+            return
+
+        entered = simpledialog.askstring(
+            "Enable ML", "Enter the ML publisher password:", show="*")
+        if entered is None:
+            return
+        if not self._ml_password_ok(entered):
+            messagebox.showerror("Access Denied", "Incorrect password.")
+            self.log("🚫 ML publishing unlock failed — incorrect password", "WARN")
+            return
+
+        self.ml_mode_var.set(True)
+        self._refresh_ml_publisher_ui()
+        # Publish on the next auto-push cycle rather than waiting out the timer.
+        self._last_direction_publish = None
+        self.log("🤖 ML publishing enabled — this companion will broadcast direction signals")
+
+    def _refresh_ml_publisher_ui(self):
+        enabled = self._ml_mode_enabled()
+        status = ("Enabled — broadcasting direction signals to the dashboard"
+                  if enabled else
+                  "Disabled — this companion reads signals only")
+        try:
+            self._ml_status_var.set(status)
+            if CTK_AVAILABLE:
+                self._ml_toggle_btn.configure(
+                    text="Disable ML" if enabled else "Enable ML",
+                    fg_color="#DC2626" if enabled else self.C_ACCENT)
+            else:
+                self._ml_toggle_btn.configure(
+                    text="Disable ML" if enabled else "Enable ML")
+        except Exception:
+            pass
 
     def _build_dashboard_tab(self, parent):
         """Build the Dashboard section — compact layout."""
@@ -4937,6 +5012,77 @@ class TradeOpssAIApp:
         self._last_outcome_correction = now
         threading.Thread(target=self._apply_outcome_corrections, daemon=True).start()
 
+    # One M5 bar — republishing faster cannot say anything new.
+    _DIRECTION_PUBLISH_INTERVAL_SEC = 300
+
+    def _run_direction_publish_if_due(self):
+        """Publish this companion's ML direction for MT5-less companions."""
+        if not self.auto_push_enabled:
+            return
+        # Only the unlocked, MT5-attached companion carries the publish load.
+        if not self._ml_mode_enabled():
+            return
+        now = time.monotonic()
+        last = getattr(self, "_last_direction_publish", None)
+        if last is not None and now - last < self._DIRECTION_PUBLISH_INTERVAL_SEC:
+            return
+        self._last_direction_publish = now
+        threading.Thread(target=self._publish_ml_direction, daemon=True).start()
+
+    def _publish_ml_direction(self):
+        """Score the ensemble and broadcast the result via the dashboard.
+
+        Silent no-op without MT5 — those companions are consumers, and only a
+        reading backed by live bars is worth broadcasting.
+        """
+        try:
+            from trader_companion.signals import direction_feed
+            from trader_companion.signals.ml_direction import (
+                ensure_trained_async, get_ml_direction,
+            )
+        except ImportError:
+            return
+        email = ""
+        try:
+            email = self.client_email_entry.get().strip().lower()
+        except Exception:
+            pass
+        if not email or not self.dashboard_url:
+            return
+        try:
+            if not self._ensure_mt5_for_signals():
+                return
+        except Exception:
+            return
+
+        symbol = self._resolve_mt5_hedge_symbol() or "ustech"
+        try:
+            result = get_ml_direction(symbol=symbol)
+        except Exception as exc:
+            self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
+            return
+        if not result.get("ready"):
+            try:
+                ensure_trained_async(symbol)
+            except Exception:
+                pass
+            return
+
+        signal = direction_feed.build_signal(result, symbol=symbol, source=email)
+        if not signal:
+            return
+        signal["email"] = email
+        try:
+            published = direction_feed.publish(
+                self.dashboard_url, signal, headers=_companion_request_headers())
+        except Exception as exc:
+            self.log(f"⚠ Direction broadcast failed: {exc}", "WARN")
+            return
+        if published:
+            self.log(
+                f"📡 Broadcast {signal['direction'].upper()} for {symbol} "
+                f"(confidence {signal.get('confidence')})")
+
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
         cycle = 0
@@ -4945,6 +5091,7 @@ class TradeOpssAIApp:
                 self.root.after(0, self.check_and_push_update)
                 self.root.after(0, self._run_hourly_farming_refresh_if_due)
                 self.root.after(0, self._run_outcome_corrections_if_due)
+                self.root.after(0, self._run_direction_publish_if_due)
             except Exception as e:
                 # Thread-safe: can't call self.log from background thread directly
                 try:
@@ -7661,7 +7808,7 @@ class TradeOpssAIApp:
             firms_seen.add(nm or "Unknown")
         self._active_trade_firms = firms_seen
 
-        firm_bias = self._get_daily_bias({self._broker_login_family(f) for f in firms_seen})
+        firm_bias = self._get_firm_directions({self._broker_login_family(f) for f in firms_seen})
         self._auto_trade_firm_sides = firm_bias
         bias_parts = []
         for f, s in sorted(firm_bias.items()):
@@ -9091,7 +9238,7 @@ class TradeOpssAIApp:
         # Keyed by broker-login family (not raw dashboard label) so
         # firms sharing one login always get the same random direction.
         family_names = {self._broker_login_family(f) for f in firms_in_rows}
-        self._auto_trade_firm_sides = self._get_daily_bias(family_names)
+        self._auto_trade_firm_sides = self._get_firm_directions(family_names)
         dir_lines = []
         for firm, s in sorted(self._auto_trade_firm_sides.items()):
             arrow = "▲" if s == "buy" else "▼"
@@ -12740,38 +12887,40 @@ class TradeOpssAIApp:
                 return side
         return firm_bias_map.get(firm_name, "buy")
 
-    def _ml_mode_enabled(self):
-        """AI/ML direction is enabled only when a password gate is satisfied."""
-        if getattr(self, "ml_mode_var", None) is not None:
-            try:
-                if not bool(self.ml_mode_var.get()):
-                    return False
-            except Exception:
-                pass
+    # SHA-256 of the ML publisher password. Only the digest ships, so the
+    # literal cannot be lifted out of the packaged exe with `strings`.
+    _ML_PASSWORD_SHA256 = "13c1a990f37d836d9dde7b59ba059068252cb24fac43cfd61966e3fcab282f78"
 
-        # Allow an env override for a local secret without exposing the gate in UI.
-        env_pw = os.getenv("TRADEOPSS_AI_ML_PASSWORD", "").strip()
-        if env_pw:
-            pw_var = getattr(self, "ml_password_var", None)
-            if pw_var is not None:
-                try:
-                    return bool(pw_var.get().strip() == env_pw)
-                except Exception:
-                    pass
-            return True
+    @classmethod
+    def _ml_password_ok(cls, entered):
+        """True when the entered password matches the ML publisher secret.
 
-        pw_var = getattr(self, "ml_password_var", None)
-        if pw_var is None:
-            return False
-
-        try:
-            entered = str(pw_var.get() or "").strip()
-        except Exception:
-            return False
-
+        TRADEOPSS_AI_ML_PASSWORD overrides the built-in digest so a deployment
+        can rotate the secret without a rebuild.
+        """
+        import hashlib
+        entered = str(entered or "").strip()
         if not entered:
             return False
-        return True
+        override = os.getenv("TRADEOPSS_AI_ML_PASSWORD", "").strip()
+        if override:
+            return entered == override
+        digest = hashlib.sha256(entered.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(digest, cls._ML_PASSWORD_SHA256)
+
+    def _ml_mode_enabled(self):
+        """True when ML publishing was unlocked with the password.
+
+        The password gates the unlock action; it is never kept in memory or
+        written to disk, so only this flag is persisted.
+        """
+        var = getattr(self, "ml_mode_var", None)
+        if var is None:
+            return False
+        try:
+            return bool(var.get())
+        except Exception:
+            return False
 
     def _split_payout_mode_enabled(self):
         """True when the Split (Tradeify) toolbar checkbox is checked."""
@@ -12888,45 +13037,48 @@ class TradeOpssAIApp:
             pass
         return None, "unavailable"
 
-    def _get_daily_bias(self, firms):
-        """Get or create today's direction bias per prop firm.
+    # The signal is live, so refetch often; the publisher scores every 5 min.
+    _DIRECTION_FETCH_TTL_SEC = 30
 
-        Persisted to trader_bias.json so it survives app restarts.
-        Resets automatically on a new calendar day (EAT).
+    def _broadcast_direction(self):
+        """Live ML direction, or None when none was published in the window."""
+        try:
+            from trader_companion.signals import direction_feed
+        except ImportError:
+            return None
+        now = time.monotonic()
+        cached_at = getattr(self, "_broadcast_direction_at", None)
+        if cached_at is not None and now - cached_at < self._DIRECTION_FETCH_TTL_SEC:
+            return getattr(self, "_broadcast_direction_cache", None)
+        signal = None
+        try:
+            signal = direction_feed.fetch(
+                self.dashboard_url, headers=_companion_request_headers())
+        except Exception as exc:
+            self.log(f"⚠ Could not fetch direction signal: {exc}", "WARN")
+        direction = direction_feed.direction_from(signal)
+        if direction is None and signal:
+            age = direction_feed.signal_age_seconds(signal)
+            self.log(f"⚠ Last ML signal is {int(age or 0) // 60} min old "
+                     f"(window {direction_feed.SIGNAL_MAX_AGE_SEC // 60} min) "
+                     f"— not usable", "WARN")
+        self._broadcast_direction_at = now
+        self._broadcast_direction_cache = direction
+        return direction
+
+    def _get_firm_directions(self, firms):
+        """Live ML direction for each firm — one market read, shared by all.
+
+        The ensemble scores one instrument, so every firm follows the same
+        reading. Returns {} when nothing actionable was published inside the
+        lookback window; callers must not invent a direction.
         """
-        from datetime import datetime, timedelta, timezone
-        EAT = timezone(timedelta(hours=3))
-        today_str = datetime.now(EAT).strftime("%Y-%m-%d")
-
-        bias_path = os.path.join(os.path.dirname(__file__), "trader_bias.json")
-        saved = {}
-        if os.path.exists(bias_path):
-            try:
-                with open(bias_path, "r") as f:
-                    saved = json.load(f)
-            except Exception:
-                saved = {}
-
-        if saved.get("date") != today_str:
-            saved = {"date": today_str, "firms": {}}
-
-        firm_bias = saved.get("firms", {})
-        changed = False
-        for firm in firms:
-            if firm not in firm_bias:
-                firm_bias[firm] = random.choice(["buy", "sell"])
-                changed = True
-
-        if changed or saved.get("date") != today_str:
-            saved["date"] = today_str
-            saved["firms"] = firm_bias
-            try:
-                with open(bias_path, "w") as f:
-                    json.dump(saved, f, indent=2)
-            except Exception:
-                pass
-
-        return {f: firm_bias[f] for f in firms}
+        direction = self._broadcast_direction()
+        if not direction:
+            self.log("⛔ No ML signal inside the lookback window — "
+                     "no direction available", "WARN")
+            return {}
+        return {f: direction for f in firms}
 
     def _ai_trace(self, category, message):
         """Compatibility logger for legacy call sites; no ML behavior."""
@@ -14631,29 +14783,14 @@ class TradeOpssAIApp:
     BLEND_DEADZONE_VOLATILE = 0.07  # tighter deadzone when vol is high
 
     def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=None):
-        """Decide the trade direction — the companion's own signal is FINAL.
+        """Live ML direction broadcast by the MT5-connected companion.
 
-        Two co-deciders, BOTH always counted in one blended score:
-        1. Local ML/DL ensemble (gradient boosting + deep neural net), as a
-           signed conviction in [-1, +1]: (p_up - 0.5) x 2. The model's
-           features INCLUDE every voter signal and the vote consensus, so
-           the vote also shapes the ML's own opinion.
-        2. Indicator vote over ALL 25 indicators, as a signed margin in
-           [-1, +1]: (buy - sell) / votes_cast.
-
-        blend = 0.6 x ML + 0.4 x vote. |blend| >= 0.10 decides; smaller
-        values fall to data-only tie-breaks (price momentum). If one side is
-        unavailable the other decides alone (ML gated on confidence).
-
-        Dashboard trade-history ML insights are DISPLAY ONLY: they annotate
-        the log/monitor but play NO part in the trading decision.
-
-        Returns "buy"/"sell", or None when no data-driven decision exists —
-        there is NO random fallback anywhere; callers must skip the trade.
+        The ensemble runs where MT5 is attached and publishes to the
+        dashboard; every companion reads the same result here. Returns
+        "buy"/"sell", or None when nothing was published inside the lookback
+        window — there is NO random fallback.
         """
-        symbol = str(mt5_symbol or "ustech")
-        bias = self._get_daily_bias([symbol]).get(symbol)
-        return bias
+        return self._broadcast_direction()
 
         # Display-only input — dashboard trade-history ML (NEVER used to decide)
         insights = self._get_dashboard_ml_insights()
@@ -14748,7 +14885,6 @@ class TradeOpssAIApp:
             "mt5_login": self.mt5_login.get(),
             "mt5_server": self.mt5_server.get(),
             "ml_mode": getattr(self, "ml_mode_var", None).get() if getattr(self, "ml_mode_var", None) is not None else False,
-            "ml_password": getattr(self, "ml_password_var", None).get() if getattr(self, "ml_password_var", None) is not None else "",
         }
         # Trading engine settings
         if hasattr(self, 'broker_var'):
@@ -14797,10 +14933,9 @@ class TradeOpssAIApp:
                 if config.get('mt5_server'):
                     self.mt5_server.delete(0, tk.END)
                     self.mt5_server.insert(0, config.get('mt5_server', ''))
-                if config.get('ml_password') is not None and getattr(self, 'ml_password_var', None) is not None:
-                    self.ml_password_var.set(config.get('ml_password', ''))
                 if config.get('ml_mode') is not None and getattr(self, 'ml_mode_var', None) is not None:
                     self.ml_mode_var.set(bool(config.get('ml_mode')))
+                    self._refresh_ml_publisher_ui()
                 
                 # Trading engine settings
                 if hasattr(self, 'broker_var'):

@@ -81,13 +81,19 @@ def test_rapid_daily_undefined_phases_never_borrow_another_blueprint():
         assert config["tradovate_sl_ticks"] != other.get("tradovate_sl_ticks"), phase
 
 
-def test_ml_mode_requires_password_when_configured(monkeypatch):
-    app = object.__new__(TradeOpssAIApp)
-    app.ml_mode_var = type("Var", (), {"get": lambda self: True})()
-    app.ml_password_var = type("Var", (), {"get": lambda self: ""})()
-    monkeypatch.setenv("TRADEOPSS_AI_ML_PASSWORD", "hunter2")
+def test_ml_mode_requires_the_publisher_password_to_unlock(monkeypatch):
+    # The password gates the Enable ML action; afterwards only the unlocked
+    # flag is consulted, so no plaintext is held in memory or written to disk.
+    assert TradeOpssAIApp._ml_password_ok("") is False
+    assert TradeOpssAIApp._ml_password_ok("Predictions@123") is True
 
+    monkeypatch.setenv("TRADEOPSS_AI_ML_PASSWORD", "hunter2")
+    assert TradeOpssAIApp._ml_password_ok("hunter2") is True
+    assert TradeOpssAIApp._ml_password_ok("Predictions@123") is False
+
+    app = object.__new__(TradeOpssAIApp)
+    app.ml_mode_var = type("Var", (), {"get": lambda self: False})()
     assert app._ml_mode_enabled() is False
 
-    app.ml_password_var = type("Var", (), {"get": lambda self: "hunter2"})()
+    app.ml_mode_var = type("Var", (), {"get": lambda self: True})()
     assert app._ml_mode_enabled() is True
