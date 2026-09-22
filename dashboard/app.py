@@ -4453,25 +4453,52 @@ def trader_dashboard(trader_name):
     # Allow super_admin, bef_admin, and kwok_admin to access trader dashboards
     if session_user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
         ut = session_user.get('user_type')
-        return render_template('trader_dashboard.html', trader_name=trader_name,
-                               trader_email=trader_email, trader_admin=trader_admin,
-                               is_super_admin=(ut == 'super_admin'),
-                               is_bef_admin=(ut == 'bef_admin'),
-                               is_kwok_admin=(ut == 'kwok_admin'))
+        return render_template(
+            'trader_dashboard.html',
+            trader_name=trader_name,
+            trader_email=trader_email,
+            trader_admin=trader_admin,
+            is_super_admin=(ut == 'super_admin'),
+            is_bef_admin=(ut == 'bef_admin'),
+            is_kwok_admin=(ut == 'kwok_admin'),
+            summary_tracker_date=_summary_tracker_display_date_str(),
+        )
     # Allow admin to access traders under them
     if session_user.get('user_type') == 'admin':
-        return render_template('trader_dashboard.html', trader_name=trader_name,
-                               trader_email=trader_email, trader_admin=trader_admin,
-                               is_super_admin=False)
+        return render_template(
+            'trader_dashboard.html',
+            trader_name=trader_name,
+            trader_email=trader_email,
+            trader_admin=trader_admin,
+            is_super_admin=False,
+            summary_tracker_date=_summary_tracker_display_date_str(),
+        )
     # Check if user is the correct trader
     if session_user.get('user_type') != 'trader' or session_user.get('user_identifier') != trader_name:
         return redirect('/')
     if not trader_is_active(trader_name):
         delete_session(request.cookies.get('session_token'))
         return redirect('/')
-    return render_template('trader_dashboard.html', trader_name=trader_name,
-                           trader_email=trader_email, trader_admin=trader_admin,
-                           is_super_admin=False)
+    return render_template(
+        'trader_dashboard.html',
+        trader_name=trader_name,
+        trader_email=trader_email,
+        trader_admin=trader_admin,
+        is_super_admin=False,
+        summary_tracker_date=_summary_tracker_display_date_str(),
+    )
+
+
+@app.route('/api/quality/summary_tracker_date')
+@require_role('trader', 'admin', 'super_admin', 'bef_admin', 'kwok_admin')
+def api_summary_tracker_date():
+    """Tracker date key used for daily summary sent counts (02:05 EAT windows)."""
+    return jsonify({
+        'status': 'success',
+        'date': _summary_tracker_display_date_str(),
+        'tracker_date': _summary_tracker_date_str(),
+    })
+
 
 @app.route('/dashboard/<client_id>')
 @require_session
