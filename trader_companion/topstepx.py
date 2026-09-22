@@ -480,6 +480,82 @@ class TopStepXAccount:
         self.logger.info("[API] Token expired or missing, re-extracting from browser")
         return self._extract_api_token()
 
+    def touch_trading_ui_keepalive(self, context="auto-trade") -> bool:
+        """Ping the TopStepX trading UI so idle sessions stay logged in.
+
+        JWT refresh alone does not keep the Chrome trading surface alive; auto-trade
+        schedule waits call this periodically. Logs to mt5_trading.log via self.logger.
+        """
+        if getattr(self, "_placing_order", False):
+            self.logger.debug("[KEEPALIVE] Skipped — order in progress (%s)", context)
+            return True
+        if not self.lock.acquire(blocking=False):
+            self.logger.debug("[KEEPALIVE] Skipped — browser lock held (%s)", context)
+            return True
+        try:
+            if not self.driver:
+                self.logger.warning("[KEEPALIVE] No Chrome driver (%s)", context)
+                return False
+            try:
+                url = (self.driver.current_url or "").strip()
+            except Exception as exc:
+                self.logger.warning("[KEEPALIVE] Driver dead (%s): %s", context, exc)
+                self.logged_in = False
+                return False
+
+            url_lower = url.lower()
+            if "/login" in url_lower or "signin" in url_lower:
+                self.logged_in = False
+                self.logger.warning(
+                    "[KEEPALIVE] Session on login page — disconnected (%s) url=%s",
+                    context, url[:120],
+                )
+                return False
+            if "topstepx.com" not in url_lower:
+                self.logger.warning(
+                    "[KEEPALIVE] Unexpected host (%s) url=%s", context, url[:120],
+                )
+
+            self.driver.execute_script("window.dispatchEvent(new Event('focus'));")
+            self._dismiss_backdrop()
+
+            if "/trade" not in url_lower:
+                self.logger.info("[KEEPALIVE] Navigating to trading UI (%s)", context)
+                if not self._ensure_on_trading_page():
+                    self.logger.warning("[KEEPALIVE] Could not reach trading page (%s)", context)
+                    return False
+            else:
+                try:
+                    self.driver.find_element(
+                        By.XPATH,
+                        "//div[contains(@class, 'MuiSelect-select') and contains(@class, 'MuiInputBase-input')]",
+                    )
+                except Exception:
+                    try:
+                        self.driver.find_element(
+                            By.XPATH,
+                            "//button[contains(text(), 'Buy') or contains(text(), 'BUY')]",
+                        )
+                    except Exception:
+                        self.logger.info(
+                            "[KEEPALIVE] On /trade but selector/Buy not found — refreshing page (%s)",
+                            context,
+                        )
+                        self.driver.get(f"{self.base_url}/trade")
+                        time.sleep(1.5)
+
+            self._refresh_api_token()
+            self.logger.info("[KEEPALIVE] Trading UI ping OK (%s) url=%s", context, url[:100])
+            return True
+        except Exception as exc:
+            self.logger.warning("[KEEPALIVE] Failed (%s): %s", context, exc)
+            return False
+        finally:
+            try:
+                self.lock.release()
+            except Exception:
+                pass
+
     def _api_get(self, path, base_url=None):
         """Make authenticated GET request to TopStepX API. Returns parsed JSON or None."""
         if not self._api_session:

@@ -1465,6 +1465,39 @@ class TradovateAccount:
             self.logged_in = False
             self._login_timestamp = None
             self.driver = None
+
+    def touch_trading_ui_keepalive(self, context="auto-trade") -> bool:
+        """Light Tradovate UI ping during long auto-trade waits (mt5_trading.log)."""
+        if getattr(self, "_placing_order", False):
+            logging.debug("[KEEPALIVE] Tradovate skipped — order in progress (%s)", context)
+            return True
+        if not self.lock.acquire(blocking=False):
+            logging.debug("[KEEPALIVE] Tradovate skipped — lock held (%s)", context)
+            return True
+        try:
+            if not self.driver or not getattr(self, "logged_in", False):
+                logging.warning("[KEEPALIVE] Tradovate not connected (%s)", context)
+                return False
+            url = (self.driver.current_url or "").strip()
+            if "/welcome" in url.lower() and self.driver.find_elements(By.ID, "name-input"):
+                self.logged_in = False
+                logging.warning("[KEEPALIVE] Tradovate on login page (%s)", context)
+                return False
+            self.driver.execute_script("window.dispatchEvent(new Event('focus'));")
+            try:
+                self.get_active_account()
+            except Exception:
+                pass
+            logging.info("[KEEPALIVE] Tradovate UI ping OK (%s) url=%s", context, url[:100])
+            return True
+        except Exception as exc:
+            logging.warning("[KEEPALIVE] Tradovate failed (%s): %s", context, exc)
+            return False
+        finally:
+            try:
+                self.lock.release()
+            except Exception:
+                pass
     
     def get_account_stats(self):
         """Optimized stats - return cached during order placement OR if recently fetched"""
