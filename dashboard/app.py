@@ -12980,6 +12980,65 @@ def api_set_slack_webhook():
     return jsonify({'status': 'success', 'message': f'Slack webhook {action} successfully.'})
 
 
+# Only a companion with MT5 attached can run the direction ensemble, so it
+# publishes here and every other companion reads the result instead of
+# coin-flipping.
+DIRECTION_SIGNAL_SETTING = 'ml_direction_signal'
+
+
+@app.route('/api/signals/direction', methods=['POST'])
+@limiter.limit("60 per minute")
+def api_publish_direction_signal():
+    """Store the ML direction published by an MT5-connected companion.
+
+    Email-gated like the other companion endpoints: an unauthenticated write
+    here would let anyone choose the direction every funded account trades.
+    """
+    from dashboard.database import set_setting
+    data = request.json or {}
+    email = str(data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'status': 'error', 'message': 'Email required'}), 400
+
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({'status': 'error', 'message': 'Email not registered in the system'}), 404
+
+    direction = str(data.get('direction') or '').lower()
+    if direction not in ('buy', 'sell'):
+        return jsonify({'status': 'error', 'message': 'direction must be buy or sell'}), 400
+
+    signal = {
+        'direction': direction,
+        'confidence': data.get('confidence'),
+        'probability': data.get('probability'),
+        'symbol': data.get('symbol') or 'ustech',
+        'model': data.get('model'),
+        'source': client_info.get('client') or email,
+        'date': str(data.get('date') or '').strip() or _kenya_today_str(),
+        'published_at': _kenya_now().isoformat(timespec='seconds'),
+    }
+    set_setting(DIRECTION_SIGNAL_SETTING, json.dumps(signal), updated_by=email)
+    app.logger.info(
+        f"📡 Direction signal {direction.upper()} from {signal['source']} "
+        f"(conf={signal.get('confidence')})")
+    return jsonify({'status': 'success', 'signal': signal})
+
+
+@app.route('/api/signals/direction', methods=['GET'])
+@limiter.limit("240 per minute")
+def api_get_direction_signal():
+    """Latest broadcast direction for companions with no MT5 of their own."""
+    from dashboard.database import get_setting
+    try:
+        signal = json.loads(get_setting(DIRECTION_SIGNAL_SETTING) or '{}')
+    except (TypeError, ValueError):
+        signal = {}
+    if not isinstance(signal, dict) or not signal.get('direction'):
+        return jsonify({'status': 'success', 'signal': None})
+    return jsonify({'status': 'success', 'signal': signal})
+
+
 @app.route('/api/quality/team_leaderboard')
 @require_role('super_admin', 'bef_admin')
 def api_quality_team_leaderboard():
