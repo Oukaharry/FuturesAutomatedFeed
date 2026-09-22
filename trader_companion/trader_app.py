@@ -1923,6 +1923,7 @@ class TradeOpssAIApp:
             self.notebook.pack(fill="both", expand=True, padx=8, pady=4)
             tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Settings")
             self._build_dashboard_tab(tab_dash)
+            self._build_ml_publisher_ui(tab_dash)
             self._build_trading_engine_ui(tab_dash)
             log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
             log_frame.pack(fill="both", expand=True, padx=8, pady=4)
@@ -2163,6 +2164,7 @@ class TradeOpssAIApp:
         self.notebook.pack(fill="both", expand=True)
         tab_settings = self.notebook.add("  Settings  ")
 
+        self._build_ml_publisher_ui(self._controls_view)
         self._build_combined_settings_tab(tab_settings)
 
         # ── Bottom status bar ──
@@ -2265,7 +2267,6 @@ class TradeOpssAIApp:
             scroll.pack(fill="both", expand=True)
             parent = scroll
         self._build_dashboard_tab(parent)
-        self._build_ml_publisher_ui(parent)
         self._build_trading_engine_ui(parent)
 
     def _build_ml_publisher_ui(self, parent):
@@ -2275,31 +2276,30 @@ class TradeOpssAIApp:
         should run it; everyone else reads its broadcast.
         """
         self.ml_mode_var = tk.BooleanVar(value=False)
+        self._ml_status_var = tk.StringVar(value="reads signals only")
 
-        card = self._section_card(parent, "ML DIRECTION PUBLISHER", "🤖")
-        card.pack(fill="x", padx=4, pady=(4, 2))
-        inner = ctk.CTkFrame(card, fg_color="transparent") if CTK_AVAILABLE else \
-                tk.Frame(card, bg="#161B22")
-        inner.pack(fill="x", padx=10, pady=(2, 8))
-
-        self._ml_status_var = tk.StringVar(value="Disabled — this companion reads signals only")
-
-        if CTK_AVAILABLE:
-            self._ml_toggle_btn = ctk.CTkButton(
-                inner, text="Enable ML", width=120, height=32,
-                fg_color=self.C_ACCENT, hover_color=self.C_BG_THIRD,
-                text_color="#FFFFFF", font=("Segoe UI", 11, "bold"),
-                corner_radius=6, command=self._toggle_ml_publisher)
-            self._ml_toggle_btn.pack(side="left", padx=(0, 10))
-            ctk.CTkLabel(inner, textvariable=self._ml_status_var,
-                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM,
-                         anchor="w").pack(side="left", fill="x", expand=True)
-        else:
-            self._ml_toggle_btn = tk.Button(inner, text="Enable ML",
+        if not CTK_AVAILABLE:
+            row = tk.Frame(parent, bg="#161B22")
+            row.pack(fill="x", padx=8, pady=4)
+            self._ml_toggle_btn = tk.Button(row, text="Enable ML",
                                             command=self._toggle_ml_publisher)
-            self._ml_toggle_btn.pack(side="left", padx=(0, 10))
-            tk.Label(inner, textvariable=self._ml_status_var,
+            self._ml_toggle_btn.pack(side="left", padx=(0, 8))
+            tk.Label(row, textvariable=self._ml_status_var,
                      bg="#161B22", fg="#8B949E").pack(side="left")
+            return
+
+        bar = ctk.CTkFrame(parent, fg_color="transparent")
+        ctk.CTkLabel(bar, textvariable=self._ml_status_var, font=("Segoe UI", 9),
+                     text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 8))
+        self._ml_toggle_btn = ctk.CTkButton(
+            bar, text="Enable ML", width=110, height=28,
+            fg_color=self.C_BG_THIRD, hover_color=self.C_BORDER,
+            border_width=1, border_color=self.C_BORDER,
+            text_color=self.C_TEXT, font=("Segoe UI", 10, "bold"),
+            corner_radius=6, command=self._toggle_ml_publisher)
+        self._ml_toggle_btn.pack(side="left")
+        # Rides in the tabview's own header strip, level with the Settings tab.
+        bar.place(in_=self.notebook, relx=1.0, x=-12, y=8, anchor="ne")
 
     def _toggle_ml_publisher(self):
         """Unlock or disable ML publishing for this companion."""
@@ -2326,15 +2326,13 @@ class TradeOpssAIApp:
 
     def _refresh_ml_publisher_ui(self):
         enabled = self._ml_mode_enabled()
-        status = ("Enabled — broadcasting direction signals to the dashboard"
-                  if enabled else
-                  "Disabled — this companion reads signals only")
+        status = "broadcasting direction" if enabled else "reads signals only"
         try:
             self._ml_status_var.set(status)
             if CTK_AVAILABLE:
                 self._ml_toggle_btn.configure(
                     text="Disable ML" if enabled else "Enable ML",
-                    fg_color="#DC2626" if enabled else self.C_ACCENT)
+                    fg_color="#DC2626" if enabled else self.C_BG_THIRD)
             else:
                 self._ml_toggle_btn.configure(
                     text="Disable ML" if enabled else "Enable ML")
