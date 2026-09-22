@@ -1055,7 +1055,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
-app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.2') or '1.12.2'
+app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.3') or '1.12.3'
 app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.1') or '1.12.1'
 app.config['COMPANION_VERSION_EXACT'] = os.getenv('COMPANION_VERSION_EXACT', '').lower() in (
     '1', 'true', 'yes', 'on',
@@ -5870,7 +5870,7 @@ def _required_companion_version():
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.2').strip() or '1.12.2'
+    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.3').strip() or '1.12.3'
 
 
 def _min_companion_version():
