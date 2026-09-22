@@ -105,6 +105,9 @@ class TopStepXAccount:
         self._first_stats_fetch = True
         self._placing_order = False  # Flag to block stats fetching during order placement
         self._login_timestamp = None  # Track when we logged in for debugging
+        self._reconnect_attempts = 0  # Track auto-reconnect attempts
+        self._max_reconnect_attempts = 3  # Max reconnect attempts before giving up
+        self._last_reconnect_time = 0  # Prevent rapid reconnect loops
         self.base_url = "https://www.topstepx.com"
         self.login_url = "https://www.topstepx.com/login"
         self.user_api_url = "https://userapi.topstepx.com"
@@ -365,6 +368,7 @@ class TopStepXAccount:
                         if any(indicator in current_url for indicator in success_indicators):
                             self.logged_in = True
                             self._login_timestamp = time.time()  # Track login time
+                            self._reconnect_attempts = 0  # Reset reconnect counter on success
                             self.logger.info(f"TopStepX login successful - redirected to: {current_url}")
                             self._first_stats_fetch = True
                             self._extract_api_token()  # Extract JWT for REST API calls
@@ -374,6 +378,7 @@ class TopStepXAccount:
                         if "/login" not in current_url and "topstepx.com" in current_url:
                             self.logged_in = True
                             self._login_timestamp = time.time()  # Track login time
+                            self._reconnect_attempts = 0  # Reset reconnect counter on success
                             self.logger.info(f"TopStepX login successful - left login page: {current_url}")
                             self._first_stats_fetch = True
                             self._extract_api_token()  # Extract JWT for REST API calls
@@ -416,6 +421,34 @@ class TopStepXAccount:
         except Exception:
             return False
 
+    def ensure_connected(self, context: str = "order") -> bool:
+        """Verify connection and attempt reconnect if disconnected.
+
+        Unlike is_connected(), this method actively tries to restore the
+        session when it detects disconnection. Use before critical operations
+        like placing orders.
+
+        Returns True if connected (or successfully reconnected), False otherwise.
+        """
+        if self.is_connected():
+            return True
+
+        self.logger.warning("[ENSURE_CONNECTED] Not connected, attempting reconnect (%s)", context)
+
+        # Check if we're on login page (session expired)
+        try:
+            if self.driver:
+                url = self.driver.current_url.lower()
+                if "/login" in url or "signin" in url:
+                    self.logged_in = False
+                    self.logger.info("[ENSURE_CONNECTED] On login page, session expired (%s)", context)
+        except Exception as e:
+            self.logger.warning("[ENSURE_CONNECTED] Could not check URL: %s (%s)", e, context)
+            self.driver = None
+            self.logged_in = False
+
+        return self._attempt_reconnect(context=f"ensure_connected:{context}")
+
     def validate_credentials(self):
         """
         Validate if credentials are set and ready for login
@@ -426,6 +459,68 @@ class TopStepXAccount:
         if not self.password:
             return False, "Password is required"
         return True, "Credentials are valid"
+
+    def _attempt_reconnect(self, context: str = "keepalive") -> bool:
+        """Attempt to re-login when session is detected as expired.
+
+        Called by keepalive when it detects the browser is on the login page
+        or the session is otherwise invalid. Respects rate limits to avoid
+        rapid reconnection loops.
+
+        Returns True if reconnection succeeded, False otherwise.
+        """
+        now = time.time()
+        # Prevent rapid reconnect attempts (minimum 60 seconds between attempts)
+        if now - self._last_reconnect_time < 60:
+            self.logger.info(
+                "[RECONNECT] Skipped — too soon since last attempt (%s) %.0fs ago",
+                context, now - self._last_reconnect_time
+            )
+            return False
+
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            self.logger.warning(
+                "[RECONNECT] Giving up — max attempts (%d) reached (%s)",
+                self._max_reconnect_attempts, context
+            )
+            return False
+
+        self._reconnect_attempts += 1
+        self._last_reconnect_time = now
+        self.logger.info(
+            "[RECONNECT] Attempting reconnect %d/%d (%s)",
+            self._reconnect_attempts, self._max_reconnect_attempts, context
+        )
+
+        try:
+            # Close the current driver if it's in a bad state
+            if self.driver:
+                try:
+                    current_url = self.driver.current_url
+                    # If we're on the login page, we can reuse the driver
+                    if "/login" in current_url.lower():
+                        self.logger.info("[RECONNECT] Reusing driver on login page")
+                    else:
+                        # Try to navigate to login first
+                        self.driver.get(self.login_url)
+                        time.sleep(2)
+                except Exception as e:
+                    # Driver is dead, will reinitialize in login()
+                    self.logger.warning("[RECONNECT] Driver dead, will reinitialize: %s", e)
+                    self.driver = None
+
+            # Attempt login
+            if self.login(max_retries=2):
+                self.logger.info("[RECONNECT] Success — session restored (%s)", context)
+                self._reconnect_attempts = 0  # Reset on success
+                return True
+            else:
+                self.logger.warning("[RECONNECT] Failed — login returned False (%s)", context)
+                return False
+
+        except Exception as e:
+            self.logger.error("[RECONNECT] Exception during reconnect (%s): %s", context, e)
+            return False
 
     # ═══════════════════════════════════════════════════════════════════
     # REST API INFRASTRUCTURE - Direct calls to userapi.topstepx.com
@@ -479,6 +574,104 @@ class TopStepXAccount:
             return True  # Token still valid
         self.logger.info("[API] Token expired or missing, re-extracting from browser")
         return self._extract_api_token()
+
+    def touch_trading_ui_keepalive(self, context="auto-trade") -> bool:
+        """Ping the TopStepX trading UI so idle sessions stay logged in.
+
+        JWT refresh alone does not keep the Chrome trading surface alive; auto-trade
+        schedule waits call this periodically. Logs to mt5_trading.log via self.logger.
+        """
+        if getattr(self, "_placing_order", False):
+            self.logger.debug("[KEEPALIVE] Skipped — order in progress (%s)", context)
+            return True
+        if not self.lock.acquire(blocking=False):
+            self.logger.debug("[KEEPALIVE] Skipped — browser lock held (%s)", context)
+            return True
+        try:
+            if not self.driver:
+                self.logger.warning("[KEEPALIVE] No Chrome driver (%s)", context)
+                return False
+            try:
+                url = (self.driver.current_url or "").strip()
+            except Exception as exc:
+                self.logger.warning("[KEEPALIVE] Driver dead (%s): %s", context, exc)
+                self.logged_in = False
+                self.driver = None  # Clear dead driver reference
+                # Attempt automatic reconnection
+                self.lock.release()  # Release lock before reconnect
+                try:
+                    if self._attempt_reconnect(context=f"keepalive-driver-dead:{context}"):
+                        self.logger.info("[KEEPALIVE] Auto-reconnect after driver death succeeded (%s)", context)
+                        return True
+                    else:
+                        self.logger.warning("[KEEPALIVE] Auto-reconnect after driver death failed (%s)", context)
+                        return False
+                finally:
+                    self.lock.acquire(blocking=True)
+
+            url_lower = url.lower()
+            if "/login" in url_lower or "signin" in url_lower:
+                self.logged_in = False
+                self.logger.warning(
+                    "[KEEPALIVE] Session on login page — disconnected (%s) url=%s",
+                    context, url[:120],
+                )
+                # Attempt automatic reconnection
+                self.lock.release()  # Release lock before reconnect (login acquires it)
+                try:
+                    if self._attempt_reconnect(context=f"keepalive:{context}"):
+                        self.logger.info("[KEEPALIVE] Auto-reconnect succeeded (%s)", context)
+                        return True
+                    else:
+                        self.logger.warning("[KEEPALIVE] Auto-reconnect failed (%s)", context)
+                        return False
+                finally:
+                    # Re-acquire lock since the finally block below expects it
+                    self.lock.acquire(blocking=True)
+            if "topstepx.com" not in url_lower:
+                self.logger.warning(
+                    "[KEEPALIVE] Unexpected host (%s) url=%s", context, url[:120],
+                )
+
+            self.driver.execute_script("window.dispatchEvent(new Event('focus'));")
+            self._dismiss_backdrop()
+
+            if "/trade" not in url_lower:
+                self.logger.info("[KEEPALIVE] Navigating to trading UI (%s)", context)
+                if not self._ensure_on_trading_page():
+                    self.logger.warning("[KEEPALIVE] Could not reach trading page (%s)", context)
+                    return False
+            else:
+                try:
+                    self.driver.find_element(
+                        By.XPATH,
+                        "//div[contains(@class, 'MuiSelect-select') and contains(@class, 'MuiInputBase-input')]",
+                    )
+                except Exception:
+                    try:
+                        self.driver.find_element(
+                            By.XPATH,
+                            "//button[contains(text(), 'Buy') or contains(text(), 'BUY')]",
+                        )
+                    except Exception:
+                        self.logger.info(
+                            "[KEEPALIVE] On /trade but selector/Buy not found — refreshing page (%s)",
+                            context,
+                        )
+                        self.driver.get(f"{self.base_url}/trade")
+                        time.sleep(1.5)
+
+            self._refresh_api_token()
+            self.logger.info("[KEEPALIVE] Trading UI ping OK (%s) url=%s", context, url[:100])
+            return True
+        except Exception as exc:
+            self.logger.warning("[KEEPALIVE] Failed (%s): %s", context, exc)
+            return False
+        finally:
+            try:
+                self.lock.release()
+            except Exception:
+                pass
 
     def _api_get(self, path, base_url=None):
         """Make authenticated GET request to TopStepX API. Returns parsed JSON or None."""
@@ -1508,7 +1701,7 @@ class TopStepXAccount:
         """
         with self.lock:
             try:
-                if not self.is_connected():
+                if not self.ensure_connected(context="prepare_buy_order"):
                     raise Exception("Not connected to TopStepX")
                 
                 self.logger.info(f"[⚡ PRE-THREAD] Preparing TopStepX BUY order: {symbol} x{quantity}")
@@ -1580,7 +1773,7 @@ class TopStepXAccount:
         """
         with self.lock:
             try:
-                if not self.is_connected():
+                if not self.ensure_connected(context="prepare_sell_order"):
                     raise Exception("Not connected to TopStepX")
                 
                 self.logger.info(f"[⚡ PRE-THREAD] Preparing TopStepX SELL order: {symbol} x{quantity}")
@@ -1678,7 +1871,7 @@ class TopStepXAccount:
                 # Dismiss any MUI backdrop overlay before interacting with UI
                 self._dismiss_backdrop()
                 
-                if not self.is_connected():
+                if not self.ensure_connected(context="place_buy_order"):
                     raise Exception("Not connected to TopStepX")
 
                 # ACCOUNT SAFETY: always SELECT + CONFIRM the target sub-account
@@ -1935,7 +2128,7 @@ class TopStepXAccount:
                 # Dismiss any MUI backdrop overlay before interacting with UI
                 self._dismiss_backdrop()
                 
-                if not self.is_connected():
+                if not self.ensure_connected(context="place_sell_order"):
                     raise Exception("Not connected to TopStepX")
 
                 # ACCOUNT SAFETY: always SELECT + CONFIRM the target sub-account

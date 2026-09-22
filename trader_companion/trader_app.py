@@ -5334,6 +5334,8 @@ class TradeOpssAIApp:
             return "Blue Guardian Reserve"
         if "lucidmaxx" in compact or "lucid maxx" in norm:
             return "LucidMaxx"
+        if "lucid" in compact:
+            return "Lucid"
 
         return default
 
@@ -8499,6 +8501,10 @@ class TradeOpssAIApp:
         except Exception as _rand_err:
             self.log(f"⚠ Trade randomization skipped for {acct_num}: {_rand_err}", "WARN")
 
+        if self._is_lucid_eval_phase(firm_code, phase_key) and self.prop_firm_mgr:
+            config = self.prop_firm_mgr.apply_lucid_eval_challenge_config(
+                config, account_key=acct_num)
+
         # Cross-check: does the resolved/active account match the trade target?
         _acct_match = None
         try:
@@ -8657,13 +8663,17 @@ class TradeOpssAIApp:
                     # firm with a strict consistency rule) set disable_tp_adjustment=True
                     # in their blueprint so the dynamic TP raise can never push a single
                     # trade over the 40% consistency ceiling.
-                    if config.get("disable_tp_adjustment"):
+                    if (config.get("disable_tp_adjustment")
+                            or self._is_lucid_eval_phase(firm_code, phase_key)):
                         self.log(
                             f"⏭ TP-by-stage {acct_num}: skipped — "
-                            f"disable_tp_adjustment=True in blueprint ({firm_code}/{phase_key})"
+                            f"{'Lucid eval' if self._is_lucid_eval_phase(firm_code, phase_key) else 'disable_tp_adjustment=True'} "
+                            f"({firm_code}/{phase_key})"
                         )
                         audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
-                              status="disabled_by_blueprint", firm=str(firm_code or ""),
+                              status=("disabled_lucid_eval" if self._is_lucid_eval_phase(firm_code, phase_key)
+                                      else "disabled_by_blueprint"),
+                              firm=str(firm_code or ""),
                               phase_key=str(phase_key or ""))
                     else:
                         current_profit = self._get_current_phase_profit(
@@ -9417,7 +9427,18 @@ class TradeOpssAIApp:
         """Dispatch one execute batch on the UI thread and block until it finishes."""
         self._auto_trade_batch_event.clear()
         self.root.after(0, lambda: self._auto_execute_all_trades(stop_when_done=False))
-        self._auto_trade_batch_event.wait(timeout=7200)
+        deadline = time.time() + 7200
+        last_keepalive = 0.0
+        while time.time() < deadline:
+            if self._auto_trade_batch_event.is_set():
+                return
+            if self._auto_trade_stop.is_set():
+                return
+            now = time.time()
+            if now - last_keepalive >= self._AUTO_TRADE_PROP_KEEPALIVE_SEC:
+                last_keepalive = now
+                self._keep_prop_brokers_alive(context="batch-exec")
+            self._auto_trade_batch_event.wait(timeout=1.0)
 
     def _finish_auto_trade_batch(self, stop_when_done=False):
         self._auto_trade_batch_event.set()
@@ -9426,24 +9447,62 @@ class TradeOpssAIApp:
 
     _AUTO_TRADE_PROP_KEEPALIVE_SEC = 45
 
-    def _keep_prop_brokers_alive(self):
-        """Light touch on connected prop dashboards during long auto-trade waits."""
-        for firm_name, conn in (getattr(self, "_broker_connections", None) or {}).items():
-            account = conn.get("account")
-            if not account:
-                continue
+    def _keep_prop_brokers_alive(self, context="auto-trade"):
+        """Ping broker trading UIs (Chrome) during long auto-trade waits."""
+        try:
+            ensure_mt5_trading_log_handler()
+        except Exception:
+            pass
+        file_log = logging.getLogger("TradeOpssAI.keepalive")
+        touched = set()
+
+        def _ping(label, account):
+            if not account or id(account) in touched:
+                return
+            touched.add(id(account))
             try:
-                if hasattr(account, "is_connected") and not account.is_connected():
-                    continue
-                if hasattr(account, "_refresh_api_token"):
-                    account._refresh_api_token()
+                if hasattr(account, "touch_trading_ui_keepalive"):
+                    ok = account.touch_trading_ui_keepalive(context=f"{context}:{label}")
+                    file_log.info("keepalive firm=%s ok=%s ctx=%s", label, ok, context)
+                    if not ok:
+                        self.log(f"⚠ Keepalive {label}: trading UI not reachable ({context})", "WARN")
                 elif hasattr(account, "get_account_stats"):
                     account.get_account_stats()
+                    file_log.info("keepalive firm=%s via stats ctx=%s", label, context)
             except Exception as exc:
+                file_log.warning("keepalive firm=%s error=%s ctx=%s", label, exc, context)
                 try:
-                    self.log(f"⚠ Keepalive {firm_name}: {exc}", "WARN")
+                    self.log(f"⚠ Keepalive {label}: {exc}", "WARN")
                 except Exception:
                     pass
+
+        for firm_name, conn in (getattr(self, "_broker_connections", None) or {}).items():
+            _ping(firm_name, (conn or {}).get("account"))
+
+        legacy_ts = getattr(self, "topstepx_account", None)
+        if legacy_ts and id(legacy_ts) not in touched:
+            _ping("TopStepX(legacy)", legacy_ts)
+        legacy_tv = getattr(self, "tradovate_account", None)
+        if legacy_tv and id(legacy_tv) not in touched:
+            _ping("Tradovate(legacy)", legacy_tv)
+
+    def _auto_trade_wait_with_keepalive(self, timeout_sec, stop_event=None, context="auto-trade"):
+        """Sleep up to timeout_sec, pinging broker UIs every keepalive interval."""
+        stop_event = stop_event or self._auto_trade_stop
+        deadline = time.time() + max(0.0, float(timeout_sec))
+        last_keepalive = 0.0
+        while time.time() < deadline:
+            if stop_event.is_set():
+                return True
+            now = time.time()
+            if now - last_keepalive >= self._AUTO_TRADE_PROP_KEEPALIVE_SEC:
+                last_keepalive = now
+                self._keep_prop_brokers_alive(context=context)
+            chunk = min(1.0, deadline - time.time())
+            if chunk <= 0:
+                break
+            stop_event.wait(timeout=chunk)
+        return stop_event.is_set()
 
     def _auto_trade_loop(self):
         """Background thread: schedule, then keep scanning until all rows are traded."""
@@ -9451,15 +9510,16 @@ class TradeOpssAIApp:
         EAT = timezone(timedelta(hours=3))
 
         self._auto_trade_waiting_gate = True
-        last_keepalive = time.time()
         while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
             now = datetime.now(EAT)
             if now >= self._auto_trade_scheduled_dt:
                 break
-            if time.time() - last_keepalive >= self._AUTO_TRADE_PROP_KEEPALIVE_SEC:
-                last_keepalive = time.time()
-                self._keep_prop_brokers_alive()
-            self._auto_trade_stop.wait(timeout=1)
+            remaining = (self._auto_trade_scheduled_dt - now).total_seconds()
+            self._auto_trade_wait_with_keepalive(
+                min(remaining, self._AUTO_TRADE_PROP_KEEPALIVE_SEC),
+                stop_event=self._auto_trade_stop,
+                context="auto-trade-schedule",
+            )
         self._auto_trade_waiting_gate = False
 
         if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
@@ -9481,7 +9541,8 @@ class TradeOpssAIApp:
             if self._active_trade_rows and self.auto_trade_enabled:
                 left = len(self._active_trade_rows)
                 self.log(f"🔄 {left} trade(s) still queued — continuing batch execution…")
-                if self._auto_trade_stop.wait(timeout=10):
+                if self._auto_trade_wait_with_keepalive(
+                        10, stop_event=self._auto_trade_stop, context="batch-gap"):
                     break
 
         if self.auto_trade_enabled and not self._auto_trade_stop.is_set():
@@ -9497,6 +9558,18 @@ class TradeOpssAIApp:
     # uses CONFIRMED bars instead of a half-formed candle that can flip.
     SIGNAL_BAR_ALIGN_WINDOW_SEC = 90
     SIGNAL_BAR_CLOSE_BUFFER_SEC = 2.0
+
+    @staticmethod
+    def _is_lucid_eval_phase(firm_code, phase_key):
+        """Lucid challenge uses fixed eval TP/SL — never TP-by-stage."""
+        f = str(firm_code or "").strip()
+        if f in ("Lucid", "LucidMaxx"):
+            pass
+        else:
+            compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
+            if compact not in ("lucid", "lucidmaxx") and not compact.startswith("lucid"):
+                return False
+        return str(phase_key or "").lower().startswith("challenge_trade")
 
     def _is_funded_phase_key(self, phase_key=None):
         """True for funded / double-dip / Apex payout trade keys."""
@@ -9643,9 +9716,9 @@ class TradeOpssAIApp:
         self._ai_trace("SIGNAL", f"timing: M5 bar closes in {remaining:.0f}s — "
                                  f"waiting for the close so the signal uses confirmed bars")
         if stop_event is not None:
-            stop_event.wait(wait)
+            self._auto_trade_wait_with_keepalive(wait, stop_event=stop_event, context="signal-bar-align")
         else:
-            time.sleep(wait)
+            self._auto_trade_wait_with_keepalive(wait, context="signal-bar-align")
         return True
 
     def _auto_execute_all_trades(self, stop_when_done=True):
@@ -9898,7 +9971,8 @@ class TradeOpssAIApp:
             if stagger_offset > 0:
                 self.root.after(0, lambda fn=firm_name, d=stagger_offset: self.log(
                     f"⏳ {fn}: staggered start in {d:.0f}s (risk spreading)"))
-                if self._auto_trade_stop.wait(timeout=stagger_offset):
+                if self._auto_trade_wait_with_keepalive(
+                        stagger_offset, stop_event=self._auto_trade_stop, context="firm-stagger"):
                     return  # auto-trade stopped during the wait
 
             for row_idx, row_data in enumerate(firm_rows):
@@ -9910,7 +9984,8 @@ class TradeOpssAIApp:
                     gap = random.uniform(*self.AUTO_TRADE_ACCOUNT_SPACING_SEC)
                     self.root.after(0, lambda fn=firm_name, g=gap: self.log(
                         f"⏳ {fn}: next account in {g:.0f}s (risk spreading)"))
-                    if self._auto_trade_stop.wait(timeout=gap):
+                    if self._auto_trade_wait_with_keepalive(
+                            gap, stop_event=self._auto_trade_stop, context="account-spacing"):
                         break
 
                 firm_code = row_data["firm_code"]
@@ -10754,7 +10829,10 @@ class TradeOpssAIApp:
                         self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
                         return
                     account = TopStepXAccount(user, pwd)
-                    account.login()
+                    if not account.login():
+                        raise RuntimeError(
+                            "TopStepX login failed after all retries; check credentials or retry."
+                        )
                 elif platform == "AlphaTrader":
                     if not ALPHATRADER_AVAILABLE:
                         err = _ALPHATRADER_IMPORT_ERROR or 'unknown reason'

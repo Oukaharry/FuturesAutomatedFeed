@@ -81,6 +81,7 @@ def _configure_module_loggers() -> None:
     for name in (
         "TradeOpssAI",
         "TradeOpssAI.m1",
+        "TradeOpssAI.keepalive",
         "trader_companion.mt5_market_feed",
         "AUDIT",
     ):
