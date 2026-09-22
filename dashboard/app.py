@@ -1056,6 +1056,10 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.2') or '1.12.2'
+app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.1') or '1.12.1'
+app.config['COMPANION_VERSION_EXACT'] = os.getenv('COMPANION_VERSION_EXACT', '').lower() in (
+    '1', 'true', 'yes', 'on',
+)
 
 # ── Suppress SIGPIPE (benign client disconnect errors) ──────────────────────
 # When a client closes the connection during a large response, the server's
@@ -5842,6 +5846,44 @@ def _required_companion_version():
     return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.2').strip() or '1.12.2'
 
 
+def _min_companion_version():
+    """Lowest companion version allowed when COMPANION_VERSION_EXACT is false."""
+    try:
+        cfg = current_app.config.get('MIN_COMPANION_VERSION')
+        if cfg:
+            return str(cfg).strip()
+    except RuntimeError:
+        pass
+    return (os.getenv('MIN_COMPANION_VERSION') or '1.12.1').strip() or '1.12.1'
+
+
+def _companion_version_exact_required():
+    """When true, client version must equal REQUIRED_COMPANION_VERSION exactly."""
+    try:
+        if current_app.config.get('COMPANION_VERSION_EXACT'):
+            return True
+    except RuntimeError:
+        pass
+    return os.getenv('COMPANION_VERSION_EXACT', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+def _companion_version_tuple(version: str):
+    """Numeric tuple for semver-like compare (major, minor, patch)."""
+    raw = str(version or '').strip().lstrip('vV')
+    parts = []
+    for seg in raw.split('.'):
+        digits = []
+        for ch in seg:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        parts.append(int(''.join(digits)) if digits else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+
 def _extract_companion_version(data=None):
     payload = data if isinstance(data, dict) else (request.get_json(silent=True) or {})
     return (
@@ -5853,20 +5895,39 @@ def _extract_companion_version(data=None):
 
 
 def _companion_version_denied(data=None):
-    """403 when companion version is missing or not the current server version."""
+    """403 when companion version is missing or below the allowed floor."""
     version = _extract_companion_version(data)
     required = _required_companion_version()
+    minimum = _min_companion_version()
+    exact = _companion_version_exact_required()
     if not version:
+        hint = required if exact else minimum
         return jsonify({
             "status": "error",
-            "message": f"TradeOpssAI client required. Update to v{required} and sign in again.",
+            "message": f"TradeOpssAI client required. Update to v{hint} or newer and sign in again.",
             "required_version": required,
+            "min_version": minimum,
+            "exact_match": exact,
         }), 403
-    if version != required:
+    if exact:
+        if version != required:
+            return jsonify({
+                "status": "error",
+                "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
+                "required_version": required,
+                "min_version": minimum,
+                "exact_match": True,
+            }), 403
+    elif _companion_version_tuple(version) < _companion_version_tuple(minimum):
         return jsonify({
             "status": "error",
-            "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
+            "message": (
+                f"TradeOpssAI v{minimum} or newer required (you have v{version}). "
+                f"Current release target is v{required}."
+            ),
             "required_version": required,
+            "min_version": minimum,
+            "exact_match": False,
         }), 403
     return None
 
@@ -5935,7 +5996,8 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
-    Version is checked first; only REQUIRED_COMPANION_VERSION may sign in.
+    Version is checked first: >= MIN_COMPANION_VERSION (default), or exact
+    REQUIRED_COMPANION_VERSION when COMPANION_VERSION_EXACT=1.
     """
     try:
         denied = _companion_version_denied()

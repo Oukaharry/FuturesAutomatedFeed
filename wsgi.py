@@ -67,7 +67,9 @@ def configure_app(app):
     # File size limits
     app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
     app.config['REQUIRED_COMPANION_VERSION'] = config.REQUIRED_COMPANION_VERSION
-    
+    app.config['MIN_COMPANION_VERSION'] = config.MIN_COMPANION_VERSION
+    app.config['COMPANION_VERSION_EXACT'] = config.COMPANION_VERSION_EXACT
+
     return app
 
 
