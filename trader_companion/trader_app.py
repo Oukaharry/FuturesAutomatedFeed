@@ -10410,19 +10410,6 @@ class TradeOpssAIApp:
                         counters["fail"] += 1
                     continue
 
-                if use_signal:
-                    _cp = row_data.get("current_phase", "")
-                    allowed, _lean, _dom, _vol, gate_msg = self._auto_trade_entry_allowed(
-                        phase_key=phase_key, config=config, current_phase=_cp,
-                        firm_code=firm_code)
-                    if not allowed:
-                        self._ai_trace("WARN", f"{acct_num}: auto-trade skipped — {gate_msg}")
-                        self.root.after(0, lambda an=acct_num, gm=gate_msg: self.log(
-                            f"⛔ {an}: auto gate — {gm}", "WARN"))
-                        with total_success:
-                            counters["skipped"] += 1
-                        continue
-
                 # Phase distance advisory — tier-aware; funded can block via gate above
                 _st = getattr(self, "_signal_strength_state", {}) or {}
                 _tier = self._signal_tier_for_phase(
@@ -14837,21 +14824,26 @@ class TradeOpssAIApp:
         return self._direct_mt5_ml_direction(mt5_symbol)
 
     def _direct_mt5_ml_direction(self, mt5_symbol):
-        """Return the live MT5 ensemble direction, or None until its model is ready."""
+        """Return the live MT5 ensemble direction, waiting for a cold model."""
         if not self._ensure_mt5_for_signals():
             self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
             return None
         try:
             from trader_companion.signals.ml_direction import (
-                ensure_trained_async, get_ml_direction,
+                ensure_trained_async, get_ml_direction, wait_for_model,
             )
-            result = get_ml_direction(symbol=mt5_symbol or "ustech")
+            symbol = mt5_symbol or "ustech"
+            result = get_ml_direction(symbol=symbol)
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
             return None
         if not result.get("ready"):
-            ensure_trained_async(mt5_symbol or "ustech", log_fn=self.log)
-            self.log("🧠 ML model is training — no trade direction yet", "WARN")
+            ensure_trained_async(symbol, log_fn=self.log)
+            self.log("🧠 Waiting for the MT5 ML model before trade entry")
+            wait_for_model(symbol, timeout_sec=120)
+            result = get_ml_direction(symbol=symbol, auto_train=False)
+        if not result.get("ready"):
+            self.log("⛔ MT5 ML model was not ready after 2 minutes — trade skipped", "WARN")
             return None
         direction = str(result.get("direction") or "").lower()
         if direction in ("buy", "sell"):
