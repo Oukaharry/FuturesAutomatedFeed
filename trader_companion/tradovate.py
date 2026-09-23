@@ -2774,27 +2774,22 @@ class TradovateAccount:
             try:
                 print(f"[API-FIRST] Attempting REST API order: {side.upper()} {qty}x {symbol}")
                 
-                # Resolve account_id from expected_account name
                 api_account_id = None
+                api_account_name = None
                 if expected_account:
-                    accounts = self._api_fetch("/account/list")
-                    if accounts and isinstance(accounts, list):
-                        expected_lower = str(expected_account).lower()
-                        for acct in accounts:
-                            acct_name = acct.get('name', '').lower()
-                            if expected_lower in acct_name or acct_name in expected_lower:
-                                api_account_id = acct['id']
-                                print(f"[API-FIRST] Matched account '{acct.get('name')}' (id={api_account_id}) for expected '{expected_account}'")
-                                break
-                            # Also try numeric suffix match
-                            import re as _re
-                            expected_digits = _re.search(r'(\d{5,})$', str(expected_account))
-                            if expected_digits and acct_name.endswith(expected_digits.group(1).lower()):
-                                api_account_id = acct['id']
-                                print(f"[API-FIRST] Suffix-matched account '{acct.get('name')}' (id={api_account_id})")
-                                break
-                        if not api_account_id:
-                            print(f"[API-FIRST] ⚠ No account match for '{expected_account}' — using default")
+                    api_account_id, api_account_name = self._resolve_api_account_id(expected_account)
+                    if api_account_id:
+                        print(f"[API-FIRST] Resolved account '{api_account_name}' "
+                              f"(id={api_account_id}) for expected '{expected_account}'")
+                    else:
+                        error_msg = (
+                            f"[BLOCK] Tradovate API account not resolved for "
+                            f"'{expected_account}' — refusing to use default account"
+                        )
+                        print(error_msg)
+                        raise Exception(error_msg)
+                else:
+                    api_account_id, api_account_name = self._get_account_for_api()
                 
                 api_result = self.place_order_api(
                     symbol=symbol, side=side, qty=qty,
@@ -3920,7 +3915,10 @@ class TradovateAccount:
     def _resolve_api_account_id(self, expected_account):
         """Resolve the Tradovate numeric account-id for a given account name/suffix.
 
-        Mirrors the matching used in _place_order_side (substring + numeric suffix).
+        Prefers exact name and unique numeric suffix matches before substring
+        matching so multi-account logins (e.g. many FNFT… rows) never bind to
+        accounts[0] by accident.
+
         Returns (account_id, account_name) or (None, expected_account) on failure.
         """
         if not expected_account:
@@ -3928,16 +3926,36 @@ class TradovateAccount:
             return aid, (name or "?")
         try:
             accounts = self._api_fetch("/account/list")
-            if accounts and isinstance(accounts, list):
-                expected_lower = str(expected_account).lower()
-                for acct in accounts:
-                    acct_name = (acct.get('name') or '').lower()
-                    if expected_lower in acct_name or acct_name in expected_lower:
-                        return acct.get('id'), acct.get('name', expected_account)
-                    import re as _re
-                    expected_digits = _re.search(r'(\d{5,})$', str(expected_account))
-                    if expected_digits and acct_name.endswith(expected_digits.group(1).lower()):
-                        return acct.get('id'), acct.get('name', expected_account)
+            if not accounts or not isinstance(accounts, list):
+                return None, str(expected_account)
+            import re as _re
+            expected = str(expected_account).strip()
+            expected_lower = expected.lower()
+            expected_digits = _re.search(r'(\d{5,})$', expected)
+            suffix = expected_digits.group(1).lower() if expected_digits else None
+
+            for acct in accounts:
+                name = (acct.get('name') or '').strip()
+                if name.lower() == expected_lower:
+                    return acct.get('id'), name
+
+            if suffix:
+                suffix_hits = [
+                    a for a in accounts
+                    if (a.get('name') or '').lower().endswith(suffix)
+                ]
+                if len(suffix_hits) == 1:
+                    a = suffix_hits[0]
+                    return a.get('id'), a.get('name', expected)
+
+            sub_hits = []
+            for acct in accounts:
+                acct_name = (acct.get('name') or '').lower()
+                if expected_lower in acct_name or acct_name in expected_lower:
+                    sub_hits.append(acct)
+            if len(sub_hits) == 1:
+                a = sub_hits[0]
+                return a.get('id'), a.get('name', expected)
         except Exception:
             pass
         return None, str(expected_account)

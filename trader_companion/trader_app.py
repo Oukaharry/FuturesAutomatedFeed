@@ -5949,7 +5949,10 @@ class TradeOpssAIApp:
             return default_start
 
         firm_raw = (ev or {}).get("Prop Firm", "") if isinstance(ev, dict) else ""
-        canonical = self._FIRM_MAP.get(firm_raw, firm_raw)
+        # Must match blueprint resolution (e.g. "Topstep EXPRESS" → TopStep).
+        # Raw Prop Firm strings that miss _FIRM_MAP used to default to ACCOUNT_SIZE
+        # ($50K) on zero-start funded accounts and inflate funded-cycle TP ~36×.
+        canonical = self._resolve_firm_code(firm_raw, default=firm_raw or "")
         mode = self._FUNDED_START_BALANCE_MODE.get(canonical, "ACCOUNT_SIZE")
         if mode == "ZERO":
             return 0.0
@@ -7039,17 +7042,11 @@ class TradeOpssAIApp:
           1. cell whose day name == today's weekday  (today's trade)
           2. cell whose day name is a previous weekday this week
              (most-recent past first — "missed day, do it now")
-          3. cell whose day name is a future weekday this week
-             (closest future first — covers stale placeholders from a
-             previous week that look future-of-this-week)
 
-        Why rule 3 exists: a placeholder cell only shows a weekday name,
-        not an absolute date.  ``WEDNESDAY`` on a Monday could mean either
-        "next Wednesday, prepared in advance" or "last Wednesday, never
-        traded".  Refusing to trade rule-3 cells used to be the source of
-        the auto-trade bug where stale placeholders looked like future
-        ones.  Picking the most-imminent future day mirrors the trader's
-        usual intent: take the next queued trade.
+        Future weekday placeholders (e.g. THURSDAY written into cell 2
+        after today's CH1 closes) are **not** tradeable until that calendar
+        day — same rule as ``_validate_stage_consistency`` ("Only future day
+        placeholders → NO TRADE").
 
         Scans the detected phase's fields first.  If nothing found, falls
         back to scanning ALL other phase field sets so a misdetected
@@ -7093,7 +7090,6 @@ class TradeOpssAIApp:
 
         def _pick_from_fields(fields, report_phase):
             best_past = None
-            best_future = None
             for i, f in enumerate(fields):
                 val = ev.get(f, None)
                 if val is None:
@@ -7107,13 +7103,8 @@ class TradeOpssAIApp:
                 if bucket == "past":
                     if best_past is None or day_num > best_past[2]:
                         best_past = (i, str(val).strip().upper(), day_num)
-                else:
-                    if best_future is None or day_num < best_future[2]:
-                        best_future = (i, str(val).strip().upper(), day_num)
             if best_past is not None:
                 return best_past[0], best_past[1], False, report_phase
-            if best_future is not None:
-                return best_future[0], best_future[1], False, report_phase
             return None
 
         for phase_name, fields in search_order:
@@ -8939,11 +8930,24 @@ class TradeOpssAIApp:
                         me_kw = {}
                         if target_account_id is not None:
                             me_kw["account_id"] = target_account_id
+                            account_min_eq = broker_account.get_min_equity(**me_kw)
                         elif acct_num and not hasattr(broker_account, "_resolve_api_account_id"):
                             me_kw["account_name_contains"] = acct_num
-                        account_min_eq = broker_account.get_min_equity(**me_kw)
+                            account_min_eq = broker_account.get_min_equity(**me_kw)
+                        elif hasattr(broker_account, "_resolve_api_account_id"):
+                            self.log(
+                                f"⚠ Adjust {acct_num}: no API account_id — "
+                                f"skipping scoped min-equity (won't use accounts[0])"
+                            )
+                        else:
+                            account_min_eq = broker_account.get_min_equity()
                     except TypeError:
-                        account_min_eq = broker_account.get_min_equity()
+                        if target_account_id is not None:
+                            account_min_eq = broker_account.get_min_equity(
+                                account_id=target_account_id
+                            )
+                        else:
+                            account_min_eq = None
                     except Exception as _me_err:
                         self.log(f"⚠ Adjust {acct_num}: get_min_equity failed — {_me_err}")
 
