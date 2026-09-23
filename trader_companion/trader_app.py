@@ -30,7 +30,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.3"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
+APP_VERSION = "1.12.4"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
