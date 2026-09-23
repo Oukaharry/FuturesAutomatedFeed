@@ -111,3 +111,34 @@ def test_prop_day_reconciliation_accepts_primary_column_funded_import():
 
     assert row["Prop Day 1"] == "150.20"
     assert row["Hedge Day 2"] == "THURSDAY"
+
+
+def test_prop_day_reconciliation_repairs_current_cycle_from_full_history():
+    row = {
+        "Prop Firm": "Tradeify",
+        "Account #.1": "FTDFYSLX50969754357",
+        "Status": "In Progress",
+        "Hedge Day 1": "$0.00",
+        "Hedge Day 2": "$0.00",
+        "Hedge Day 3": "$0.00",
+        "Prop Day 1": "1.00",
+        "Prop Day 2": "999.00",
+    }
+    match_log = []
+
+    _reconcile_tradovate_farming_days([row], [{
+        "account_name": "FTDFYSLX50969754357",
+        "mnq_daily_pnl": [
+            {"date": "2026-09-21", "net_pnl": 150.20},
+            {"date": "2026-09-22", "net_pnl": 149.00},
+            {"date": "2026-09-23", "net_pnl": 200.00},
+        ],
+    }], match_log, today="2026-09-23")
+
+    assert [row[f"Prop Day {slot}"] for slot in range(1, 4)] == [
+        "150.20", "149.00", "200.00"
+    ]
+    assert row["Prop Progress 1"] == "2/5 9/21/26"
+    assert row["Prop Progress 2"] == "2/5 9/22/26"
+    assert row["Prop Progress 3"] == "3/5 9/23/26"
+    assert row["Hedge Day 4"] == "THURSDAY"

@@ -2418,13 +2418,8 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     except (TypeError, ValueError):
         cycle_start = 1
 
-    # Farming begins when the companion places this account's $0.00 marker.
-    # Older Tradovate history must not consume Prop Day 1; use only the most
-    # recent closed day and assign it to the Hedge Day that was actually traded.
     date, net_pnl = normalized_days[-1]
     if date != today:
-        # Only the session that just closed may be recorded; replaying history
-        # is what back-filled days these accounts never traded.
         match_log.append(
             f"⏭ Row {row_num} | newest Tradovate day {date} is not today "
             f"({today}) — nothing recorded"
@@ -2437,15 +2432,10 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             break
     if slot is None:
         slot = _last_traded_hedge_day_slot(evaluation)
-        if slot is None:
-            return 0, False
-        if str(evaluation.get(f'Prop Day {slot}') or '').strip():
-            # That farming day is already recorded and no newer trade has
-            # filled, so this is history repeating rather than a new day.
+        if slot is None or str(evaluation.get(f'Prop Day {slot}') or '').strip():
             return 0, False
     if slot < cycle_start:
         return 0, False
-
     prop_field = f'Prop Day {slot}'
     if _eval_push_field_blocked(evaluation, prop_field, phase_code='FA'):
         match_log.append(
@@ -2465,7 +2455,6 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
         else:
             evaluation.pop('_cleared_fields', None)
     _clear_farming_payout_date_collisions(evaluation)
-
     progress = 1
     for candidate in range(cycle_start, slot + 1):
         try:
@@ -2482,7 +2471,6 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
                 '%Y-%m-%d',
             ).strftime('%-m/%-d/%y')
             evaluation[progress_field] = f'{progress}/{required} {progress_date}'
-
     if min_profit and 0 < net_pnl < min_profit:
         match_log.append(
             f"⚠️ Row {row_num} | {prop_field} ${net_pnl:.2f} is below the "
@@ -2526,6 +2514,37 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
                 "(next farming day)"
             )
     return 1, completed
+
+
+def _repair_farming_history(evaluation, daily_pnl, row_num, match_log):
+    """Repair completed current-cycle Prop Days from full broker history."""
+    try:
+        cycle_start = max(1, int(evaluation.get('_Farming Cycle Start') or 1))
+    except (TypeError, ValueError):
+        cycle_start = 1
+    slots = [
+        slot for slot in range(cycle_start, 61)
+        if _hedge_cell_currency_only(evaluation.get(f'Hedge Day {slot}'))
+    ]
+    history = sorted({
+        str(day.get('date')): float(day.get('net_pnl') or 0)
+        for day in daily_pnl or [] if day and day.get('date')
+    }.items())
+    if len(slots) < 2 or len(history) < len(slots):
+        return 0
+    repaired = 0
+    for slot, (date, net_pnl) in zip(slots, history[-len(slots):]):
+        field = f'Prop Day {slot}'
+        if _eval_push_field_blocked(evaluation, field, phase_code='FA'):
+            continue
+        value = f'{net_pnl:.2f}'
+        if evaluation.get(field) != value or evaluation.get(f'_{field} Date') != date:
+            evaluation[field] = value
+            evaluation[f'_{field} Date'] = date
+            repaired += 1
+    if repaired:
+        match_log.append(f"🛠 Row {row_num} | rebuilt {repaired} current-cycle Prop Day value(s) from Tradovate history")
+    return repaired
 
 
 def _payout_slot_is_empty(evaluation, n):
@@ -2603,6 +2622,7 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
         daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
         if not daily_pnl or account_key in reconciled_accounts:
             continue
+        _repair_farming_history(evaluation, daily_pnl, row_index + 2, match_log)
         written, complete = _write_farming_prop_days_and_progress(
             evaluation, daily_pnl, row_index + 2, match_log, today=today)
         if written:
