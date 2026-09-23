@@ -3406,8 +3406,8 @@ class PropFirmManager:
 
     _HARD_STOP_THRESHOLDS: Dict[str, float] = {
         # MFFU / MFFU_Flex: detected dynamically (see adjust_farming_tp_sl)
-        "TopStep":          0.0,     # Funded starts at $0; account blows at $0
-        "TopStep RTP":      0.0,
+        "TopStep":          -2000.0,  # Funded starts at $0; breaches at -$2,000
+        "TopStep RTP":      -2000.0,
         "Funded Next":      50000.0,
         "Funded Next Flex": 48500.0,
         "TradeDay":         50000.0,

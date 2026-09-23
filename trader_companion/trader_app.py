@@ -6050,15 +6050,20 @@ class TradeOpssAIApp:
             balance = float(entry.get("balance") or 0)
         except (TypeError, ValueError):
             return None, None
-        if balance <= 0:
-            return None, None
 
         # A row carrying only Account #.1 is still funded, so the phase test
         # cannot be _has_passed_to_funded — that needs both account numbers.
         on_funded = self._on_funded_leg(ev)
         phase = "Funded" if on_funded else "Challenge"
         floor = mgr.get_breach_floor(firm_code, phase)
-        blown = balance < float(floor)  # strictly below floor, not at it
+
+        # Only consider blown if balance is strictly below floor AND at least
+        # one trade was taken. A fresh funded account at exactly $50k (or $0
+        # for TopStep) with no trades should not auto-fail.
+        has_trades = any(
+            day.get("trades") for day in (entry.get("daily_pnl") or [])
+        )
+        blown = balance < float(floor) and has_trades
         payouts = self._payout_count(account)
         target = rules.get("payout_count")
 
