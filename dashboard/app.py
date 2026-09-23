@@ -13118,6 +13118,12 @@ def api_get_direction_signal():
         signal = {}
     if not isinstance(signal, dict) or not signal.get('direction'):
         return jsonify({'status': 'success', 'signal': None})
+    try:
+        from trader_companion.signals import direction_feed
+        if direction_feed.direction_from(signal) is None:
+            return jsonify({'status': 'success', 'signal': None, 'stale': True})
+    except Exception:
+        pass
     return jsonify({'status': 'success', 'signal': signal})
 
 
