@@ -19,18 +19,26 @@ def test_tradovate_only_auto_push_runs_one_initial_full_refresh():
 
 
 def test_hourly_farming_refresh_runs_only_when_due():
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            self.target = target
+
+        def start(self):
+            self.target()
+
     app = TradeOpssAIApp.__new__(TradeOpssAIApp)
     app.auto_push_enabled = True
     app._last_hourly_farming_refresh = 100.0
     app.log = Mock()
-    app.push_data = Mock()
+    app._apply_outcome_corrections = Mock()
 
-    with patch("trader_companion.trader_app.time.monotonic", side_effect=[3699.0, 3700.0, 3701.0]):
+    with patch("trader_companion.trader_app.threading.Thread", ImmediateThread), \
+         patch("trader_companion.trader_app.time.monotonic", side_effect=[3699.0, 3700.0, 3701.0]):
         app._run_hourly_farming_refresh_if_due()
         app._run_hourly_farming_refresh_if_due()
         app._run_hourly_farming_refresh_if_due()
 
-    app.push_data.assert_called_once_with(full_prop_refresh=True)
+    app._apply_outcome_corrections.assert_called_once_with(force_history=True)
     assert app._last_hourly_farming_refresh == 3700.0
 
 

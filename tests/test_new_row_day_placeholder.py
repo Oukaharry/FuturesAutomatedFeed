@@ -20,11 +20,11 @@ def test_one_am_is_still_the_same_day():
 
 
 def test_just_before_the_cutoff_is_still_the_same_day():
-    assert _new_row_day_placeholder(_eat(2026, 9, 22, 16, 59)) == "TUESDAY"
+    assert _new_row_day_placeholder(_eat(2026, 9, 22, 19, 59)) == "TUESDAY"
 
 
 def test_the_cutoff_itself_queues_the_next_day():
-    assert _new_row_day_placeholder(_eat(2026, 9, 22, 17)) == "WEDNESDAY"
+    assert _new_row_day_placeholder(_eat(2026, 9, 22, 20)) == "WEDNESDAY"
 
 
 def test_late_evening_queues_the_next_day():
@@ -32,13 +32,13 @@ def test_late_evening_queues_the_next_day():
 
 
 def test_after_midnight_belongs_to_the_day_it_rolled_into():
-    # 00:30 Wednesday is the tail of Tuesday's 17:00-01:00 block, so the next
+    # 00:30 Wednesday is the tail of Tuesday's 20:00-01:00 block, so the next
     # tradeable session is Wednesday itself — not Thursday.
     assert _new_row_day_placeholder(_eat(2026, 9, 23, 0, 30)) == "WEDNESDAY"
 
 
 def test_friday_evening_rolls_over_the_weekend():
-    assert _new_row_day_placeholder(_eat(2026, 9, 25, 18)) == "MONDAY"
+    assert _new_row_day_placeholder(_eat(2026, 9, 25, 20)) == "MONDAY"
 
 
 def test_saturday_rolls_to_monday():

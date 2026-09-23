@@ -396,9 +396,12 @@ class TradovateAccount:
         chrome_options.add_experimental_option("prefs", prefs)
         
         try:
-            # Ensure Chrome-ChromeDriver compatibility before initialization
-            logging.info("[COMPAT] Checking Chrome-ChromeDriver compatibility...")
-            self._ensure_chrome_compatibility()
+            # Selenium Manager resolves a cached matching driver without an
+            # external compatibility probe. Opt into that repair only when a
+            # machine is known to have a broken ChromeDriver installation.
+            if os.getenv("TRADOVATE_VERIFY_CHROME_COMPATIBILITY") == "1":
+                logging.info("[COMPAT] Checking Chrome-ChromeDriver compatibility...")
+                self._ensure_chrome_compatibility()
             
             # Get ChromeDriver path (returns None for auto-management in Selenium 4.15+)
             chromedriver_path = self._get_chromedriver_path()

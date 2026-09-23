@@ -107,16 +107,16 @@ def _kenya_today_str():
 _DAY_PLACEHOLDER_LABELS = (
     'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
 )
-# A row added from 17:00 EAT onward has missed the session. The 17:00→01:00
-# overnight block and the 01:00→17:00 daytime block both resolve to the same
+# A row added from 20:00 EAT onward has missed the session. The 20:00→01:00
+# overnight block and the 01:00→20:00 daytime block both resolve to the same
 # calendar day, so only the evening cutoff shifts the date.
-_NEW_ROW_SESSION_CUTOFF_HOUR = 17
+_NEW_ROW_SESSION_CUTOFF_HOUR = 20
 
 
 def _new_row_day_placeholder(now=None):
     """Weekday label for a brand-new account's first challenge trade.
 
-    From 17:00 EAT the session is gone, so the trade queues for the next day.
+    From 20:00 EAT the session is gone, so the trade queues for the next day.
     Weekend dates roll to Monday because no firm trades then.
     """
     now = now or _kenya_now()

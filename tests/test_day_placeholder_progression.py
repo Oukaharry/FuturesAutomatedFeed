@@ -318,6 +318,15 @@ def test_untraded_day_placeholder_does_not_require_history_refresh():
     assert app._outcome_history_needed(row) is False
 
 
+def test_trading_window_allows_one_am_through_before_eight_pm_eat():
+    app = _scrub_app()
+
+    assert app._trading_window_open(datetime(2026, 9, 23, 1, 0))[0] is True
+    assert app._trading_window_open(datetime(2026, 9, 23, 19, 59))[0] is True
+    assert app._trading_window_open(datetime(2026, 9, 23, 20, 0))[0] is False
+    assert app._trading_window_open(datetime(2026, 9, 23, 0, 59))[0] is False
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,
@@ -479,7 +488,7 @@ def test_dashboard_payouts_queue_the_matching_next_funded_trade(monkeypatch):
     assert app._release_dashboard_payout_placeholders([row]) == []
 
 
-def test_evening_dashboard_payout_queues_next_trading_day(monkeypatch):
+def test_dashboard_payout_before_eight_pm_keeps_today_placeholder(monkeypatch):
     app = _scrub_app()
     row = _payout_row(**{
         "Hedge Day 5": "",
@@ -489,6 +498,23 @@ def test_evening_dashboard_payout_queues_next_trading_day(monkeypatch):
     monkeypatch.setattr(
         "trader_companion.trader_app.kenya_now",
         lambda: datetime(2026, 9, 25, 17, 0),
+    )
+
+    app._release_dashboard_payout_placeholders([row])
+
+    assert row["Hedge Result 2.1"] == "FRIDAY"
+
+
+def test_dashboard_payout_at_eight_pm_queues_next_trading_day(monkeypatch):
+    app = _scrub_app()
+    row = _payout_row(**{
+        "Hedge Day 5": "",
+        "Payout 1": "$1,500.00",
+        "Date 1": "2026-09-25",
+    })
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_now",
+        lambda: datetime(2026, 9, 25, 20, 0),
     )
 
     app._release_dashboard_payout_placeholders([row])

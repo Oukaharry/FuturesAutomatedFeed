@@ -82,6 +82,10 @@ def kenya_today():
     return kenya_now().date()
 
 
+TRADING_SESSION_START_HOUR = 1
+TRADING_SESSION_END_HOUR = 20
+
+
 # ── MT5 trade-comment helper ─────────────────────────────────────────
 # `MqlTradeRequest.comment` in MetaTrader 5 is a 32-byte char[] — only
 # 31 usable characters.  When the comment is longer, mt5.order_send
@@ -6229,6 +6233,14 @@ class TradeOpssAIApp:
             return 0
         return wd + 1
 
+    @staticmethod
+    def _trading_window_open(now=None):
+        """Whether new orders may be sent during the 01:00-20:00 EAT weekday session."""
+        now = now or kenya_now()
+        window = "01:00-20:00"
+        return (now.weekday() < 5 and TRADING_SESSION_START_HOUR <= now.hour < TRADING_SESSION_END_HOUR,
+                window)
+
     def _phase_group_for_orders(self, phase, firm_code):
         phase_map = {
             "Challenge": "Challenge", "Funded": "Funded", "Farming": "Farming",
@@ -6473,7 +6485,7 @@ class TradeOpssAIApp:
         """Trading-day label for a payout-released funded trade (Kenya EAT)."""
         now = now or kenya_now()
         day = now.date()
-        if now.hour >= 17:
+        if now.hour >= TRADING_SESSION_END_HOUR:
             day += timedelta(days=1)
         while day.weekday() >= 5:
             day += timedelta(days=1)
@@ -8762,6 +8774,11 @@ class TradeOpssAIApp:
 
     def _execute_row_trade(self, side, row_data):
         """Execute a trade for a specific row, then remove the row."""
+        allowed, window = self._trading_window_open()
+        if not allowed:
+            self.log(f"⛔ Trade rejected — outside the {window} EAT trading window", "WARN")
+            messagebox.showwarning("Trading Window", f"Trading is available only {window} EAT.")
+            return
         # Check for payout — skip account if any hedge result has payout text
         ev = row_data.get("eval", {})
         if self._eval_has_payout(ev):
@@ -10520,6 +10537,12 @@ class TradeOpssAIApp:
         When stop_when_done is False the outer auto-trade loop keeps running
         until every row is taken (or the user clicks Stop).
         """
+        allowed, window = self._trading_window_open()
+        if not allowed:
+            self.log(f"⛔ Auto-trade stopped — outside the {window} EAT trading window", "WARN")
+            self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+            self._stop_auto_trade()
+            return
         firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
         rows = list(self._active_trade_rows)  # snapshot
