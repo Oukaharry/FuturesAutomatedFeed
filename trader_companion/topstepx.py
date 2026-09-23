@@ -292,6 +292,42 @@ class TopStepXAccount:
             self.logger.error(f"[DRIVER ERROR] Full traceback:\n{traceback.format_exc()}")
             raise Exception(f"ChromeDriver initialization failed: {e}")
     
+    def _finalize_topstep_login(self, reason: str) -> bool:
+        """Mark session ready after form login or an existing Chrome profile session."""
+        self.logged_in = True
+        self._login_timestamp = time.time()
+        self._reconnect_attempts = 0
+        self.logger.info(
+            f"TopStepX login successful - {reason}: {self.driver.current_url}"
+        )
+        self._first_stats_fetch = True
+        self._extract_api_token()
+        return True
+
+    def _try_resume_existing_session(self) -> bool:
+        """Reuse persisted TopStepX login when /login redirects to /trade (no form)."""
+        try:
+            current_url = (self.driver.current_url or "").lower()
+        except Exception:
+            return False
+        if "/login" in current_url or "topstepx.com" not in current_url:
+            return False
+        self.logger.info(
+            "TopStepX session already active (skipped login form) — "
+            f"url={self.driver.current_url}"
+        )
+        if not self._ensure_on_trading_page():
+            trading_url = f"{self.base_url}/trade"
+            self.logger.info(f"Trading UI not ready; navigating to {trading_url}")
+            self.driver.get(trading_url)
+            time.sleep(3)
+            if not self._ensure_on_trading_page():
+                self.logger.warning(
+                    "Existing TopStepX session but trading UI did not load"
+                )
+                return False
+        return self._finalize_topstep_login("existing session")
+
     def login(self, max_retries=3):
         """
         Login to TopStepX platform
@@ -318,6 +354,9 @@ class TopStepXAccount:
                     # Log current page info
                     self.logger.info(f"Current URL: {self.driver.current_url}")
                     self.logger.info(f"Page title: {self.driver.title}")
+
+                    if self._try_resume_existing_session():
+                        return True
                     
                     # Wait for login form
                     wait = WebDriverWait(self.driver, 15)
@@ -366,23 +405,19 @@ class TopStepXAccount:
                         
                         # Check for success indicators
                         if any(indicator in current_url for indicator in success_indicators):
-                            self.logged_in = True
-                            self._login_timestamp = time.time()  # Track login time
-                            self._reconnect_attempts = 0  # Reset reconnect counter on success
-                            self.logger.info(f"TopStepX login successful - redirected to: {current_url}")
-                            self._first_stats_fetch = True
-                            self._extract_api_token()  # Extract JWT for REST API calls
-                            return True
+                            if self._ensure_on_trading_page():
+                                return self._finalize_topstep_login(
+                                    f"redirected to {current_url}"
+                                )
+                            break
                         
                         # Check if we're no longer on the login page (indicates success)
                         if "/login" not in current_url and "topstepx.com" in current_url:
-                            self.logged_in = True
-                            self._login_timestamp = time.time()  # Track login time
-                            self._reconnect_attempts = 0  # Reset reconnect counter on success
-                            self.logger.info(f"TopStepX login successful - left login page: {current_url}")
-                            self._first_stats_fetch = True
-                            self._extract_api_token()  # Extract JWT for REST API calls
-                            return True
+                            if self._ensure_on_trading_page():
+                                return self._finalize_topstep_login(
+                                    f"left login page ({current_url})"
+                                )
+                            break
                         
                         # Check for error messages or still on login page
                         if "sign in" in page_source and "/login" in current_url:
@@ -399,6 +434,8 @@ class TopStepXAccount:
                     self.logger.error("TopStepX login failed: Timeout or unknown error")
                     
                 except TimeoutException:
+                    if self._try_resume_existing_session():
+                        return True
                     self.logger.error(f"TopStepX login attempt {attempt + 1} timed out")
                 except Exception as e:
                     self.logger.error(f"TopStepX login attempt {attempt + 1} failed: {e}")
