@@ -2,7 +2,6 @@ __version__ = "2.90"
 __build__ = "20260219"
 
 import os
-import sys
 import time
 import json
 import threading
@@ -135,32 +134,6 @@ class TradovateAccount:
                 raise Exception(f"Failed to initialize WebDriver: {str(e)}. This may indicate VPS Chrome setup issues.")
             TradovateAccount._chrome_instances[instance_key] = self.driver
             logging.info(f"Chrome instance registered for Tradovate: {username} (Pair: {self.pair_id})")
-
-    def _get_chromedriver_path(self):
-        """Get the path to ChromeDriver executable - FAST VERSION (no compatibility check)"""
-        # SELENIUM 4.15+ AUTO-MANAGEMENT: Let Selenium Manager handle ChromeDriver automatically
-        # This ensures ChromeDriver always matches the installed Chrome version
-        logging.info("[AUTO] Using Selenium Manager for automatic ChromeDriver version matching")
-        return None  # Return None to let Selenium Manager handle it
-
-    def _ensure_chrome_compatibility(self):
-        """Ensure Chrome-ChromeDriver version compatibility"""
-        try:
-            # Import the compatibility manager
-            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-            from chrome_auto_compatibility import ChromeVersionManager  # type: ignore
-            
-            manager = ChromeVersionManager()
-            success = manager.ensure_compatibility()
-            
-            if success:
-                logging.info("[CHECK] Chrome-ChromeDriver compatibility verified")
-            else:
-                logging.warning("[WARNING] Chrome-ChromeDriver compatibility could not be ensured")
-                
-        except Exception as e:
-            logging.warning(f"Chrome compatibility check failed: {e}")
-            # Continue anyway - don't break existing functionality
 
     def _profile_dir_from_cmdline(self, cmdline):
         """Extract the --user-data-dir value from a process command line, or None.
@@ -396,16 +369,6 @@ class TradovateAccount:
         chrome_options.add_experimental_option("prefs", prefs)
         
         try:
-            # Selenium Manager resolves a cached matching driver without an
-            # external compatibility probe. Opt into that repair only when a
-            # machine is known to have a broken ChromeDriver installation.
-            if os.getenv("TRADOVATE_VERIFY_CHROME_COMPATIBILITY") == "1":
-                logging.info("[COMPAT] Checking Chrome-ChromeDriver compatibility...")
-                self._ensure_chrome_compatibility()
-            
-            # Get ChromeDriver path (returns None for auto-management in Selenium 4.15+)
-            chromedriver_path = self._get_chromedriver_path()
-            
             # Create the WebDriver instance - let Selenium Manager handle ChromeDriver automatically
             logging.info("[CHROME] Initializing Chrome browser...")
             logging.info("[CHROME] Using Selenium Manager for automatic ChromeDriver version matching")
