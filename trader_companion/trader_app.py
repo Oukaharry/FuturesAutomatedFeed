@@ -6058,7 +6058,7 @@ class TradeOpssAIApp:
         on_funded = self._on_funded_leg(ev)
         phase = "Funded" if on_funded else "Challenge"
         floor = mgr.get_breach_floor(firm_code, phase)
-        blown = balance <= float(floor)
+        blown = balance < float(floor)  # strictly below floor, not at it
         payouts = self._payout_count(account)
         target = rules.get("payout_count")
 
