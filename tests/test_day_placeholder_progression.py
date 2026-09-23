@@ -197,6 +197,19 @@ def test_confirmed_breach_replaces_provisional_hit_tp_status():
     assert row["Status P1"] == "Fail"
 
 
+def test_confirmed_funded_breach_replaces_stale_pass_status():
+    row = {
+        "Account #": "FTDFYSL-funded",
+        "Date Started": "2026-09-15",
+        "Status": "Pass",
+    }
+    app = _scrub_app()
+    app._derive_account_status = lambda evaluation: ("Fail", "balance below funded floor")
+
+    assert app._apply_status_update(row) == ["Status"]
+    assert row["Status"] == "Fail"
+
+
 def test_open_broker_position_blocks_dashboard_outcome_update():
     class Broker:
         def has_open_position_for_account(self, account):

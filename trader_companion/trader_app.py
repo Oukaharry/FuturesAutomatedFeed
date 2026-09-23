@@ -5040,7 +5040,9 @@ class TradeOpssAIApp:
         field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
         current = self._cell(ev.get(field)).strip().lower()
         is_prior_trade_marker = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", current))
-        if current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker:
+        terminal_broker_verdict = status in ("Fail", "Completed")
+        if (current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker
+            and not terminal_broker_verdict):
             return []
         if current == status.lower():
             return []
@@ -6902,7 +6904,22 @@ class TradeOpssAIApp:
             self._cell(ev.get("Date Started.1"))
             or self._cell(ev.get("Date Ended.1"))
             or self._dashboard_payout_count(ev)
+            or self._primary_account_looks_funded(ev)
         )
+
+    def _primary_account_looks_funded(self, ev) -> bool:
+        """Recognize funded-only imports stored in the primary account columns."""
+        account = self._cell_account(ev.get("Account #"))
+        if not account:
+            return False
+        detected = None
+        try:
+            detected = self.prop_firm_mgr.detect_firm_from_account(account)
+        except Exception:
+            pass
+        if detected in ("Tradeify", "Tradeify Select"):
+            return bool(self._cell(ev.get("Date Started")) or self._dashboard_payout_count(ev))
+        return False
 
     def _dashboard_payout_count(self, ev) -> int:
         """Count payout evidence stored on the dashboard row without broker history."""
@@ -6977,7 +6994,9 @@ class TradeOpssAIApp:
     def _breach_balance_account(self, ev, on_funded: bool) -> str:
         """Broker account used for breach balance + trade-count guards."""
         if on_funded:
-            return self._cell_account(ev.get("Account #.1")) or self._primary_trade_account(ev)
+            return (self._cell_account(ev.get("Account #.1"))
+                    or self._cell_account(ev.get("Account #"))
+                    or self._primary_trade_account(ev))
         return self._cell_account(ev.get("Account #")) or self._primary_trade_account(ev)
 
     _VANISH_TIER_RANK = {"ch1": 1, "ft1": 2, "ft2": 3}
