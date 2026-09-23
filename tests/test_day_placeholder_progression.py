@@ -94,6 +94,46 @@ def test_successful_fill_does_not_replace_terminal_status():
     assert row["Status P1"] == "Pass"
 
 
+def _status_app(outcome):
+    app = _scrub_app()
+    app._derive_account_status = lambda row: (None, None)
+    app._latest_resolved_outcome = lambda account: ("2026-09-23", outcome)
+    return app
+
+
+def test_resolved_win_marks_challenge_status_hit_tp_for_trade_number():
+    row = _row(**{
+        "Hedge Result 1": "$0.00",
+        "Hedge Result 2": "TUESDAY",
+        "Status P1": "In Progress",
+    })
+    app = _status_app("win")
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Hit TP1"
+
+
+def test_resolved_loss_marks_challenge_status_hit_sl_for_trade_number():
+    row = _row(**{
+        "Hedge Result 1": "100.00",
+        "Hedge Result 2": "$0.00",
+        "Hedge Result 3": "THURSDAY",
+        "Status P1": "Hit TP1",
+    })
+    app = _status_app("loss")
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Hit SL2"
+
+
+def test_trade_marker_does_not_replace_manual_status():
+    row = _row(**{"Status P1": "Paused"})
+    app = _status_app("win")
+
+    assert app._apply_status_update(row) == []
+    assert row["Status P1"] == "Paused"
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,

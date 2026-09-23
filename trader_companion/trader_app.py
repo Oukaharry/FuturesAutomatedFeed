@@ -4981,21 +4981,45 @@ class TradeOpssAIApp:
     _DERIVABLE_STATUSES = ("", "-", "—", "in progress", "not started", "active")
 
     def _apply_status_update(self, ev):
-        """Fill a blank status from broker truth. Returns changed field names."""
+        """Advance the lifecycle status from resolved broker activity."""
         try:
             status, reason = self._derive_account_status(ev)
         except Exception:
             return []
         if not status:
+            try:
+                status, reason = self._derive_trade_progress_status(ev)
+            except Exception:
+                return []
+        if not status:
             return []
         field = "Status P1" if status == "Pass" or not self._has_passed_to_funded(ev) else "Status"
-        if self._cell(ev.get(field)).strip().lower() not in self._DERIVABLE_STATUSES:
+        current = self._cell(ev.get(field)).strip().lower()
+        is_prior_trade_marker = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", current))
+        if current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker:
+            return []
+        if current == status.lower():
             return []
         ev[field] = status
         note_field = f"_derived_{field}"
         ev[note_field] = reason
         self.log(f"📌 {self._primary_trade_account(ev)}: {field} → {status} ({reason})")
         return [field]
+
+    def _derive_trade_progress_status(self, ev):
+        """Return a Hit TP/SL marker for the currently resolved trade."""
+        traded_field, _phase, placeholder = self._locate_progression_cells(ev)
+        if not traded_field or not placeholder:
+            return None, None
+        _date, outcome = self._latest_resolved_outcome(self._primary_trade_account(ev))
+        if outcome not in ("win", "loss"):
+            return None, None
+        for _phase_name, fields in self._ALL_PHASE_FIELD_SETS:
+            if traded_field in fields:
+                trade_number = fields.index(traded_field) + 1
+                label = "TP" if outcome == "win" else "SL"
+                return f"Hit {label}{trade_number}", f"resolved {outcome} on {traded_field}"
+        return None, None
 
     def _apply_outcome_corrections(self):
         """Re-home pending placeholders once their trade has resolved.
