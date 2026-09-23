@@ -1057,9 +1057,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.4') or '1.12.4'
 app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.1') or '1.12.1'
-app.config['COMPANION_VERSION_EXACT'] = os.getenv('COMPANION_VERSION_EXACT', '').lower() in (
-    '1', 'true', 'yes', 'on',
-)
+app.config['COMPANION_VERSION_EXACT'] = True
 
 # ── Suppress SIGPIPE (benign client disconnect errors) ──────────────────────
 # When a client closes the connection during a large response, the server's
@@ -5885,13 +5883,8 @@ def _min_companion_version():
 
 
 def _companion_version_exact_required():
-    """When true, client version must equal REQUIRED_COMPANION_VERSION exactly."""
-    try:
-        if current_app.config.get('COMPANION_VERSION_EXACT'):
-            return True
-    except RuntimeError:
-        pass
-    return os.getenv('COMPANION_VERSION_EXACT', '').lower() in ('1', 'true', 'yes', 'on')
+    """Companions must exactly match the current required release."""
+    return True
 
 
 def _companion_version_tuple(version: str):
