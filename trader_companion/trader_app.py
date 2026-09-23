@@ -1729,6 +1729,7 @@ class TradeOpssAIApp:
         self._farming_close_poll_active = False
         self._pending_breach_alerts = []   # Breaches the dashboard has not announced yet.
         self._breach_alerts_sent = set()
+        self._dashboard_vanish_registry = {}  # acct_lower -> {ev_snapshot, tier, ...}
 
         self._show_login_screen()
         
@@ -5084,6 +5085,8 @@ class TradeOpssAIApp:
             if resp.status_code != 200:
                 return
             evaluations = (resp.json() or {}).get("evaluations", []) or []
+            self._last_dashboard_evaluations = list(evaluations)
+            self._sync_dashboard_vanish_registry(evaluations)
             if force_history or any(
                     self._outcome_history_needed(ev) for ev in evaluations
                     if not ev.get("_deleted")):
@@ -5115,6 +5118,7 @@ class TradeOpssAIApp:
             # the dashboard) and rows this pass just marked failed.
             force_fields.extend(self._scrub_failed_row_day_placeholders(evaluations))
             force_fields.extend(self._release_payout_placeholders(evaluations))
+            force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
 
             breaches = list(self._pending_breach_alerts)
             if not force_fields and not breaches:
@@ -6045,7 +6049,21 @@ class TradeOpssAIApp:
         if not firm_code:
             return None, None
         rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
-        account = self._primary_trade_account(ev)
+
+        # A row carrying only Account #.1 is still funded, so the phase test
+        # cannot be _has_passed_to_funded — that needs both account numbers.
+        on_funded = self._on_funded_leg(ev)
+        phase = "Funded" if on_funded else "Challenge"
+        after_ft1 = self._has_taken_funded_trade1(ev) if on_funded else False
+        after_ft2 = self._has_taken_funded_trade2(ev) if on_funded else False
+        floor = mgr.get_breach_floor(
+            firm_code, phase,
+            after_funded_trade1=after_ft1,
+            after_funded_trade2=after_ft2,
+        )
+        after_ch1 = self._has_taken_challenge_trade1(ev) if not on_funded else False
+
+        account = self._breach_balance_account(ev, on_funded)
         entry = self._trade_outcome_history().get(str(account or "").strip().lower())
         if not entry:
             return None, None
@@ -6054,19 +6072,16 @@ class TradeOpssAIApp:
         except (TypeError, ValueError):
             return None, None
 
-        # A row carrying only Account #.1 is still funded, so the phase test
-        # cannot be _has_passed_to_funded — that needs both account numbers.
-        on_funded = self._on_funded_leg(ev)
-        phase = "Funded" if on_funded else "Challenge"
-        floor = mgr.get_breach_floor(firm_code, phase)
-
-        # Only consider blown if balance is strictly below floor AND at least
-        # one trade was taken. A fresh funded account at exactly $50k (or $0
-        # for TopStep) with no trades should not auto-fail.
-        has_trades = any(
-            day.get("trades") for day in (entry.get("daily_pnl") or [])
+        has_trades = self._account_has_trades(entry)
+        blown = mgr.evaluate_breach_blown(
+            on_funded=on_funded,
+            after_ch1=after_ch1,
+            after_ft1=after_ft1,
+            after_ft2=after_ft2,
+            floor=floor,
+            balance=balance,
+            has_trades=has_trades,
         )
-        blown = balance < float(floor) and has_trades
         payouts = self._payout_count(account)
         target = rules.get("payout_count")
 
@@ -6082,26 +6097,34 @@ class TradeOpssAIApp:
             return "Pass", f"balance {balance:,.2f} reached evaluation goal {float(goal):,.2f}"
         return None, None
 
-    def _record_breach_alert(self, ev, firm_code, phase, balance, floor):
+    def _record_breach_alert(self, ev, firm_code, phase, balance, floor, *,
+                             reason_code=None):
         """Queue a breach for the dashboard to announce to the client's admin."""
         if not hasattr(self, "_breach_alerts_sent"):
             self._breach_alerts_sent = set()
         if not hasattr(self, "_pending_breach_alerts"):
             self._pending_breach_alerts = []
         account = self._primary_trade_account(ev)
-        key = f"{account}|{phase}"
+        key = f"{account}|{phase}|{reason_code or 'balance'}"
         if key in self._breach_alerts_sent:
             return
         self._breach_alerts_sent.add(key)
-        self._pending_breach_alerts.append({
+        payload = {
             "account": account,
             "prop_firm": self._cell(ev.get("Prop Firm")) or firm_code,
             "phase": phase,
             "balance": round(float(balance), 2),
-            "floor": round(float(floor), 2),
-        })
-        self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
-                 f"below floor {float(floor):,.2f}", "ERROR")
+            "floor": round(float(floor), 2) if floor is not None else None,
+        }
+        if reason_code:
+            payload["reason_code"] = reason_code
+        self._pending_breach_alerts.append(payload)
+        if reason_code == "dashboard_vanish":
+            self.log(f"🚨 {account}: {phase} breach — account removed from "
+                     f"dashboard after trading", "ERROR")
+        else:
+            self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
+                     f"below floor {float(floor):,.2f}", "ERROR")
 
     def _outcome_gate_blocks(self, ev, firm_code, phase_key):
         """True when a phase needs a prior outcome the account did not have.
@@ -6413,6 +6436,31 @@ class TradeOpssAIApp:
 
     def _payout_count(self, account_number):
         return len(self._detect_payouts(account_number))
+
+    def _funded_payout_count(self, ev) -> int:
+        """Withdrawals on funded acct (+ dashboard PAYOUT marker) → payout 2+ RTP keys."""
+        if not ev:
+            return 0
+        acct = self._cell_account(ev.get("Account #.1"))
+        if not acct and self._on_funded_leg(ev):
+            acct = self._primary_trade_account(ev)
+        if not acct:
+            return 0
+        n = self._payout_count(acct)
+        if self._payout_marker_field(ev):
+            n = max(n, 1)
+        return n
+
+    def _effective_phase_key(self, ev, firm_code: str, phase_key: str) -> str:
+        if not phase_key or not self.prop_firm_mgr:
+            return phase_key
+        return self.prop_firm_mgr.remap_phase_key_for_funded_payout(
+            firm_code, phase_key, self._funded_payout_count(ev))
+
+    def _strategy_config_for_row(self, firm_code, phase_key, acct_size, ev=None):
+        payouts = self._funded_payout_count(ev) if ev else 0
+        return self.prop_firm_mgr.get_strategy_config(
+            firm_code, phase_key, acct_size, funded_payout_count=payouts)
 
     _PAYOUT_MARKER = "PAYOUT"
     _PAYOUT_MARKER_PREFIXES = ("Hedge Result", "Hedge Day")
@@ -6848,6 +6896,165 @@ class TradeOpssAIApp:
         """Eval is on the funded stage (dual-account row or funded-only row)."""
         return self._has_passed_to_funded(ev) or self._is_funded_only_row(ev)
 
+    def _has_taken_challenge_trade1(self, ev) -> bool:
+        """True once CH1 is in progress or complete (Hedge Result 1), not pre-CH1."""
+        if self._on_funded_leg(ev):
+            return False
+        hr1 = self._cell(ev.get("Hedge Result 1"))
+        if hr1 and hr1 not in ("—", "-") and self._parse_day_token(hr1) is None:
+            return True
+        for i in range(2, 8):
+            val = self._cell(ev.get(f"Hedge Result {i}"))
+            if val and val not in ("—", "-"):
+                return True
+        return False
+
+    def _has_taken_funded_trade1(self, ev) -> bool:
+        """True once FT1 is in progress or complete (Hedge Result 1.1), not pre-FT1 funded."""
+        if not self._on_funded_leg(ev):
+            return False
+        hr1 = self._cell(ev.get("Hedge Result 1.1"))
+        if hr1 and hr1 not in ("—", "-") and self._parse_day_token(hr1) is None:
+            return True
+        # Later funded slots only exist after FT1 has been traded or queued forward.
+        for i in range(2, 8):
+            val = self._cell(ev.get(f"Hedge Result {i}.1"))
+            if val and val not in ("—", "-"):
+                return True
+        return False
+
+    def _has_taken_funded_trade2(self, ev) -> bool:
+        """True once FT2 is in progress or complete (Hedge Result 2.1), not FT1-only."""
+        if not self._on_funded_leg(ev):
+            return False
+        hr2 = self._cell(ev.get("Hedge Result 2.1"))
+        if hr2 and hr2 not in ("—", "-") and self._parse_day_token(hr2) is None:
+            return True
+        for i in range(3, 8):
+            val = self._cell(ev.get(f"Hedge Result {i}.1"))
+            if val and val not in ("—", "-"):
+                return True
+        return False
+
+    @staticmethod
+    def _account_has_trades(entry) -> bool:
+        if not entry:
+            return False
+        return any(day.get("trades") for day in (entry.get("daily_pnl") or []))
+
+    def _breach_balance_account(self, ev, on_funded: bool) -> str:
+        """Broker account used for breach balance + trade-count guards."""
+        if on_funded:
+            return self._cell_account(ev.get("Account #.1")) or self._primary_trade_account(ev)
+        return self._cell_account(ev.get("Account #")) or self._primary_trade_account(ev)
+
+    _VANISH_TIER_RANK = {"ch1": 1, "ft1": 2, "ft2": 3}
+
+    def _dashboard_accounts_present(self, evaluations) -> set:
+        present = set()
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            for field in ("Account #", "Account #.1"):
+                acct = self._cell_account(ev.get(field))
+                if acct:
+                    present.add(acct.lower())
+        return present
+
+    def _vanish_row_key(self, ev) -> str:
+        parts = []
+        for field in ("Account #", "Account #.1"):
+            acct = self._cell_account(ev.get(field))
+            if acct:
+                parts.append(acct.lower())
+        return "|".join(parts)
+
+    def _register_dashboard_vanish_watch(self, account, ev, firm_code, *,
+                                         on_funded: bool, tier: str):
+        key = str(account or "").strip().lower()
+        if not key or tier not in self._VANISH_TIER_RANK:
+            return
+        snap = dict(ev)
+        row_key = self._vanish_row_key(ev)
+        entry = {
+            "ev_snapshot": snap,
+            "firm_code": firm_code,
+            "on_funded": on_funded,
+            "tier": tier,
+            "row_key": row_key,
+        }
+        prev = self._dashboard_vanish_registry.get(key)
+        if prev and self._VANISH_TIER_RANK.get(prev["tier"], 0) > self._VANISH_TIER_RANK[tier]:
+            entry["tier"] = prev["tier"]
+            entry["ev_snapshot"] = prev["ev_snapshot"]
+        self._dashboard_vanish_registry[key] = entry
+
+    def _sync_dashboard_vanish_registry(self, evaluations):
+        """Remember accounts that have started CH1 / FT1 / FT2 on the dashboard."""
+        if not hasattr(self, "_dashboard_vanish_registry"):
+            self._dashboard_vanish_registry = {}
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+            if not self._on_funded_leg(ev):
+                ch = self._cell_account(ev.get("Account #"))
+                if ch and self._has_taken_challenge_trade1(ev):
+                    self._register_dashboard_vanish_watch(
+                        ch, ev, firm_code, on_funded=False, tier="ch1")
+            fu = self._cell_account(ev.get("Account #.1"))
+            if fu:
+                if self._has_taken_funded_trade2(ev):
+                    tier = "ft2"
+                elif self._has_taken_funded_trade1(ev):
+                    tier = "ft1"
+                else:
+                    tier = None
+                if tier:
+                    self._register_dashboard_vanish_watch(
+                        fu, ev, firm_code, on_funded=True, tier=tier)
+
+    def _apply_dashboard_vanish_breaches(self, evaluations) -> list:
+        """Fail accounts that traded (CH1/FT1/FT2) but vanished from the dashboard."""
+        force_fields = []
+        if not getattr(self, "_dashboard_vanish_registry", None):
+            return force_fields
+        present = self._dashboard_accounts_present(evaluations)
+        processed_rows = set()
+        to_remove = []
+        for acct_key, meta in list(self._dashboard_vanish_registry.items()):
+            if acct_key in present:
+                continue
+            row_key = meta.get("row_key") or acct_key
+            if row_key in processed_rows:
+                to_remove.append(acct_key)
+                continue
+            ev = dict(meta["ev_snapshot"])
+            on_funded = bool(meta.get("on_funded"))
+            field = "Status" if on_funded else "Status P1"
+            current = self._cell(ev.get(field)).lower()
+            if any(kw in current for kw in self._INACTIVE_KEYWORDS):
+                to_remove.append(acct_key)
+                continue
+            tier = str(meta.get("tier") or "trade").upper()
+            reason = (f"account no longer on dashboard after {tier} "
+                        f"(prop firm removed — treated as breach)")
+            ev[field] = "Fail"
+            ev[f"_derived_{field}"] = reason
+            evaluations.append(ev)
+            force_fields.append(field)
+            phase = "Funded" if on_funded else "Challenge"
+            self._record_breach_alert(
+                ev, meta.get("firm_code"), phase, 0.0, None,
+                reason_code="dashboard_vanish")
+            processed_rows.add(row_key)
+            for rk_acct in row_key.split("|"):
+                if rk_acct:
+                    to_remove.append(rk_acct)
+        for key in to_remove:
+            self._dashboard_vanish_registry.pop(key, None)
+        return force_fields
+
     def _funded_leg_exhausted(self, ev) -> bool:
         """Funded hedge track finished — dollar results, no day placeholders left."""
         if not self._cell_account(ev.get("Account #.1")):
@@ -7230,8 +7437,9 @@ class TradeOpssAIApp:
                 ev, firm_code, current_phase, twd)
             if not phase_key or not self.prop_firm_mgr:
                 continue
-            config = self.prop_firm_mgr.get_strategy_config(
-                firm_code, phase_key, acct_size)
+            phase_key = self._effective_phase_key(ev, firm_code, phase_key)
+            config = self._strategy_config_for_row(
+                firm_code, phase_key, acct_size, ev)
             if not config:
                 continue
             sym = (config.get("tradovate_symbol", "")
@@ -8097,6 +8305,7 @@ class TradeOpssAIApp:
                 resolved_key, _di, _dn = self._resolve_phase_key_from_day(ev, firm_code, current_display)
                 if resolved_key:
                     phase_key = resolved_key
+                phase_key = self._effective_phase_key(ev, firm_code, phase_key)
 
                 phase_badge = self._phase_badge_label(current_display, phase_key)
 
@@ -8521,6 +8730,7 @@ class TradeOpssAIApp:
             self.log(f"📅 {acct_num}: Day cell {day_idx + 1} ({day_name}) → "
                      f"blueprint {resolved_key} (was {phase_key})")
             phase_key = resolved_key
+        phase_key = self._effective_phase_key(ev, firm_code, phase_key)
 
         # Capture the exact eval field holding the day placeholder so we can
         # clear it on the dashboard after the broker leg fills.
@@ -8572,8 +8782,8 @@ class TradeOpssAIApp:
         # Get trade config from blueprint
         config = None
         if self.prop_firm_mgr:
-            config = self._live_account_config(ev) or self.prop_firm_mgr.get_strategy_config(
-                firm_code, phase_key, acct_size)
+            config = self._live_account_config(ev) or self._strategy_config_for_row(
+                firm_code, phase_key, acct_size, ev)
         if not config:
             messagebox.showerror("Error", f"No blueprint config for {firm_code} / {phase_key} / {acct_size}")
             return
@@ -10612,6 +10822,7 @@ class TradeOpssAIApp:
                     self.root.after(0, lambda an=_an, di=_di, dn=_dn, rk=_rk, pk=_pk:
                         self.log(f"📅 {an}: Day cell {di + 1} ({dn}) → blueprint {rk} (was {pk})"))
                     phase_key = resolved_key
+                phase_key = self._effective_phase_key(auto_ev, firm_code, phase_key)
 
                 # Capture the exact eval field holding the day placeholder so
                 # we can clear it after the broker leg fills.
@@ -10632,8 +10843,8 @@ class TradeOpssAIApp:
                         if already_resolved is None:
                             config_tmp = None
                             if self.prop_firm_mgr:
-                                config_tmp = self.prop_firm_mgr.get_strategy_config(
-                                    firm_code, phase_key, acct_size)
+                                config_tmp = self._strategy_config_for_row(
+                                    firm_code, phase_key, acct_size, auto_ev)
                             mt5_sym = self._resolve_mt5_hedge_symbol(config_tmp or {})
                             if not getattr(self, "_auto_trade_enter_now", False):
                                 self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
@@ -10689,8 +10900,8 @@ class TradeOpssAIApp:
                 if self.prop_firm_mgr:
                     config = self._live_account_config(row_data.get("eval") or {})
                     if not config:
-                        config = self.prop_firm_mgr.get_strategy_config(
-                            firm_code, phase_key, acct_size)
+                        config = self._strategy_config_for_row(
+                            firm_code, phase_key, acct_size, auto_ev)
                 if not config:
                     self.root.after(0, lambda an=acct_num, fc=firm_code, pk=phase_key, sz=acct_size: self.log(
                         f"❌ No blueprint: {an} ({fc}/{pk}/{sz}) — skipped", "ERROR"))
