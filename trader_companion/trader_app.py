@@ -4958,6 +4958,15 @@ class TradeOpssAIApp:
             if connection and hasattr(connection, "has_open_position_for_account"):
                 self._track_farming_close(connection, account_number)
 
+    def _reconcile_connected_broker_history(self):
+        """Re-check loaded rows after a broker session makes history available."""
+        evaluations = getattr(self, "_last_dashboard_evaluations", []) or []
+        self._resume_pending_account_closes(evaluations)
+        threading.Thread(
+            target=lambda: self._apply_outcome_corrections(force_history=True),
+            daemon=True,
+        ).start()
+
     def _poll_pending_farming_closes(self):
         """Check tracked farming positions without blocking the Tk event loop."""
         pending = dict(getattr(self, "_pending_farming_closes", {}) or {})
@@ -5075,7 +5084,9 @@ class TradeOpssAIApp:
             if resp.status_code != 200:
                 return
             evaluations = (resp.json() or {}).get("evaluations", []) or []
-            if force_history:
+            if force_history or any(
+                    self._outcome_history_needed(ev) for ev in evaluations
+                    if not ev.get("_deleted")):
                 self._trade_outcome_history(force=True)
 
             force_fields = []
@@ -5124,6 +5135,22 @@ class TradeOpssAIApp:
             )
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+
+    def _outcome_history_needed(self, evaluation):
+        """True when the row shows a completed trade awaiting a resolved outcome."""
+        if not isinstance(evaluation, dict):
+            return False
+        traded_field, _phase, placeholder = self._locate_progression_cells(evaluation)
+        if not traded_field or not placeholder:
+            return False
+        value = self._cell(evaluation.get(traded_field))
+        if not value or self._parse_day_token(value) is not None:
+            return False
+        try:
+            float(value.replace("$", "").replace(",", ""))
+        except ValueError:
+            return False
+        return True
 
     def _account_has_open_position(self, evaluation):
         """Whether a connected broker reports an open position for this row."""
@@ -11317,13 +11344,12 @@ class TradeOpssAIApp:
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
                 if platform == "Tradovate":
-                    # SCAN can finish before the asynchronous login does. Retry
-                    # unresolved $0.00 farming markers once this account exists.
+                    # SCAN can finish before the asynchronous login does. Once
+                    # history is available, immediately reconcile all loaded
+                    # closed rows, including challenge and funded accounts.
                     self.root.after(
                         0,
-                        lambda: self._resume_pending_farming_closes(
-                            getattr(self, "_last_dashboard_evaluations", [])
-                        ),
+                        self._reconcile_connected_broker_history,
                     )
                 # Release build: no status polling side-effects
                 if not RELEASE_DISABLE_STATUS_POLL:

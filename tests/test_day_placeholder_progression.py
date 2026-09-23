@@ -134,6 +134,15 @@ def test_trade_marker_does_not_replace_manual_status():
     assert row["Status P1"] == "Paused"
 
 
+def test_confirmed_breach_replaces_provisional_hit_tp_status():
+    row = _row(**{"Status P1": "Hit TP1"})
+    app = _scrub_app()
+    app._derive_account_status = lambda evaluation: ("Fail", "balance below breach floor")
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Fail"
+
+
 def test_open_broker_position_blocks_dashboard_outcome_update():
     class Broker:
         def has_open_position_for_account(self, account):
@@ -191,6 +200,20 @@ def test_recovery_uses_shared_funded_next_connection_for_flex_rows():
 
     assert len(tracked) == 1
     assert tracked[0][1] == "FNFT-1"
+
+
+def test_completed_trade_with_queued_day_requires_fresh_history():
+    app = _scrub_app()
+    row = _row(**{"Hedge Result 1": "$0.00", "Hedge Result 2": "THURSDAY"})
+
+    assert app._outcome_history_needed(row) is True
+
+
+def test_untraded_day_placeholder_does_not_require_history_refresh():
+    app = _scrub_app()
+    row = _row(**{"Hedge Result 1": "THURSDAY"})
+
+    assert app._outcome_history_needed(row) is False
 
 
 LIVE_BLUEPRINT = {
