@@ -3993,27 +3993,6 @@ class PropFirmManager:
         compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
         return compact in ("lucid", "lucidmaxx") or compact.startswith("lucid")
 
-    def apply_lucid_eval_challenge_config(self, config: Dict,
-                                          account_key: Optional[str] = None) -> Dict:
-        """Per-account Lucid challenge sizing; blocks TP-by-stage inflation."""
-        if not config or not isinstance(config, dict):
-            return config
-        cfg = config.copy()
-        account_id = str(account_key or "default")
-        state = self._account_random_state.setdefault(account_id, {})
-        qty = int(state.setdefault("lucid_eval_qty", random.choice((1, 2))))
-        cfg["tradovate_qty"] = qty
-        cfg["tradovate_symbol"] = "NQZ6"
-        cfg["tradovate_tp_ticks"] = 304 if qty == 1 else 152
-        cfg["tradovate_sl_ticks"] = 400 if qty == 1 else 200
-        cfg["disable_tp_adjustment"] = True
-        cfg.setdefault("_randomization", {}).update({
-            "policy": "lucid_flex_50k",
-            "draw": "EVAL_QTY_SPLIT",
-            "lucid_eval_qty": qty,
-        })
-        return cfg
-
     def randomize_trade_config(self, firm_code: str, phase_key: str, config: Dict,
                                account_key: Optional[str] = None,
                                balance: float = 50000.0,
@@ -4038,6 +4017,10 @@ class PropFirmManager:
         phase = str(phase_key or "").lower()
         symbol = str(cfg.get("tradovate_symbol") or cfg.get("topstepx_symbol") or "")
         is_farming = ("farming" in phase) or ("MNQ" in symbol.upper())
+
+        # Challenge / eval: use blueprint qty, TP, and SL exactly — no draws.
+        if phase.startswith("challenge"):
+            return cfg
 
         def clamp(val, lo, hi):
             return max(lo, min(hi, val))
@@ -4453,9 +4436,7 @@ class PropFirmManager:
             return cfg
 
         if firm == "Lucid":
-            if phase.startswith("challenge_trade"):
-                return self.apply_lucid_eval_challenge_config(cfg, account_key)
-            elif phase.startswith("funded_trade1"):
+            if phase.startswith("funded_trade1"):
                 account_id = str(account_key or "default")
                 target = self._random_state_value(
                     account_key, "lucid_ft1_target_dollars", 53000, 54000)

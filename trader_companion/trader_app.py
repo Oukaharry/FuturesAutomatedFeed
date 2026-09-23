@@ -8945,10 +8945,6 @@ class TradeOpssAIApp:
         except Exception as _rand_err:
             self.log(f"⚠ Trade randomization skipped for {acct_num}: {_rand_err}", "WARN")
 
-        if self._is_lucid_eval_phase(firm_code, phase_key) and self.prop_firm_mgr:
-            config = self.prop_firm_mgr.apply_lucid_eval_challenge_config(
-                config, account_key=acct_num)
-
         # Cross-check: does the resolved/active account match the trade target?
         _acct_match = None
         try:
@@ -10734,8 +10730,10 @@ class TradeOpssAIApp:
                     acct_num=acct_num, is_farming=_is_farming_sym_auto)
                 trado_tp = int(config.get("tradovate_tp_ticks", trado_tp) or trado_tp)
                 trado_sl = int(config.get("tradovate_sl_ticks", trado_sl) or trado_sl)
+                trado_qty = int(config.get("tradovate_qty", trado_qty) or config.get("topstepx_qty", trado_qty) or trado_qty)
                 mt5_tp = int(config.get("mt5_tp_points", mt5_tp) or mt5_tp)
                 mt5_sl = int(config.get("mt5_sl_points", mt5_sl) or mt5_sl)
+                mt5_vol = float(config.get("mt5_volume", mt5_vol) or mt5_vol)
 
                 try:
                     # 1. Broker order — uses this firm's own Chrome instance
