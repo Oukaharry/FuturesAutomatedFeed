@@ -193,6 +193,20 @@ def test_recovery_uses_shared_funded_next_connection_for_flex_rows():
     assert tracked[0][1] == "FNFT-1"
 
 
+def test_completed_trade_with_queued_day_requires_fresh_history():
+    app = _scrub_app()
+    row = _row(**{"Hedge Result 1": "$0.00", "Hedge Result 2": "THURSDAY"})
+
+    assert app._outcome_history_needed(row) is True
+
+
+def test_untraded_day_placeholder_does_not_require_history_refresh():
+    app = _scrub_app()
+    row = _row(**{"Hedge Result 1": "THURSDAY"})
+
+    assert app._outcome_history_needed(row) is False
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,

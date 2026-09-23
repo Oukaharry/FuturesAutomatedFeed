@@ -5075,7 +5075,9 @@ class TradeOpssAIApp:
             if resp.status_code != 200:
                 return
             evaluations = (resp.json() or {}).get("evaluations", []) or []
-            if force_history:
+            if force_history or any(
+                    self._outcome_history_needed(ev) for ev in evaluations
+                    if not ev.get("_deleted")):
                 self._trade_outcome_history(force=True)
 
             force_fields = []
@@ -5124,6 +5126,22 @@ class TradeOpssAIApp:
             )
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+
+    def _outcome_history_needed(self, evaluation):
+        """True when the row shows a completed trade awaiting a resolved outcome."""
+        if not isinstance(evaluation, dict):
+            return False
+        traded_field, _phase, placeholder = self._locate_progression_cells(evaluation)
+        if not traded_field or not placeholder:
+            return False
+        value = self._cell(evaluation.get(traded_field))
+        if not value or self._parse_day_token(value) is not None:
+            return False
+        try:
+            float(value.replace("$", "").replace(",", ""))
+        except ValueError:
+            return False
+        return True
 
     def _account_has_open_position(self, evaluation):
         """Whether a connected broker reports an open position for this row."""
