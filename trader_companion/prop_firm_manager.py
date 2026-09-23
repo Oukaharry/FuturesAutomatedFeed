@@ -3406,8 +3406,8 @@ class PropFirmManager:
 
     _HARD_STOP_THRESHOLDS: Dict[str, float] = {
         # MFFU / MFFU_Flex: detected dynamically (see adjust_farming_tp_sl)
-        "TopStep":          0.0,     # Funded starts at $0; account blows at $0
-        "TopStep RTP":      0.0,
+        "TopStep":          -2000.0,  # Funded starts at $0; breaches at -$2,000
+        "TopStep RTP":      -2000.0,
         "Funded Next":      50000.0,
         "Funded Next Flex": 48500.0,
         "TradeDay":         50000.0,
@@ -3710,7 +3710,20 @@ class PropFirmManager:
             return adjusted
 
         if target_profit_dollars is not None:
+            blueprint_tp_dollars = orig_tp * tick_value * qty
             remaining_profit = float(target_profit_dollars) - float(stage_profit_so_far)
+            # Bad upstream profit (e.g. $50K start on a zero-balance TopStep funded
+            # row) can turn a ~$5.4K cycle goal into ~$54K "To Make" on TopStepX.
+            max_remaining = 2.0 * blueprint_tp_dollars
+            if remaining_profit > max_remaining:
+                self.logger.warning(
+                    f"⚠ TP-target capped: remaining=${remaining_profit:,.0f} "
+                    f"> 2× blueprint (${max_remaining:,.0f}) — "
+                    f"stage P/L=${stage_profit_so_far:,.0f}, "
+                    f"target=${float(target_profit_dollars):,.0f}; "
+                    f"check funded starting balance / firm label"
+                )
+                remaining_profit = max_remaining
             remaining_ticks = remaining_profit / (tick_value * qty)
             adjusted_tp = max(self._TP_MIN_TICKS, round(remaining_ticks))
             if adjusted_tp == int(orig_tp):
@@ -3743,10 +3756,10 @@ class PropFirmManager:
         # treated as stage profit, or stage_start falling back to 0). Trust
         # nothing here — keep the blueprint TP/SL instead of flooring TP to
         # _TP_MIN_TICKS and dragging the MT5 SL down with it.
-        if profit_ticks > orig_tp:
+        if abs(profit_ticks) > orig_tp:
             self.logger.warning(
                 f"⚠ TP adjust SKIPPED (implausible input): profit_ticks="
-                f"{profit_ticks:,.0f} > orig_tp={int(orig_tp)}t "
+                f"{profit_ticks:,.0f} vs orig_tp={int(orig_tp)}t "
                 f"(stage P/L=${stage_profit_so_far:,.0f}, tick_value=${tick_value}, "
                 f"qty={qty:g}) — keeping blueprint TP/SL"
             )
