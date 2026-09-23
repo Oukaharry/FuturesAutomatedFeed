@@ -5120,6 +5120,7 @@ class TradeOpssAIApp:
             # the dashboard) and rows this pass just marked failed.
             force_fields.extend(self._scrub_failed_row_day_placeholders(evaluations))
             force_fields.extend(self._release_payout_placeholders(evaluations))
+            force_fields.extend(self._release_dashboard_payout_placeholders(evaluations))
             force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
 
             breaches = list(self._pending_breach_alerts)
@@ -6084,7 +6085,7 @@ class TradeOpssAIApp:
             balance=balance,
             has_trades=has_trades,
         )
-        payouts = self._payout_count(account)
+        payouts = self._funded_payout_count(ev)
         target = rules.get("payout_count")
 
         if blown and target and payouts >= int(target):
@@ -6440,7 +6441,7 @@ class TradeOpssAIApp:
         return len(self._detect_payouts(account_number))
 
     def _funded_payout_count(self, ev) -> int:
-        """Withdrawals on funded acct (+ dashboard PAYOUT marker) → payout 2+ RTP keys."""
+        """Best payout evidence for funded strategy and breach-stage decisions."""
         if not ev:
             return 0
         acct = self._cell_account(ev.get("Account #.1"))
@@ -6448,7 +6449,7 @@ class TradeOpssAIApp:
             acct = self._primary_trade_account(ev)
         if not acct:
             return 0
-        n = self._payout_count(acct)
+        n = max(self._payout_count(acct), self._dashboard_payout_count(ev))
         if self._payout_marker_field(ev):
             n = max(n, 1)
         return n
@@ -6498,6 +6499,56 @@ class TradeOpssAIApp:
             if not self._cell(ev.get(field)) or self._cell(ev.get(field)) in ("—", "-"):
                 return field
         return None
+
+    def _payout_placeholder_label(self, now=None):
+        """Trading-day label for a payout-released funded trade (Kenya EAT)."""
+        now = now or kenya_now()
+        day = now.date()
+        if now.hour >= 17:
+            day += timedelta(days=1)
+        while day.weekday() >= 5:
+            day += timedelta(days=1)
+        return self._WEEKDAY_LABELS[day.weekday()]
+
+    @staticmethod
+    def _released_dashboard_payout_count(ev) -> int:
+        try:
+            return max(0, int(str(ev.get("_Dashboard Payouts Released") or "0")))
+        except (TypeError, ValueError):
+            return 0
+
+    def _release_dashboard_payout_placeholders(self, evaluations):
+        """Queue FT2+ when dashboard Payout N is filled, once per payout."""
+        changed = []
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted") or self._payout_marker_field(ev):
+                continue
+            payout_count = self._dashboard_payout_count(ev)
+            released = self._released_dashboard_payout_count(ev)
+            if payout_count <= released or not self._on_funded_leg(ev):
+                continue
+            for payout_number in range(released + 1, payout_count + 1):
+                # Payout 1 releases FT2, payout 2 releases FT3, and so on.
+                try:
+                    target = self._FUNDED_HEDGE_FIELDS[payout_number]
+                except IndexError:
+                    self.log(f"⚠ {self._primary_trade_account(ev)}: payout {payout_number} "
+                             "has no funded placeholder column", "WARN")
+                    break
+                current = self._cell(ev.get(target))
+                if current and self._parse_day_token(current) is None:
+                    self.log(f"⚠ {self._primary_trade_account(ev)}: payout {payout_number} "
+                             f"did not queue {target}; it already contains {current}", "WARN")
+                    break
+                if not current:
+                    ev[target] = self._payout_placeholder_label()
+                    changed.append(target)
+                ev["_Dashboard Payouts Released"] = payout_number
+                if "_Dashboard Payouts Released" not in changed:
+                    changed.append("_Dashboard Payouts Released")
+                self.log(f"💰 {self._primary_trade_account(ev)}: dashboard payout "
+                         f"{payout_number} → {target} ({ev[target]})")
+        return changed
 
     def _release_payout_placeholders(self, evaluations):
         """Clear PAYOUT once the withdrawal shows in the Tradovate balance.

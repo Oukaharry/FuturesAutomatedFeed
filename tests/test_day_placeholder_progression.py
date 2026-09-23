@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from trader_companion.trader_app import TradeOpssAIApp
@@ -456,6 +458,42 @@ def test_detected_payout_queues_the_next_funded_trade():
     assert app._eval_has_payout(row) is False
     # The anchor is spent; a later pass must not re-release the same payout.
     assert "_Hedge Day 5 Payout Due" not in row
+
+
+def test_dashboard_payouts_queue_the_matching_next_funded_trade(monkeypatch):
+    app = _scrub_app()
+    row = _payout_row(**{
+        "Hedge Day 5": "",
+        "Payout 1": "$1,500.00",
+        "Date 1": "2026-09-23",
+    })
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_now",
+        lambda: datetime(2026, 9, 23, 15, 0),
+    )
+
+    assert app._release_dashboard_payout_placeholders([row]) == [
+        "Hedge Result 2.1", "_Dashboard Payouts Released"]
+    assert row["Hedge Result 2.1"] == "WEDNESDAY"
+    assert row["_Dashboard Payouts Released"] == 1
+    assert app._release_dashboard_payout_placeholders([row]) == []
+
+
+def test_evening_dashboard_payout_queues_next_trading_day(monkeypatch):
+    app = _scrub_app()
+    row = _payout_row(**{
+        "Hedge Day 5": "",
+        "Payout 1": "$1,500.00",
+        "Date 1": "2026-09-25",
+    })
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_now",
+        lambda: datetime(2026, 9, 25, 17, 0),
+    )
+
+    app._release_dashboard_payout_placeholders([row])
+
+    assert row["Hedge Result 2.1"] == "MONDAY"
 
 
 def test_payout_keeps_the_row_tradeable_when_funded_columns_are_full():
