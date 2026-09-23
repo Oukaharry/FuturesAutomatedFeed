@@ -134,6 +134,30 @@ def test_trade_marker_does_not_replace_manual_status():
     assert row["Status P1"] == "Paused"
 
 
+def test_open_broker_position_blocks_dashboard_outcome_update():
+    class Broker:
+        def has_open_position_for_account(self, account):
+            assert account == "FNFT-1"
+            return True, account
+
+    app = _scrub_app()
+    app._broker_connections = {"FundedNext": {"account": Broker()}}
+
+    assert app._account_has_open_position(_row(**{"Prop Firm": "FundedNext"})) is True
+
+
+def test_flat_broker_position_allows_dashboard_outcome_update():
+    class Broker:
+        def has_open_position_for_account(self, account):
+            assert account == "FNFT-1"
+            return False, account
+
+    app = _scrub_app()
+    app._broker_connections = {"FundedNext": {"account": Broker()}}
+
+    assert app._account_has_open_position(_row(**{"Prop Firm": "FundedNext"})) is False
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,

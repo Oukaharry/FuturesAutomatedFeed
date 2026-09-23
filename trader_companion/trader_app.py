@@ -5046,6 +5046,8 @@ class TradeOpssAIApp:
             for ev in evaluations:
                 if ev.get("_deleted"):
                     continue
+                if self._account_has_open_position(ev):
+                    continue
                 force_fields.extend(self._apply_status_update(ev))
                 current, corrected = self._reconcile_outcome_placeholder(ev)
                 if not current or not corrected:
@@ -5086,6 +5088,25 @@ class TradeOpssAIApp:
             )
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+
+    def _account_has_open_position(self, evaluation):
+        """Whether a connected broker reports an open position for this row."""
+        if not isinstance(evaluation, dict):
+            return False
+        account_number = self._primary_trade_account(evaluation)
+        firm_name = self._cell(evaluation.get("Prop Firm"))
+        if not account_number or not firm_name:
+            return False
+        connection = (getattr(self, "_broker_connections", {}) or {}).get(firm_name)
+        broker = (connection or {}).get("account")
+        if not broker or not hasattr(broker, "has_open_position_for_account"):
+            return False
+        try:
+            is_open, _label = broker.has_open_position_for_account(account_number)
+            return bool(is_open)
+        except Exception as exc:
+            self.log(f"⚠ {account_number}: position check failed: {exc}", "WARN")
+            return False
 
     def _run_hourly_farming_refresh_if_due(self):
         """Refresh Tradovate farming history hourly while Auto-Push is enabled."""
