@@ -73,6 +73,27 @@ def test_active_row_is_untouched():
     assert row["Hedge Result 1"] == "MON"
 
 
+def test_successful_challenge_fill_marks_status_p1_in_progress():
+    row = _row(**{"Status P1": "Not Started"})
+
+    assert _app()._mark_trade_in_progress(row) == "Status P1"
+    assert row["Status P1"] == "In Progress"
+
+
+def test_successful_funded_fill_marks_funded_status_in_progress():
+    row = _row(**{"Account #.1": "FNFT-funded", "Status": "Not Started"})
+
+    assert _app()._mark_trade_in_progress(row) == "Status"
+    assert row["Status"] == "In Progress"
+
+
+def test_successful_fill_does_not_replace_terminal_status():
+    row = _row(**{"Status P1": "Pass"})
+
+    assert _app()._mark_trade_in_progress(row) is None
+    assert row["Status P1"] == "Pass"
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,

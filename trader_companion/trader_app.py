@@ -33,7 +33,7 @@ if hasattr(sys, '_MEIPASS'):
 APP_VERSION = "1.12.4"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
-RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
+RELEASE_DISABLE_AUTO_STATUS_UPDATES = False
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
 RELEASE_DISABLE_PUSH_BILLING = True
 # M1 push to dashboard removed — local mt5_market_feed still powers indicators/ML.
@@ -7595,6 +7595,9 @@ class TradeOpssAIApp:
                 if acct_lower not in (a1, a0):
                     continue
                 matched_ev = ev
+                status_field = self._mark_trade_in_progress(ev)
+                if status_field:
+                    force_fields.append(status_field)
                 cur = self._cell(ev.get(field_name))
                 if self._parse_day_token(cur) is not None:
                     ev[field_name] = "$0.00"
@@ -7655,6 +7658,17 @@ class TradeOpssAIApp:
             except Exception:
                 pass
             return False
+
+    def _mark_trade_in_progress(self, evaluation):
+        """Set the active challenge or funded status after a broker fill."""
+        if not isinstance(evaluation, dict):
+            return None
+        status_field = "Status" if self._cell(evaluation.get("Account #.1")) else "Status P1"
+        current = self._cell(evaluation.get(status_field)).lower()
+        if current in ("", "not started", "in progress"):
+            evaluation[status_field] = "In Progress"
+            return status_field
+        return None
 
     def _refresh_eval_for_account(self, acct_num):
         """Fetch fresh eval data from dashboard for a specific account.
@@ -10775,12 +10789,8 @@ class TradeOpssAIApp:
                     if not RELEASE_DISABLE_AUTO_STATUS_UPDATES:
                         _ev = row_data.get("eval")
                         if _ev:
-                            _has_funded = bool(self._cell(row_data.get("eval", {}).get("Account #.1")))
-                            _sf = "Status" if _has_funded else "Status P1"
-                            _cur = self._cell(_ev.get(_sf)).lower()
-                            # Only set In Progress if status is empty, Not Started, or already In Progress
-                            if not _cur or _cur in ("not started", "in progress", ""):
-                                _ev[_sf] = "In Progress"
+                            _sf = self._mark_trade_in_progress(_ev)
+                            if _sf:
                                 self.root.after(0, lambda an=acct_num, sf=_sf:
                                     self.log(f"🔄 Auto-status: {an} → {_sf}='In Progress'"))
 
