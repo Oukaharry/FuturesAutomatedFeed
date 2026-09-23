@@ -97,6 +97,25 @@ def _model_cache_path(symbol: str, timeframe_minutes: int) -> str:
                         f"ml_model_{symbol.lower()}_m{timeframe_minutes}.pkl")
 
 
+def _bundled_model_path(symbol: str, timeframe_minutes: int) -> Optional[str]:
+    """Shipped model inside PyInstaller bundle (dev: next to this module)."""
+    name = f"ml_model_{symbol.lower()}_m{timeframe_minutes}.pkl"
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", None)
+        if not base:
+            return None
+        for rel in (
+            os.path.join("trader_companion", "signals", name),
+            os.path.join("signals", name),
+        ):
+            path = os.path.join(base, rel)
+            if os.path.isfile(path):
+                return path
+        return None
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    return path if os.path.isfile(path) else None
+
+
 def _save_bundle_to_disk(symbol: str, timeframe_minutes: int,
                          bundle: Dict[str, Any]) -> None:
     try:
@@ -112,18 +131,23 @@ def _save_bundle_to_disk(symbol: str, timeframe_minutes: int,
 
 def _load_bundle_from_disk(symbol: str,
                            timeframe_minutes: int) -> Optional[Dict[str, Any]]:
-    path = _model_cache_path(symbol, timeframe_minutes)
-    try:
-        if not os.path.exists(path):
-            return None
-        with open(path, "rb") as f:
-            payload = pickle.load(f)
-        if payload.get("version") != MODEL_VERSION:
-            return None  # stale feature set — force retrain
-        payload["trained"] = True
-        return payload
-    except Exception:
-        return None
+    paths = [_model_cache_path(symbol, timeframe_minutes)]
+    bundled = _bundled_model_path(symbol, timeframe_minutes)
+    if bundled and bundled not in paths:
+        paths.append(bundled)
+    for path in paths:
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
+            if payload.get("version") != MODEL_VERSION:
+                continue  # stale feature set — force retrain
+            payload["trained"] = True
+            return payload
+        except Exception:
+            continue
+    return None
 
 
 # ── bars → DataFrame ─────────────────────────────────────────────────────
@@ -565,9 +589,10 @@ def train_on_rates(rates, symbol: str = "ustech",
         "n_labeled": int(mask.sum()),
         "trained_at": time.time(),
     }
+    model_key = _model_symbol_key(symbol)
     with _cache_lock:
-        _cache[(symbol.lower(), timeframe_minutes)] = bundle
-    _save_bundle_to_disk(symbol, timeframe_minutes, bundle)
+        _cache[(model_key, timeframe_minutes)] = bundle
+    _save_bundle_to_disk(model_key, timeframe_minutes, bundle)
     return bundle
 
 
@@ -576,33 +601,121 @@ def _mt5_timeframe(minutes: int):
             30: mt5.TIMEFRAME_M30, 60: mt5.TIMEFRAME_H1}.get(minutes, mt5.TIMEFRAME_M5)
 
 
-def _resolve_symbol(symbol: str) -> str:
-    """MT5 symbol names are case-sensitive ('ustech' fetches nothing while
-    'USTECH' works) — resolve to the broker's exact name."""
+_NASDAQ_MT5_CANDIDATES = (
+    "USTECH", "USTEC", "US100", "NAS100", "NQ100",
+)
+
+
+def _model_symbol_key(symbol: str) -> str:
+    try:
+        from trader_companion.mt5_symbol_policy import model_symbol_for_ml
+    except ImportError:
+        from mt5_symbol_policy import model_symbol_for_ml
+    return model_symbol_for_ml(symbol)
+
+
+def _broker_preferred_ticker(
+    *,
+    mt5_symbol: Optional[str] = None,
+    mt5_server: Optional[str] = None,
+    mt5_broker: Optional[str] = None,
+) -> Optional[str]:
+    if mt5_symbol:
+        return str(mt5_symbol).strip() or None
+    try:
+        from trader_companion.mt5_symbol_policy import preferred_nasdaq_mt5_symbol
+    except ImportError:
+        from mt5_symbol_policy import preferred_nasdaq_mt5_symbol
+    try:
+        return preferred_nasdaq_mt5_symbol(server=mt5_server, broker=mt5_broker)
+    except Exception:
+        return None
+
+
+def _resolve_symbol(
+    symbol: str,
+    *,
+    mt5_symbol: Optional[str] = None,
+    mt5_server: Optional[str] = None,
+    mt5_broker: Optional[str] = None,
+) -> str:
+    """Map logical / policy symbol to the broker's exact MT5 name (USTECH vs USTEC)."""
     if not MT5_AVAILABLE:
         return symbol
+
+    def _try(name: str) -> Optional[str]:
+        for cand in (name, str(name).upper(), str(name).lower(), str(name).capitalize()):
+            if not cand:
+                continue
+            try:
+                if mt5.symbol_info(cand) is not None:
+                    mt5.symbol_select(cand, True)
+                    return cand
+            except Exception:
+                continue
+        return None
+
     try:
-        for cand in (symbol, symbol.upper(), symbol.lower(), symbol.capitalize()):
-            if mt5.symbol_info(cand) is not None:
-                mt5.symbol_select(cand, True)
-                return cand
+        preferred = _broker_preferred_ticker(
+            mt5_symbol=mt5_symbol, mt5_server=mt5_server, mt5_broker=mt5_broker)
+        order: List[str] = []
+        if preferred:
+            order.append(preferred)
+        order.extend([symbol, preferred or ""])
+        key = str(symbol or "").strip().lower()
+        if key in ("ustech", "ustec", "us100", "nas100", "nq100", "nasdaq", ""):
+            order.extend(_NASDAQ_MT5_CANDIDATES)
+        seen = set()
+        for raw in order:
+            name = str(raw or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            hit = _try(name)
+            if hit:
+                return hit
     except Exception:
         pass
     return symbol
 
 
-def _fetch_rates(symbol: str, timeframe_minutes: int, count: int):
+def _fetch_rates(
+    symbol: str,
+    timeframe_minutes: int,
+    count: int,
+    *,
+    mt5_symbol: Optional[str] = None,
+    mt5_server: Optional[str] = None,
+    mt5_broker: Optional[str] = None,
+):
     if not MT5_AVAILABLE:
         return None
-    sym = _resolve_symbol(symbol)
+    sym = _resolve_symbol(
+        symbol,
+        mt5_symbol=mt5_symbol,
+        mt5_server=mt5_server,
+        mt5_broker=mt5_broker,
+    )
     return mt5.copy_rates_from_pos(sym, _mt5_timeframe(timeframe_minutes), 0, count)
 
 
-def fetch_recent_ticks(symbol: str, lookback_sec: int = TICK_LOOKBACK_SEC):
+def fetch_recent_ticks(
+    symbol: str,
+    lookback_sec: int = TICK_LOOKBACK_SEC,
+    *,
+    mt5_symbol: Optional[str] = None,
+    mt5_server: Optional[str] = None,
+    mt5_broker: Optional[str] = None,
+):
     """Live tick tape from MT5 — used to augment each 60s prediction."""
     if not MT5_AVAILABLE:
         return None
-    sym = _resolve_symbol(symbol)
+    sym = _resolve_symbol(
+        symbol,
+        mt5_symbol=mt5_symbol,
+        mt5_server=mt5_server,
+        mt5_broker=mt5_broker,
+    )
     utc_from = datetime.fromtimestamp(time.time() - lookback_sec, tz=timezone.utc)
     try:
         for flag in (mt5.COPY_TICKS_ALL, mt5.COPY_TICKS_INFO):
@@ -689,7 +802,7 @@ def _weighted_ensemble_p_up(p_gbm: float, p_mlp: float, p_et: float,
 
 def get_cached_bundle(symbol: str = "ustech",
                       timeframe_minutes: int = 5) -> Optional[Dict[str, Any]]:
-    key = (symbol.lower(), timeframe_minutes)
+    key = (_model_symbol_key(symbol), timeframe_minutes)
     with _cache_lock:
         b = _cache.get(key)
     if b and b.get("trained") and time.time() - b["trained_at"] < RETRAIN_INTERVAL_SEC:
@@ -697,7 +810,7 @@ def get_cached_bundle(symbol: str = "ustech",
     # Cold start — try the model persisted by the previous app session
     if not SKLEARN_AVAILABLE:
         return None
-    disk = _load_bundle_from_disk(symbol, timeframe_minutes)
+    disk = _load_bundle_from_disk(_model_symbol_key(symbol), timeframe_minutes)
     if disk and time.time() - disk.get("trained_at", 0) < RETRAIN_INTERVAL_SEC:
         with _cache_lock:
             _cache[key] = disk
@@ -707,7 +820,7 @@ def get_cached_bundle(symbol: str = "ustech",
 
 def is_training(symbol: str = "ustech", timeframe_minutes: int = 5) -> bool:
     with _training_lock:
-        return (symbol.lower(), timeframe_minutes) in _training
+        return (_model_symbol_key(symbol), timeframe_minutes) in _training
 
 
 def wait_for_model(symbol: str = "ustech", timeframe_minutes: int = 5,
@@ -735,18 +848,24 @@ TRAIN_RETRY_WAIT_SEC = 20
 
 
 def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
-                         log_fn=None) -> bool:
+                         log_fn=None,
+                         mt5_symbol: Optional[str] = None,
+                         mt5_server: Optional[str] = None,
+                         mt5_broker: Optional[str] = None) -> bool:
     """Kick off background training if no fresh model exists. Never blocks.
 
     Retries when the broker hasn't finished loading bars yet (the usual
     cause of "insufficient bars" right after MT5 connect).
     Returns True if a fresh model is already available.
     """
-    if get_cached_bundle(symbol, timeframe_minutes):
+    model_key = _model_symbol_key(symbol)
+    mt5_ctx = dict(
+        mt5_symbol=mt5_symbol, mt5_server=mt5_server, mt5_broker=mt5_broker)
+    if get_cached_bundle(model_key, timeframe_minutes):
         return True
     if not (SKLEARN_AVAILABLE and MT5_AVAILABLE):
         return False
-    key = (symbol.lower(), timeframe_minutes)
+    key = (model_key, timeframe_minutes)
     with _training_lock:
         if key in _training:
             return False
@@ -754,17 +873,19 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
 
     def _run():
         try:
+            mt5_ticker = _resolve_symbol(model_key, **mt5_ctx)
             for attempt in range(1, TRAIN_RETRY_ATTEMPTS + 1):
                 if log_fn:
                     log_fn(f"🧠 ML training attempt {attempt}/{TRAIN_RETRY_ATTEMPTS} "
-                           f"for {symbol} M{timeframe_minutes} (up to {TRAIN_BARS} bars)…")
-                rates = _fetch_rates(symbol, timeframe_minutes, TRAIN_BARS)
+                           f"for {mt5_ticker} M{timeframe_minutes} (up to {TRAIN_BARS} bars)…")
+                rates = _fetch_rates(
+                    model_key, timeframe_minutes, TRAIN_BARS, **mt5_ctx)
                 got = 0 if rates is None else len(rates)
-                bundle = train_on_rates(rates, symbol, timeframe_minutes)
+                bundle = train_on_rates(rates, model_key, timeframe_minutes)
                 if bundle.get("trained"):
                     wf = bundle.get("walk_forward") or {}
                     if log_fn:
-                        log_fn(f"🧠 ML model READY for {symbol} M{timeframe_minutes} "
+                        log_fn(f"🧠 ML model READY for {mt5_ticker} M{timeframe_minutes} "
                                f"[GBM trees + MLP 64x32 deep net, soft-vote]: "
                                f"wf_acc={wf.get('accuracy')} gated={wf.get('gated_accuracy')} "
                                f"(n={bundle.get('n_labeled')})")
@@ -784,13 +905,16 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
             with _training_lock:
                 _training.discard(key)
 
-    threading.Thread(target=_run, name=f"ml-train-{symbol}", daemon=True).start()
+    threading.Thread(target=_run, name=f"ml-train-{model_key}", daemon=True).start()
     return False
 
 
 def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
                      rates=None, auto_train: bool = True,
-                     trend_direction: Optional[str] = None) -> Dict[str, Any]:
+                     trend_direction: Optional[str] = None,
+                     mt5_symbol: Optional[str] = None,
+                     mt5_server: Optional[str] = None,
+                     mt5_broker: Optional[str] = None) -> Dict[str, Any]:
     """Predict direction with the cached ensemble (non-blocking).
 
     Returns {ready, direction: buy|sell|neutral, probability, confidence,
@@ -800,14 +924,17 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
     ``trend_direction`` tags aligned vs reversal for the learning blend;
     it no longer suppresses the raw ML lean.
     """
-    bundle = get_cached_bundle(symbol, timeframe_minutes)
+    model_key = _model_symbol_key(symbol)
+    mt5_ctx = dict(
+        mt5_symbol=mt5_symbol, mt5_server=mt5_server, mt5_broker=mt5_broker)
+    bundle = get_cached_bundle(model_key, timeframe_minutes)
     if not bundle:
         if auto_train:
-            ensure_trained_async(symbol, timeframe_minutes)
+            ensure_trained_async(model_key, timeframe_minutes, **mt5_ctx)
         return {"ready": False, "direction": "neutral", "reason": "model not trained yet"}
 
     if rates is None:
-        rates = _fetch_rates(symbol, timeframe_minutes, PREDICT_BARS)
+        rates = _fetch_rates(model_key, timeframe_minutes, PREDICT_BARS, **mt5_ctx)
     df = rates_to_df(rates)
     if len(df) < 60:
         return {"ready": False, "direction": "neutral", "reason": "insufficient live bars"}
@@ -841,7 +968,8 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
         p_gbm, p_mlp, p_et = _proba_up(gbm, mlp, et, cols, Xu)
 
     # Live tick tape — microstructure for this 60s scoring cycle
-    tick_feats = compute_tick_micro_features(fetch_recent_ticks(symbol))
+    tick_feats = compute_tick_micro_features(
+        fetch_recent_ticks(model_key, **mt5_ctx))
     try:
         atr_regime = float(X.iloc[-1].get("atr_regime", 1.0) or 1.0)
     except Exception:

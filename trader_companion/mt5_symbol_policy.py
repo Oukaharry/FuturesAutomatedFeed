@@ -15,6 +15,15 @@ _VT_MARKET_MARKERS = (
     "vt_markets",
 )
 
+# IC Markets / similar CFD books list the index as USTEC (not Plexy's USTECH).
+_IC_MARKET_MARKERS = (
+    "ic markets",
+    "icmarkets",
+    "ic-markets",
+    "ic_markets",
+    "icmarket",
+)
+
 _NASDAQ_CANONICAL = frozenset({
     "ustech", "ustec", "us100", "nas100", "nasdaq", "nq", "ndx", "nasdaq100", "tech100",
 })
@@ -44,6 +53,8 @@ def infer_hedge_symbol_from_server(server: Any) -> Optional[str]:
         return None
     if any(marker in key for marker in _VT_MARKET_MARKERS):
         return "NAS100"
+    if any(marker in key for marker in _IC_MARKET_MARKERS):
+        return "USTEC"
     if "plexy" in key:
         return "USTECH"
     return None
@@ -55,9 +66,35 @@ def infer_hedge_symbol_from_broker(broker: Any) -> Optional[str]:
         return None
     if any(marker in key for marker in _VT_MARKET_MARKERS):
         return "NAS100"
+    if any(marker in key for marker in _IC_MARKET_MARKERS):
+        return "USTEC"
     if key in ("plexytrade", "plexy trade", "plexy"):
         return "USTECH"
     return None
+
+
+def model_symbol_for_ml(symbol: Any) -> str:
+    """On-disk / bundled ML model key (one ustech model for all Nasdaq tickers)."""
+    raw = _norm(symbol)
+    if not raw or is_nasdaq_hedge_symbol(raw):
+        return "ustech"
+    return raw.lower()
+
+
+def preferred_nasdaq_mt5_symbol(
+    *,
+    server: Any = None,
+    broker: Any = None,
+    hedge_account: Optional[Mapping[str, Any]] = None,
+    config: Optional[Mapping[str, Any]] = None,
+) -> str:
+    """Broker-aware Nasdaq ticker before MT5 symbol_select (USTECH vs USTEC vs NAS100)."""
+    return resolve_hedge_mt5_symbol(
+        config=config,
+        hedge_account=hedge_account,
+        server=server,
+        default=DEFAULT_NASDAQ_HEDGE_SYMBOL,
+    )
 
 
 def resolve_hedge_mt5_symbol(

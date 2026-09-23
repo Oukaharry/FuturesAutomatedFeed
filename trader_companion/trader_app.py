@@ -2751,7 +2751,8 @@ class TradeOpssAIApp:
                 format_market_feed_status_for_user,
             )
 
-            started = start_mt5_market_feed(["USTECH", "ustech"])
+            hedge_sym = self._resolve_mt5_hedge_symbol() or "USTECH"
+            started = start_mt5_market_feed([hedge_sym])
             line = format_market_feed_status_for_user()
             level = "INFO" if started else "WARN"
             self.log(f"📡 {line}", level)
@@ -5171,24 +5172,25 @@ class TradeOpssAIApp:
             self.log(f"⚠ ML broadcast: MT5 check failed: {exc}", "WARN")
             return
 
-        symbol = self._resolve_mt5_hedge_symbol() or "ustech"
+        ml_ctx = self._ml_broker_mt5_kwargs()
+        mt5_ticker = ml_ctx.get("mt5_symbol") or "ustech"
         try:
-            result = get_ml_direction(symbol=symbol)
+            result = get_ml_direction(symbol="ustech", **ml_ctx)
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
             return
         if not result.get("ready"):
             try:
-                ensure_trained_async(symbol)
+                ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
             except Exception:
                 pass
             reason = result.get("reason") or result.get("message") or "model warming up"
             self._log_ml_publish_throttled(
                 "not_ready",
-                f"⏳ ML not ready for {symbol} ({reason}) — training/scoring, retrying…")
+                f"⏳ ML not ready for {mt5_ticker} ({reason}) — training/scoring, retrying…")
             return
 
-        signal = direction_feed.build_signal(result, symbol=symbol, source=email)
+        signal = direction_feed.build_signal(result, symbol=mt5_ticker, source=email)
         if not signal:
             lean = result.get("direction") or result.get("lean") or "neutral"
             self._log_ml_publish_throttled(
@@ -5210,7 +5212,7 @@ class TradeOpssAIApp:
                 self._streamed_signal_valid = True
                 self.root.after(0, self._update_direction_mode_banner)
             self.log(
-                f"📡 Broadcast {signal['direction'].upper()} for {symbol} "
+                f"📡 Broadcast {signal['direction'].upper()} for {mt5_ticker} "
                 f"(confidence {signal.get('confidence')})")
         else:
             self.log("⚠ Direction broadcast rejected by server (check email auth / version)", "WARN")
@@ -12962,6 +12964,27 @@ class TradeOpssAIApp:
             server=server,
         )
 
+    def _ml_broker_mt5_kwargs(self):
+        """MT5 ticker + server/broker hints for ML bar fetch (USTECH vs USTEC vs NAS100)."""
+        server = ""
+        broker = ""
+        try:
+            server = self.mt5_server.get().strip()
+        except Exception:
+            pass
+        try:
+            broker = str(
+                (getattr(self, "_hedge_account_profile", None) or {}).get("broker") or ""
+            ).strip()
+        except Exception:
+            pass
+        mt5_symbol = self._resolve_mt5_hedge_symbol() or None
+        return {
+            "mt5_symbol": mt5_symbol,
+            "mt5_server": server or None,
+            "mt5_broker": broker or None,
+        }
+
     def _get_mt5_trading_api(self):
         """Get or create the MT5 trading API from companion's existing MT5 connection."""
         if TRADOVATE_ONLY_MODE:
@@ -15088,16 +15111,19 @@ class TradeOpssAIApp:
             from trader_companion.signals.ml_direction import (
                 ensure_trained_async, get_ml_direction, wait_for_model,
             )
-            symbol = mt5_symbol or "ustech"
-            result = get_ml_direction(symbol=symbol)
+            ml_ctx = self._ml_broker_mt5_kwargs()
+            if mt5_symbol:
+                ml_ctx["mt5_symbol"] = mt5_symbol
+            mt5_ticker = ml_ctx.get("mt5_symbol") or "ustech"
+            result = get_ml_direction(symbol="ustech", **ml_ctx)
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
             return None
         if not result.get("ready"):
-            ensure_trained_async(symbol, log_fn=self.log)
-            self.log("🧠 Waiting for the MT5 ML model before trade entry")
-            wait_for_model(symbol, timeout_sec=120)
-            result = get_ml_direction(symbol=symbol, auto_train=False)
+            ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
+            self.log(f"🧠 Waiting for MT5 ML model ({mt5_ticker}) before trade entry")
+            wait_for_model("ustech", timeout_sec=120)
+            result = get_ml_direction(symbol="ustech", auto_train=False, **ml_ctx)
         if not result.get("ready"):
             self.log("⛔ MT5 ML model was not ready after 2 minutes — trade skipped", "WARN")
             return None
