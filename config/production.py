@@ -22,7 +22,7 @@ class Config:
     APP_VERSION = '1.0.1'
     # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
     REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.4') or '1.12.4'
-    # Releases require the exact current companion version (COMPANION_VERSION_EXACT).
+    # Releases require the exact current companion version.
     MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.1') or '1.12.1'
     COMPANION_VERSION_EXACT = True
     

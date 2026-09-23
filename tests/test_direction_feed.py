@@ -60,14 +60,13 @@ def test_a_signal_from_seconds_ago_is_live():
     assert direction_feed.direction_from(_signal("sell", age_sec=5)) == "sell"
 
 
-def test_a_signal_from_three_minutes_ago_is_still_inside_the_window():
-    # The lookback (5 min) exists so a missed or neutral score does not stop a trade.
-    assert direction_feed.direction_from(_signal("sell", age_sec=180)) == "sell"
+def test_a_signal_from_ten_minutes_ago_is_still_inside_the_window():
+    # The lookback exists so a missed or neutral score does not stop a trade.
+    assert direction_feed.direction_from(_signal("sell", age_sec=600)) == "sell"
 
 
 def test_a_signal_older_than_the_window_is_refused():
-    # Window is 5 minutes (300s), so 6 minutes (360s) is outside.
-    assert direction_feed.direction_from(_signal("sell", age_sec=360)) is None
+    assert direction_feed.direction_from(_signal("sell", age_sec=1200)) is None
 
 
 def test_the_window_is_configurable_per_call():
