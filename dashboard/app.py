@@ -1682,6 +1682,11 @@ def _admin_slack_id_for_client(client_id):
     return admin, str(data.get('slack_user_id') or '').strip()
 
 
+# Temporary operational pause: breach detection and dashboard updates continue,
+# but no breach messages are sent to Slack until this is switched back to False.
+BREACH_SLACK_NOTIFICATIONS_PAUSED = True
+
+
 def _send_admin_breach_alert(client_id, breaches):
     """DM the client's admin that an account has breached its floor.
 
@@ -1689,6 +1694,10 @@ def _send_admin_breach_alert(client_id, breaches):
     configured, since an incoming webhook cannot open a DM.
     """
     if not breaches:
+        return 0
+    if BREACH_SLACK_NOTIFICATIONS_PAUSED:
+        app.logger.warning(
+            f"🚨 {client_id}: suppressed {len(breaches)} breach Slack notification(s) (paused)")
         return 0
     from dashboard.scheduler import send_slack_message
 
