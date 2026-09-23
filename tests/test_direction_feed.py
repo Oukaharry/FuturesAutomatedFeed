@@ -159,13 +159,15 @@ def test_a_fetch_failure_yields_no_direction(monkeypatch):
 
 
 def test_the_execution_path_reads_the_live_signal(monkeypatch):
-    monkeypatch.setattr(direction_feed, "fetch", lambda *a, **k: _signal("buy"))
+    monkeypatch.setattr(TradeOpssAIApp, "_direct_mt5_ml_direction",
+                        lambda *a, **k: "buy")
 
     assert _app()._get_signal_direction("USTECH") == "buy"
 
 
 def test_the_execution_path_returns_none_rather_than_guessing(monkeypatch):
-    monkeypatch.setattr(direction_feed, "fetch", lambda *a, **k: None)
+    monkeypatch.setattr(TradeOpssAIApp, "_direct_mt5_ml_direction",
+                        lambda *a, **k: None)
 
     assert _app()._get_signal_direction("USTECH") is None
 

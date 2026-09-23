@@ -30,7 +30,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.2"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
+APP_VERSION = "1.12.4"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -38,9 +38,8 @@ RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
 RELEASE_DISABLE_PUSH_BILLING = True
 # M1 push to dashboard removed — local mt5_market_feed still powers indicators/ML.
 RELEASE_DISABLE_M1_DASHBOARD_PUSH = True
-# AI/ML direction is now mandatory for every trade (auto-trade is the only
-# execution path, and entries are randomized — see _start_auto_trade).
-RELEASE_DISABLE_ML = True
+# Windows companions score the ML ensemble directly from their connected MT5.
+RELEASE_DISABLE_ML = False
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1914,6 +1913,8 @@ class TradeOpssAIApp:
 
     def setup_ui(self):
         """Setup the modern CTk user interface — two-column single-screen layout."""
+        self.ml_mode_var = tk.BooleanVar(value=False)
+        self._ensure_signal_mode_vars()
         if not CTK_AVAILABLE:
             # ── Fallback: simple ttk layout ──
             self.main_canvas = tk.Canvas(self.root, bg=self.C_BG, highlightthickness=0)
@@ -1931,7 +1932,6 @@ class TradeOpssAIApp:
             self.notebook.pack(fill="both", expand=True, padx=8, pady=4)
             tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Settings")
             self._build_dashboard_tab(tab_dash)
-            self._build_ml_publisher_ui(tab_dash)
             self._build_trading_engine_ui(tab_dash)
             log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
             log_frame.pack(fill="both", expand=True, padx=8, pady=4)
@@ -2011,6 +2011,10 @@ class TradeOpssAIApp:
                                                command=self._toggle_auto_trade,
                                                fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=110)
         self.auto_trade_btn.pack(side="left", padx=(8, 4), pady=5)
+        self.enter_now_btn = self._ctk_button(toolbar, text="Enter Now",
+                              command=self._enter_trades_now,
+                              fg="#D97706", hover="#B45309", width=92)
+        self.enter_now_btn.pack(side="left", padx=(0, 6), pady=5)
 
         self.auto_trade_status_var = tk.StringVar(value="Off")
         ctk.CTkLabel(toolbar, textvariable=self.auto_trade_status_var,
@@ -2038,12 +2042,29 @@ class TradeOpssAIApp:
         # Separator
         ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
 
-        # Direction mode (updates when ML publisher or live server signal is active)
-        self._direction_mode_var = tk.StringVar(
-            value="⏳ Waiting for ML signal…")
+        # Trade direction source (auto-trade) + live server broadcast status
+        ctk.CTkLabel(toolbar, text="SIGNAL", font=("Segoe UI", 9, "bold"),
+                     text_color="#38BDF8").pack(side="left", padx=(8, 4), pady=5)
+        self._signal_mode_control = ctk.CTkComboBox(
+            toolbar,
+            values=["Random / Firm", "Random / All", "ML"],
+            variable=self._signal_choice_var,
+            command=self._select_trade_signal_mode,
+            state="readonly", width=170, height=28,
+            fg_color=self.C_BG_THIRD,
+            border_color=self.C_BORDER,
+            button_color=self.C_ACCENT,
+            button_hover_color=self.C_ACCENT_HV,
+            text_color=self.C_TEXT,
+            dropdown_fg_color=self.C_BG_SEC,
+            dropdown_hover_color=self.C_BG_THIRD,
+            font=("Segoe UI", 9, "bold"),
+        )
+        self._signal_mode_control.pack(side="left", padx=(0, 6), pady=5)
+        self._direction_mode_var = tk.StringVar(value="⏳ Waiting for ML signal…")
         ctk.CTkLabel(toolbar, textvariable=self._direction_mode_var,
                      font=("Segoe UI", 9, "bold"), text_color="#38BDF8").pack(
-            side="left", padx=(8, 6), pady=5)
+            side="left", padx=(0, 8), pady=5)
         self._ctk_button(toolbar, text="TP/SL Plan", command=self._open_tp_sl_plan,
                  fg=self.C_BG_THIRD, hover=self.C_BORDER, width=88).pack(side="left", padx=(0, 6), pady=5)
 
@@ -2175,7 +2196,6 @@ class TradeOpssAIApp:
         self.notebook.pack(fill="both", expand=True)
         tab_settings = self.notebook.add("  Settings  ")
 
-        self._build_ml_publisher_ui(self._controls_view)
         self._build_combined_settings_tab(tab_settings)
 
         # ── Bottom status bar ──
@@ -2280,6 +2300,42 @@ class TradeOpssAIApp:
         self._build_dashboard_tab(parent)
         self._build_trading_engine_ui(parent)
 
+    def _ensure_signal_mode_vars(self):
+        if not hasattr(self, "signal_mode_var"):
+            self.signal_mode_var = tk.StringVar(value="Random")
+        if not hasattr(self, "random_signal_scope_var"):
+            self.random_signal_scope_var = tk.StringVar(value="Unique per prop firm")
+        if not hasattr(self, "_signal_choice_var"):
+            self._signal_choice_var = tk.StringVar(value="Random / Firm")
+
+    def _sync_signal_mode_ui(self):
+        self._ensure_signal_mode_vars()
+        if self.signal_mode_var.get() == "ML":
+            choice = "ML"
+        elif self.random_signal_scope_var.get() == "Same for all prop firms":
+            choice = "Random / All"
+        else:
+            choice = "Random / Firm"
+        self._signal_choice_var.set(choice)
+
+    def _select_trade_signal_mode(self, choice):
+        self._ensure_signal_mode_vars()
+        if choice == "ML":
+            if not self._ml_mode_enabled():
+                self._toggle_ml_publisher()
+            if not self._ml_mode_enabled():
+                self.signal_mode_var.set("Random")
+                self.random_signal_scope_var.set("Unique per prop firm")
+                self._sync_signal_mode_ui()
+                return
+            self.signal_mode_var.set("ML")
+            self.log("🧠 Direct MT5 ML signal selected")
+            return
+        self.signal_mode_var.set("Random")
+        self.random_signal_scope_var.set(
+            "Same for all prop firms" if choice == "Random / All" else "Unique per prop firm")
+        self.log(f"🎲 {choice} signal selected")
+
     def _build_ml_publisher_ui(self, parent):
         """Password-gated switch that makes this companion the ML publisher.
 
@@ -2334,7 +2390,7 @@ class TradeOpssAIApp:
         self._refresh_ml_publisher_ui()
         self._last_direction_publish = None
         self._last_direction_publish_attempt = None
-        self.log("🤖 ML publishing enabled — this companion will broadcast direction signals")
+        self.log("🤖 ML publishing enabled — broadcast + direct MT5 ML available")
         self._start_ml_direction_publisher()
 
     def _refresh_ml_publisher_ui(self):
@@ -5422,6 +5478,8 @@ class TradeOpssAIApp:
                          values=["All Trades", "Buy Only", "Sell Only"],
                          state='readonly', width=12).pack(side="left")
 
+        self._ensure_signal_mode_vars()
+
     # ── Phase detection helpers ──
 
     _FIRM_MAP = {
@@ -7889,22 +7947,12 @@ class TradeOpssAIApp:
             self.trades_count_var.set("[ 0 ]")
             return
 
-        # One ML reading drives every broker-login family.
         firms_seen = set()
         for ev in evaluations:
             pf = ev.get("Prop Firm")
             nm = str(pf).strip() if pf is not None else ""
             firms_seen.add(nm or "Unknown")
         self._active_trade_firms = firms_seen
-
-        firm_bias = self._get_firm_directions({self._broker_login_family(f) for f in firms_seen})
-        self._auto_trade_firm_sides = firm_bias
-        if firm_bias:
-            bias_parts = []
-            for f, s in sorted(firm_bias.items()):
-                arrow = "▲" if s == "buy" else "▼"
-                bias_parts.append(f"{arrow} {f}: {s.upper()}")
-            self.log(f"🤖 ML direction: {', '.join(bias_parts)}")
         self.log(f"Rendering {len(evaluations)} active trade row(s)…")
 
         for idx, ev in enumerate(evaluations):
@@ -7938,7 +7986,7 @@ class TradeOpssAIApp:
                 glow_border, glow_bg, glow_fg = self._PHASE_GLOW.get(
                     current_display, ("#475569", "#0A0F1A", "#94A3B8"))
 
-                bias = self._resolve_firm_bias(prop_firm_name, firm_bias)
+                bias = None
 
                 if CTK_AVAILABLE:
                     row_bg = "#050D18" if idx % 2 == 0 else "#071020"
@@ -8096,6 +8144,8 @@ class TradeOpssAIApp:
                 canvas.configure(scrollregion=canvas.bbox("all"))
         except Exception:
             pass
+
+        self._refresh_ai_direction_async(firms_seen)
 
         if self.hedge_mode_var.get() == "Hedging":
             self.root.after(400, self._refresh_mt5_margin_after_scan)
@@ -9281,8 +9331,26 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_close_all, daemon=True, name="CloseAll").start()
 
-    def _start_auto_trade(self):
-        """Activate auto-trade: compute randomized start time, begin countdown."""
+    def _enter_trades_now(self):
+        """Run the armed trade pipeline immediately after password confirmation."""
+        if self.auto_trade_enabled:
+            messagebox.showwarning(
+                "Auto-Trade Active",
+                "Stop the active auto-trade batch before entering trades immediately.")
+            return
+        entered = simpledialog.askstring(
+            "Enter Trades Now", "Enter the immediate-trade password:", show="*")
+        if entered is None:
+            return
+        if not self._ml_password_ok(entered):
+            messagebox.showerror("Access Denied", "Incorrect password.")
+            self.log("🚫 Immediate trade unlock failed — incorrect password", "WARN")
+            return
+        self.log("⚡ Immediate trade entry authorized")
+        self._start_auto_trade(immediate=True)
+
+    def _start_auto_trade(self, immediate=False):
+        """Activate auto-trade, either immediately or after a randomized delay."""
         from datetime import datetime, timedelta, timezone
 
         # Validation: need trades loaded
@@ -9309,41 +9377,50 @@ class TradeOpssAIApp:
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
-        # Auto-trade is the only execution path.
-        # Every press randomizes the start 0-120 minutes from the click itself.
-        offset_minutes = random.randint(0, 120)
+        # Auto-trade randomizes normal starts; the guarded command enters now.
+        offset_minutes = 0 if immediate else random.randint(0, 120)
         scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
 
+        signal_mode = self.signal_mode_var.get()
+        self._auto_trade_use_signal = signal_mode == "ML"
+        if self._auto_trade_use_signal and not self._ml_mode_enabled():
+            self.log("⛔ Enable ML and enter its password before scheduling ML trades", "WARN")
+            messagebox.showwarning(
+                "Enable ML Required",
+                "Select Enable ML beside Settings and enter the ML password before scheduling ML trades.")
+            return
+        self._auto_trade_random_scope = self.random_signal_scope_var.get()
         self._auto_trade_scheduled_dt = scheduled_eat
+        self._auto_trade_enter_now = immediate
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
         self._auto_trade_side_lock_logged = set()
-        self._auto_trade_use_signal = False
 
         firms_in_rows = set()
         for rd in self._active_trade_rows:
             pf = (rd.get("eval") or {}).get("Prop Firm", "Unknown")
             firms_in_rows.add(str(pf).strip() or "Unknown")
 
-        # Keyed by broker-login family (not raw dashboard label) so
-        # firms sharing one login always get the same random direction.
-        family_names = {self._broker_login_family(f) for f in firms_in_rows}
-        self._auto_trade_firm_sides = self._get_firm_directions(family_names)
-        dir_lines = []
-        for firm, s in sorted(self._auto_trade_firm_sides.items()):
-            arrow = "▲" if s == "buy" else "▼"
-            dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
-        self.auto_trade_firms_var.set("\n".join(dir_lines))
-        mode_label = "random dirs per firm family"
+        self._auto_trade_firm_sides = {}
+        if self._auto_trade_use_signal:
+            self.auto_trade_firms_var.set("  🧠 ML direction resolves at entry time")
+            mode_label = "ML direction at entry time"
+        else:
+            shared = self._auto_trade_random_scope == "Same for all prop firms"
+            self.auto_trade_firms_var.set(
+                "  🎲 One random direction for all prop firms" if shared else
+                "  🎲 One random direction per prop firm")
+            mode_label = "shared random direction" if shared else "random direction per prop firm"
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
         self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
-        self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
-        for firm, s in self._auto_trade_firm_sides.items():
-            self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
+        if immediate:
+            self.log(f"⚡ Entering trades now ({mode_label})")
+        else:
+            self.log(f"⏰ Auto-trade scheduled at {time_str} ({mode_label})")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -9508,6 +9585,7 @@ class TradeOpssAIApp:
         self.auto_trade_enabled = False
         self._auto_trade_stop.set()
         self._auto_trade_scheduled_dt = None
+        self._auto_trade_enter_now = False
         self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
@@ -9588,6 +9666,7 @@ class TradeOpssAIApp:
         """Natural completion when every queued trade has been taken."""
         self.auto_trade_enabled = False
         self._auto_trade_scheduled_dt = None
+        self._auto_trade_enter_now = False
         self._auto_trade_waiting_gate = False
         self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
         if CTK_AVAILABLE:
@@ -10045,21 +10124,8 @@ class TradeOpssAIApp:
 
         self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
-        sig = self._compute_signal_strength(max_age_sec=0) if use_signal else {}
-        if use_signal and sig.get("ready"):
-            self.log(f"📊 Signal: {sig['label']} — highly recommended "
-                     f"{str(sig.get('recommended', '')).upper()}")
-        elif use_signal:
-            self.log(f"📊 Signal: {sig.get('label', '—')} ({sig.get('detail', '')})")
-
         if use_signal:
-            allowed, lean, dom, volatile, gate_msg = self._auto_batch_gate_allowed()
-            if not allowed:
-                self.log(f"⛔ Auto-trade gate: {gate_msg}", "WARN")
-                self._ai_trace("WARN", f"auto-trade blocked at execute — {gate_msg}")
-                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
-                return
-            self.log(f"✅ Auto-trade gate passed — {gate_msg}")
+            self.log("🧠 Resolving the connected MT5 ML direction at entry time")
         else:
             self.log("🎲 Auto-trade using daily random direction per prop firm")
 
@@ -10424,9 +10490,10 @@ class TradeOpssAIApp:
                                 config_tmp = self.prop_firm_mgr.get_strategy_config(
                                     firm_code, phase_key, acct_size)
                             mt5_sym = self._resolve_mt5_hedge_symbol(config_tmp or {})
-                            self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
-                            if self._auto_trade_stop.is_set():
-                                break
+                            if not getattr(self, "_auto_trade_enter_now", False):
+                                self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
+                                if self._auto_trade_stop.is_set():
+                                    break
                             sig = self._get_signal_direction(mt5_sym)
                             req = firm_locks.get(family_key)
                             if req and sig in ("buy", "sell") and sig != req:
@@ -10462,11 +10529,16 @@ class TradeOpssAIApp:
                     if locked_side in ("buy", "sell"):
                         side = locked_side
                     else:
+                        random_key = (
+                            "__shared_random_direction__"
+                            if getattr(self, "_auto_trade_random_scope", "") == "Same for all prop firms"
+                            else family_key
+                        )
                         with firm_sides_lock:
-                            side = firm_sides.get(family_key)
+                            side = firm_sides.get(random_key)
                             if side not in ("buy", "sell"):
                                 side = random.choice(["buy", "sell"])
-                                firm_sides[family_key] = side
+                                firm_sides[random_key] = side
 
                 config = None
                 if self.prop_firm_mgr:
@@ -10480,19 +10552,6 @@ class TradeOpssAIApp:
                     with total_success:
                         counters["fail"] += 1
                     continue
-
-                if use_signal:
-                    _cp = row_data.get("current_phase", "")
-                    allowed, _lean, _dom, _vol, gate_msg = self._auto_trade_entry_allowed(
-                        phase_key=phase_key, config=config, current_phase=_cp,
-                        firm_code=firm_code)
-                    if not allowed:
-                        self._ai_trace("WARN", f"{acct_num}: auto-trade skipped — {gate_msg}")
-                        self.root.after(0, lambda an=acct_num, gm=gate_msg: self.log(
-                            f"⛔ {an}: auto gate — {gm}", "WARN"))
-                        with total_success:
-                            counters["skipped"] += 1
-                        continue
 
                 # Phase distance advisory — tier-aware; funded can block via gate above
                 _st = getattr(self, "_signal_strength_state", {}) or {}
@@ -13325,7 +13384,31 @@ class TradeOpssAIApp:
             pass
 
     def _refresh_ai_direction_async(self, firms):
-        pass
+        """Show a current MT5 ML snapshot without preselecting the entry side."""
+        if not firms or getattr(self, "_ai_direction_refresh_running", False):
+            return
+        self._ai_direction_refresh_running = True
+        families = {self._broker_login_family(firm) for firm in firms}
+
+        def _read_direction():
+            try:
+                direction = self._direct_mt5_ml_direction(
+                    self._resolve_mt5_hedge_symbol() or "ustech")
+                if direction not in ("buy", "sell"):
+                    return
+
+                def _apply():
+                    for row_data in list(getattr(self, "_active_trade_rows", []) or []):
+                        firm = (row_data.get("eval") or {}).get("Prop Firm", "")
+                        if self._broker_login_family(firm) in families:
+                            self._style_direction_buttons(row_data, direction)
+                    self.log(f"🧠 Current MT5 ML bias: {direction.upper()}")
+
+                self.root.after(0, _apply)
+            finally:
+                self._ai_direction_refresh_running = False
+
+        threading.Thread(target=_read_direction, daemon=True).start()
 
     def _style_direction_buttons(self, row_data, bias):
         """Re-style a row's direction and status badges to highlight the auto direction."""
@@ -15020,14 +15103,37 @@ class TradeOpssAIApp:
     BLEND_DEADZONE_VOLATILE = 0.07  # tighter deadzone when vol is high
 
     def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=None):
-        """Live ML direction broadcast by the MT5-connected companion.
+        """Resolve a direction from the connected MT5 ML ensemble at entry time."""
+        return self._direct_mt5_ml_direction(mt5_symbol)
 
-        The ensemble runs where MT5 is attached and publishes to the
-        dashboard; every companion reads the same result here. Returns
-        "buy"/"sell", or None when nothing was published inside the lookback
-        window — there is NO random fallback.
-        """
-        return self._broadcast_direction()
+    def _direct_mt5_ml_direction(self, mt5_symbol):
+        """Return the live MT5 ensemble direction, waiting for a cold model."""
+        if not self._ensure_mt5_for_signals():
+            self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
+            return None
+        try:
+            from trader_companion.signals.ml_direction import (
+                ensure_trained_async, get_ml_direction, wait_for_model,
+            )
+            symbol = mt5_symbol or "ustech"
+            result = get_ml_direction(symbol=symbol)
+        except Exception as exc:
+            self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
+            return None
+        if not result.get("ready"):
+            ensure_trained_async(symbol, log_fn=self.log)
+            self.log("🧠 Waiting for the MT5 ML model before trade entry")
+            wait_for_model(symbol, timeout_sec=120)
+            result = get_ml_direction(symbol=symbol, auto_train=False)
+        if not result.get("ready"):
+            self.log("⛔ MT5 ML model was not ready after 2 minutes — trade skipped", "WARN")
+            return None
+        direction = str(result.get("direction") or "").lower()
+        if direction in ("buy", "sell"):
+            self.log(f"🧠 MT5 ML direction: {direction.upper()} "
+                     f"(confidence {result.get('confidence')})")
+            return direction
+        return None
 
         # Display-only input — dashboard trade-history ML (NEVER used to decide)
         insights = self._get_dashboard_ml_insights()
@@ -15132,6 +15238,8 @@ class TradeOpssAIApp:
             config["account_size"] = self.acct_size_var.get()
             config["hedge_mode"] = self.hedge_mode_var.get()
             config["direction"] = self.direction_var.get()
+            config["signal_mode"] = self.signal_mode_var.get()
+            config["random_signal_scope"] = self.random_signal_scope_var.get()
             config["strategy"] = self.strategy_var.get()
         
         config_path = os.path.join(os.path.dirname(__file__), "trader_config.json")
@@ -15191,6 +15299,16 @@ class TradeOpssAIApp:
                         self.hedge_mode_var.set(config['hedge_mode'])
                     if config.get('direction'):
                         self.direction_var.set(config['direction'])
+                    if config.get('signal_mode'):
+                        saved_signal_mode = config['signal_mode']
+                        self.signal_mode_var.set(
+                            "ML" if saved_signal_mode == "ML (password required)" else saved_signal_mode)
+                    if config.get('random_signal_scope'):
+                        self.random_signal_scope_var.set(config['random_signal_scope'])
+                    if self.signal_mode_var.get() == "ML" and not self._ml_mode_enabled():
+                        self.signal_mode_var.set("Random")
+                        self.random_signal_scope_var.set("Unique per prop firm")
+                    self._sync_signal_mode_ui()
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])
                 
