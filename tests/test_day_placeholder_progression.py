@@ -134,6 +134,15 @@ def test_trade_marker_does_not_replace_manual_status():
     assert row["Status P1"] == "Paused"
 
 
+def test_confirmed_breach_replaces_provisional_hit_tp_status():
+    row = _row(**{"Status P1": "Hit TP1"})
+    app = _scrub_app()
+    app._derive_account_status = lambda evaluation: ("Fail", "balance below breach floor")
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Fail"
+
+
 def test_open_broker_position_blocks_dashboard_outcome_update():
     class Broker:
         def has_open_position_for_account(self, account):
