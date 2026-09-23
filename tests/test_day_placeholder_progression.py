@@ -89,6 +89,58 @@ def test_successful_funded_fill_marks_funded_status_in_progress():
     assert row["Status"] == "In Progress"
 
 
+def test_funded_account_date_and_payout_mark_sparse_row_as_ft2():
+    row = {
+        "Account #.1": "FTDFYSL-funded",
+        "Date Started.1": "2026-09-15",
+        "Payout 1": "$1,000.00",
+    }
+    app = _app()
+
+    assert app._on_funded_leg(row) is True
+    assert app._has_taken_funded_trade1(row) is True
+    assert app._has_taken_funded_trade2(row) is True
+
+
+def test_sparse_funded_breach_writes_funded_status_field():
+    row = {
+        "Account #.1": "FTDFYSL-funded",
+        "Date Started.1": "2026-09-15",
+        "Payout 1": "$1,000.00",
+        "Status P1": "Pass",
+        "Status": "Hit TP1",
+    }
+    app = _scrub_app()
+    app._derive_account_status = lambda evaluation: ("Fail", "balance below funded floor")
+
+    assert app._apply_status_update(row) == ["Status"]
+    assert row["Status"] == "Fail"
+    assert row["Status P1"] == "Pass"
+
+
+def test_sparse_funded_payout_row_breaches_at_ft2_floor_from_history():
+    row = {
+        "Prop Firm": "Tradeify (50% Add-On)",
+        "Account #.1": "FTDFYSL-funded",
+        "Date Started.1": "2026-09-15",
+        "Payout 1": "$1,000.00",
+    }
+    app = _scrub_app()
+    app._trade_outcome_history = lambda: {
+        "ftdfysl-funded": {
+            "balance": 50078.64,
+            "daily_pnl": [{"trades": 1, "net_pnl": -147.28}],
+        }
+    }
+    app._detect_payouts = lambda account: []
+
+    status, reason = app._derive_account_status(row)
+
+    assert status == "Fail"
+    assert "50,078.64" in reason
+    assert "50,100.00" in reason
+
+
 def test_successful_fill_does_not_replace_terminal_status():
     row = _row(**{"Status P1": "Pass"})
 

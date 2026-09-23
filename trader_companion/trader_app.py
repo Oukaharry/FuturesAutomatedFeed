@@ -5037,7 +5037,7 @@ class TradeOpssAIApp:
                 return []
         if not status:
             return []
-        field = "Status P1" if status == "Pass" or not self._has_passed_to_funded(ev) else "Status"
+        field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
         current = self._cell(ev.get(field)).strip().lower()
         is_prior_trade_marker = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", current))
         if current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker:
@@ -6893,8 +6893,32 @@ class TradeOpssAIApp:
         return bool(fu) and not ch
 
     def _on_funded_leg(self, ev) -> bool:
-        """Eval is on the funded stage (dual-account row or funded-only row)."""
-        return self._has_passed_to_funded(ev) or self._is_funded_only_row(ev)
+        """Eval is on the funded stage, including imported rows with sparse cells."""
+        if self._has_passed_to_funded(ev) or self._is_funded_only_row(ev):
+            return True
+        # Imported dashboard rows can carry a funded start/end date or payout
+        # before their hedge cells are populated locally.
+        return bool(
+            self._cell(ev.get("Date Started.1"))
+            or self._cell(ev.get("Date Ended.1"))
+            or self._dashboard_payout_count(ev)
+        )
+
+    def _dashboard_payout_count(self, ev) -> int:
+        """Count payout evidence stored on the dashboard row without broker history."""
+        count = 0
+        for number in range(1, 9):
+            amount = self._cell(ev.get(f"Payout {number}"))
+            paid_on = self._cell(ev.get(f"Date {number}"))
+            if paid_on:
+                count += 1
+                continue
+            try:
+                if float(amount.replace("$", "").replace(",", "")) > 0:
+                    count += 1
+            except ValueError:
+                pass
+        return count
 
     def _has_taken_challenge_trade1(self, ev) -> bool:
         """True once CH1 is in progress or complete (Hedge Result 1), not pre-CH1."""
@@ -6913,6 +6937,10 @@ class TradeOpssAIApp:
         """True once FT1 is in progress or complete (Hedge Result 1.1), not pre-FT1 funded."""
         if not self._on_funded_leg(ev):
             return False
+        if (self._cell_account(ev.get("Account #.1"))
+                or self._cell(ev.get("Date Started.1"))
+                or self._dashboard_payout_count(ev)):
+            return True
         hr1 = self._cell(ev.get("Hedge Result 1.1"))
         if hr1 and hr1 not in ("—", "-") and self._parse_day_token(hr1) is None:
             return True
@@ -6927,6 +6955,10 @@ class TradeOpssAIApp:
         """True once FT2 is in progress or complete (Hedge Result 2.1), not FT1-only."""
         if not self._on_funded_leg(ev):
             return False
+        # A payout can only follow funded trading; it is durable FT2+ evidence
+        # when imported rows have no populated hedge-result cells.
+        if self._dashboard_payout_count(ev) or self._payout_marker_field(ev):
+            return True
         hr2 = self._cell(ev.get("Hedge Result 2.1"))
         if hr2 and hr2 not in ("—", "-") and self._parse_day_token(hr2) is None:
             return True
