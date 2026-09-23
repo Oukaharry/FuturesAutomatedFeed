@@ -1689,6 +1689,11 @@ class TradeOpssAIApp:
         self._push_in_progress = False
         self._push_pending = False
         self.client_info = None
+
+        # ML signal streaming (starts on login, independent of Auto-Push)
+        self._signal_stream_enabled = False
+        self._signal_stream_thread = None
+        self._last_streamed_direction = None  # track changes for logging
         self._hedge_account_profile = {}
 
         # Auto-trade scheduler state
@@ -2608,6 +2613,8 @@ class TradeOpssAIApp:
                             # with the toolbar Auto-Push toggle.
                             self.root.after(2000, lambda: self._update_auto_push_status(
                                 "Sync: off — press Auto-Push to start"))
+                            # Start ML signal streaming immediately on login
+                            self.root.after(3000, self._start_signal_stream)
                         self.root.after(0, _on_success)
                     else:
                         error_msg = data.get("message", "Client not found")
@@ -13040,6 +13047,117 @@ class TradeOpssAIApp:
         except Exception:
             pass
         return None, "unavailable"
+
+    # ── ML Signal Streaming (starts on login, independent of Auto-Push) ──────
+    _SIGNAL_STREAM_INTERVAL_SEC = 30  # Fetch every 30 seconds
+
+    def _start_signal_stream(self):
+        """Start background ML signal streaming on login."""
+        if self._signal_stream_enabled:
+            return
+        self._signal_stream_enabled = True
+        self._last_streamed_direction = None
+        self._signal_stream_thread = threading.Thread(
+            target=self._signal_stream_loop, daemon=True)
+        self._signal_stream_thread.start()
+        self.log("📡 ML signal stream started — receiving live direction from server")
+
+    def _stop_signal_stream(self):
+        """Stop background ML signal streaming."""
+        if not self._signal_stream_enabled:
+            return
+        self._signal_stream_enabled = False
+        self.log("📡 ML signal stream stopped")
+
+    def _signal_stream_loop(self):
+        """Background loop to continuously fetch and log ML signals."""
+        try:
+            from trader_companion.signals import direction_feed
+        except ImportError:
+            self.root.after(0, lambda: self.log(
+                "⚠ direction_feed module not available — signal stream disabled", "WARN"))
+            self._signal_stream_enabled = False
+            return
+
+        # Initial fetch immediately on start
+        self._fetch_and_log_signal(direction_feed, is_initial=True)
+
+        while self._signal_stream_enabled:
+            # Sleep in small increments so we can stop quickly
+            for _ in range(self._SIGNAL_STREAM_INTERVAL_SEC):
+                if not self._signal_stream_enabled:
+                    return
+                time.sleep(1)
+
+            if not self._signal_stream_enabled:
+                return
+            self._fetch_and_log_signal(direction_feed)
+
+    def _fetch_and_log_signal(self, direction_feed, is_initial=False):
+        """Fetch ML signal from server and log status."""
+        dashboard_url = ""
+        try:
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+        except Exception:
+            pass
+
+        if not dashboard_url:
+            if is_initial:
+                self.root.after(0, lambda: self.log(
+                    "⚠ No dashboard URL — cannot fetch ML signals", "WARN"))
+            return
+
+        signal = None
+        try:
+            signal = direction_feed.fetch(
+                dashboard_url, headers=_companion_request_headers())
+        except Exception as exc:
+            self.root.after(0, lambda e=exc: self.log(
+                f"⚠ ML signal fetch failed: {e}", "WARN"))
+            return
+
+        if not signal:
+            if is_initial:
+                self.root.after(0, lambda: self.log(
+                    "📡 No ML signal on server yet — waiting for publisher to broadcast"))
+            return
+
+        # Check if signal is fresh enough
+        direction = direction_feed.direction_from(signal)
+        age_sec = direction_feed.signal_age_seconds(signal)
+        age_str = f"{int(age_sec or 0)}s" if age_sec is not None else "unknown"
+        max_age = direction_feed.SIGNAL_MAX_AGE_SEC
+
+        if direction is None:
+            # Signal exists but is stale
+            age_min = int(age_sec or 0) // 60
+            self.root.after(0, lambda am=age_min, ma=max_age // 60: self.log(
+                f"⚠ ML signal is {am} min old (max {ma} min) — waiting for fresh signal", "WARN"))
+            return
+
+        # We have a valid, fresh signal
+        source = signal.get("source", "unknown")
+        confidence = signal.get("confidence")
+        conf_str = f" (conf={confidence})" if confidence else ""
+        prev_direction = self._last_streamed_direction
+
+        if is_initial or prev_direction != direction:
+            # Log direction change or initial receipt
+            emoji = "🟢" if direction == "buy" else "🔴"
+            change_text = ""
+            if prev_direction and prev_direction != direction:
+                change_text = f" [changed from {prev_direction.upper()}]"
+            self.root.after(0, lambda d=direction, c=conf_str, a=age_str, s=source, ct=change_text, e=emoji: self.log(
+                f"{e} ML Signal: {d.upper()}{c} — age {a}, from {s}{ct}"))
+            self._last_streamed_direction = direction
+        else:
+            # Same direction, log periodically (every 2 minutes = 4 cycles)
+            cycle = getattr(self, "_signal_log_cycle", 0) + 1
+            self._signal_log_cycle = cycle
+            if cycle % 4 == 0:  # Every ~2 minutes
+                emoji = "🟢" if direction == "buy" else "🔴"
+                self.root.after(0, lambda d=direction, c=conf_str, a=age_str, e=emoji: self.log(
+                    f"{e} ML Signal active: {d.upper()}{c} — age {a}"))
 
     # The signal is live, so refetch often; the publisher scores every 5 min.
     _DIRECTION_FETCH_TTL_SEC = 30
