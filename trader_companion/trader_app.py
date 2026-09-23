@@ -1905,6 +1905,8 @@ class TradeOpssAIApp:
 
     def setup_ui(self):
         """Setup the modern CTk user interface — two-column single-screen layout."""
+        self.ml_mode_var = tk.BooleanVar(value=False)
+        self._ensure_signal_mode_vars()
         if not CTK_AVAILABLE:
             # ── Fallback: simple ttk layout ──
             self.main_canvas = tk.Canvas(self.root, bg=self.C_BG, highlightthickness=0)
@@ -1922,7 +1924,6 @@ class TradeOpssAIApp:
             self.notebook.pack(fill="both", expand=True, padx=8, pady=4)
             tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Settings")
             self._build_dashboard_tab(tab_dash)
-            self._build_ml_publisher_ui(tab_dash)
             self._build_trading_engine_ui(tab_dash)
             log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
             log_frame.pack(fill="both", expand=True, padx=8, pady=4)
@@ -2029,9 +2030,24 @@ class TradeOpssAIApp:
         # Separator
         ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
 
-        # Direction indicator
-        ctk.CTkLabel(toolbar, text="🎲 Random Bias (Per-Firm Family)",
-                     font=("Segoe UI", 9, "bold"), text_color="#38BDF8").pack(side="left", padx=(8, 6), pady=5)
+        # Trade direction source
+        ctk.CTkLabel(toolbar, text="SIGNAL", font=("Segoe UI", 9, "bold"),
+                     text_color="#38BDF8").pack(side="left", padx=(8, 6), pady=5)
+        self._signal_mode_control = ctk.CTkSegmentedButton(
+            toolbar,
+            values=["Random / Firm", "Random / All", "ML"],
+            variable=self._signal_choice_var,
+            command=self._select_trade_signal_mode,
+            width=292, height=28,
+            fg_color=self.C_BG_THIRD,
+            selected_color=self.C_ACCENT,
+            selected_hover_color=self.C_ACCENT_HV,
+            unselected_color=self.C_BG_THIRD,
+            unselected_hover_color=self.C_BORDER,
+            text_color=self.C_TEXT,
+            font=("Segoe UI", 9, "bold"),
+        )
+        self._signal_mode_control.pack(side="left", padx=(0, 8), pady=5)
         self._ctk_button(toolbar, text="TP/SL Plan", command=self._open_tp_sl_plan,
                  fg=self.C_BG_THIRD, hover=self.C_BORDER, width=88).pack(side="left", padx=(0, 6), pady=5)
 
@@ -2163,7 +2179,6 @@ class TradeOpssAIApp:
         self.notebook.pack(fill="both", expand=True)
         tab_settings = self.notebook.add("  Settings  ")
 
-        self._build_ml_publisher_ui(self._controls_view)
         self._build_combined_settings_tab(tab_settings)
 
         # ── Bottom status bar ──
@@ -2268,6 +2283,42 @@ class TradeOpssAIApp:
         self._build_dashboard_tab(parent)
         self._build_trading_engine_ui(parent)
 
+    def _ensure_signal_mode_vars(self):
+        if not hasattr(self, "signal_mode_var"):
+            self.signal_mode_var = tk.StringVar(value="Random")
+        if not hasattr(self, "random_signal_scope_var"):
+            self.random_signal_scope_var = tk.StringVar(value="Unique per prop firm")
+        if not hasattr(self, "_signal_choice_var"):
+            self._signal_choice_var = tk.StringVar(value="Random / Firm")
+
+    def _sync_signal_mode_ui(self):
+        self._ensure_signal_mode_vars()
+        if self.signal_mode_var.get() == "ML":
+            choice = "ML"
+        elif self.random_signal_scope_var.get() == "Same for all prop firms":
+            choice = "Random / All"
+        else:
+            choice = "Random / Firm"
+        self._signal_choice_var.set(choice)
+
+    def _select_trade_signal_mode(self, choice):
+        self._ensure_signal_mode_vars()
+        if choice == "ML":
+            if not self._ml_mode_enabled():
+                self._toggle_ml_publisher()
+            if not self._ml_mode_enabled():
+                self.signal_mode_var.set("Random")
+                self.random_signal_scope_var.set("Unique per prop firm")
+                self._sync_signal_mode_ui()
+                return
+            self.signal_mode_var.set("ML")
+            self.log("🧠 Direct MT5 ML signal selected")
+            return
+        self.signal_mode_var.set("Random")
+        self.random_signal_scope_var.set(
+            "Same for all prop firms" if choice == "Random / All" else "Unique per prop firm")
+        self.log(f"🎲 {choice} signal selected")
+
     def _build_ml_publisher_ui(self, parent):
         """Password-gated switch that makes this companion the ML publisher.
 
@@ -2321,7 +2372,7 @@ class TradeOpssAIApp:
         self._refresh_ml_publisher_ui()
         # Publish on the next auto-push cycle rather than waiting out the timer.
         self._last_direction_publish = None
-        self.log("🤖 ML publishing enabled — this companion will broadcast direction signals")
+        self.log("🤖 ML access enabled — direct MT5 signals are available")
 
     def _refresh_ml_publisher_ui(self):
         enabled = self._ml_mode_enabled()
@@ -5335,31 +5386,7 @@ class TradeOpssAIApp:
                          values=["All Trades", "Buy Only", "Sell Only"],
                          state='readonly', width=12).pack(side="left")
 
-        self.signal_mode_var = tk.StringVar(value="ML (password required)")
-        self.random_signal_scope_var = tk.StringVar(value="Unique per prop firm")
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(opts_row, text="Signal:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(18, 4))
-            ctk.CTkComboBox(opts_row, variable=self.signal_mode_var,
-                            values=["ML (password required)", "Random"],
-                            state="readonly", width=178, height=32,
-                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
-                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 8))
-            ctk.CTkComboBox(opts_row, variable=self.random_signal_scope_var,
-                            values=["Unique per prop firm", "Same for all prop firms"],
-                            state="readonly", width=190, height=32,
-                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
-                            dropdown_fg_color=self.C_BG_SEC).pack(side="left")
-        else:
-            ttk.Label(opts_row, text="Signal:").pack(side="left", padx=(16, 4))
-            ttk.Combobox(opts_row, textvariable=self.signal_mode_var,
-                         values=["ML (password required)", "Random"],
-                         state='readonly', width=20).pack(side="left", padx=(0, 8))
-            ttk.Combobox(opts_row, textvariable=self.random_signal_scope_var,
-                         values=["Unique per prop firm", "Same for all prop firms"],
-                         state='readonly', width=24).pack(side="left")
+        self._ensure_signal_mode_vars()
 
     # ── Phase detection helpers ──
 
@@ -9246,7 +9273,7 @@ class TradeOpssAIApp:
         scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
 
         signal_mode = self.signal_mode_var.get()
-        self._auto_trade_use_signal = signal_mode == "ML (password required)"
+        self._auto_trade_use_signal = signal_mode == "ML"
         if self._auto_trade_use_signal and not self._ml_mode_enabled():
             self.log("⛔ Enable ML and enter its password before scheduling ML trades", "WARN")
             messagebox.showwarning(
@@ -15017,9 +15044,15 @@ class TradeOpssAIApp:
                     if config.get('direction'):
                         self.direction_var.set(config['direction'])
                     if config.get('signal_mode'):
-                        self.signal_mode_var.set(config['signal_mode'])
+                        saved_signal_mode = config['signal_mode']
+                        self.signal_mode_var.set(
+                            "ML" if saved_signal_mode == "ML (password required)" else saved_signal_mode)
                     if config.get('random_signal_scope'):
                         self.random_signal_scope_var.set(config['random_signal_scope'])
+                    if self.signal_mode_var.get() == "ML" and not self._ml_mode_enabled():
+                        self.signal_mode_var.set("Random")
+                        self.random_signal_scope_var.set("Unique per prop firm")
+                    self._sync_signal_mode_ui()
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])
                 
