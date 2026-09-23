@@ -562,6 +562,17 @@ class PropFirmManager:
                             "mt5_sl_points": 0
                         }
                     },
+                    "funded_trade4_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQZ26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
                     # ── Funded Double Dip ──
                     # User spec: "Same as funded trades sequence above."
                     # Doubledip_1 holds the Payout-1 flavor, doubledip_2-4
@@ -638,6 +649,17 @@ class PropFirmManager:
                         }
                     },
                     "funded_trade_doubledip_3_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQZ26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
+                    "funded_trade_doubledip_4_p2": {
                         "50k": {
                             "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
@@ -1781,11 +1803,11 @@ class PropFirmManager:
                 "first_payout_probability_percent": 13.33,
                 "evaluation_hard_floor": 48000,
                 "cycle1_hard_floor": 48000,
-                "cycle2_5_hard_floor": 50100,
+                "cycle2_5_hard_floor": 48000,
                 "payout_request_gross": 1200,
                 "payout_receive_before_provider_fees": 1080,
                 "payout1_retained_balance": 52800,
-                "funded_cycle_hard_floor": 50100,
+                "funded_cycle_hard_floor": 48000,
                 "position_contracts": 2,
                 "position_symbol": "NQZ6",
             },
@@ -2108,7 +2130,7 @@ class PropFirmManager:
                 "evaluation_consistency_percent": 50,
                 "evaluation_daily_loss_limit": None,
                 "funded_daily_loss_limit": None,
-                "funded_floor_locked_after_payout1": 50100,
+                "funded_floor_locked_after_payout1": 48000,
                 "farming_days_required": 5,
                 "farming_min_profit_per_day": 150,
                 "payout2_5_min_net_profit_since_last_payout": 750,
@@ -2404,6 +2426,66 @@ class PropFirmManager:
                         scaled_config["mt5_volume"] = round(
                             float(scaled_config["mt5_volume"]) * multiplier, 2)
 
+        self._wire_topstep_rtp_p2_hedge_configs()
+
+    _TOPSTEP_RTP_PAYOUT2_PHASE_MAP = {
+        "funded_trade1": "funded_trade1_p2",
+        "funded_trade2": "funded_trade2_p2",
+        "funded_trade3": "funded_trade3_p2",
+        "funded_trade4": "funded_trade4_p2",
+        "funded_trade_doubledip_1": "funded_trade_doubledip_1_p2",
+        "funded_trade_doubledip_2": "funded_trade_doubledip_2_p2",
+        "funded_trade_doubledip_3": "funded_trade_doubledip_3_p2",
+        "funded_trade_doubledip_4": "funded_trade_doubledip_4_p2",
+    }
+
+    def _wire_topstep_rtp_p2_hedge_configs(self):
+        """Copy MT5 hedge sizing onto RTP payout-2+ keys (47-tick prop leg)."""
+        configs = (self.firm_blueprints.get("TopStep RTP") or {}).get("strategy_configs") or {}
+        hedge_pairs = (
+            ("funded_trade1_p2", "funded_trade2"),
+            ("funded_trade2_p2", "funded_trade3"),
+            ("funded_trade3_p2", "funded_trade4"),
+            ("funded_trade4_p2", "funded_trade4"),
+            ("funded_trade_doubledip_1_p2", "funded_trade_doubledip_2"),
+            ("funded_trade_doubledip_2_p2", "funded_trade_doubledip_3"),
+            ("funded_trade_doubledip_3_p2", "funded_trade_doubledip_4"),
+            ("funded_trade_doubledip_4_p2", "funded_trade_doubledip_4"),
+        )
+        for p2_key, src_key in hedge_pairs:
+            p2_cfg = (configs.get(p2_key) or {}).get("50k")
+            src_cfg = (configs.get(src_key) or {}).get("50k")
+            if not p2_cfg or not src_cfg:
+                continue
+            for field in ("mt5_volume", "mt5_tp_points", "mt5_sl_points"):
+                if not float(p2_cfg.get(field) or 0):
+                    p2_cfg[field] = src_cfg.get(field)
+
+    def _is_topstep_rtp_code(self, firm_code: str) -> bool:
+        compact = str(firm_code or "").lower().replace("_", "").replace(" ", "")
+        return compact in ("topsteprtp", "rtp") or (
+            "topstep" in compact and "rtp" in compact)
+
+    def remap_phase_key_for_funded_payout(self, firm_code: str, phase_key: str,
+                                          funded_payout_count: int) -> str:
+        """After payout 1, TopStep RTP uses 47-tick *_p2 blueprint keys."""
+        if funded_payout_count < 1 or not phase_key:
+            return phase_key
+        if not self._is_topstep_rtp_code(firm_code):
+            info = self.get_firm_info(firm_code)
+            if (info or {}).get("name") != "TopStep RTP":
+                return phase_key
+        mapped = self._TOPSTEP_RTP_PAYOUT2_PHASE_MAP.get(phase_key)
+        if not mapped:
+            return phase_key
+        configs = (self.firm_blueprints.get("TopStep RTP") or {}).get("strategy_configs") or {}
+        if mapped in configs:
+            self.logger.info(
+                f"[RTP payout 2+] {phase_key} → {mapped} "
+                f"(funded_payout_count={funded_payout_count})")
+            return mapped
+        return phase_key
+
     def detect_prop_firm(self, username: str) -> Optional[str]:
         """Detect prop firm based on username prefix. Returns None if unrecognized."""
         if not username or (isinstance(username, str) and len(username) < 4):
@@ -2589,8 +2671,11 @@ class PropFirmManager:
                 return candidate, strategy_configs[candidate]
         return "", {}
 
-    def get_strategy_config(self, firm_code: str, phase_key: str, size_key: str = "50k") -> Dict:
+    def get_strategy_config(self, firm_code: str, phase_key: str, size_key: str = "50k",
+                            *, funded_payout_count: int = 0) -> Dict:
         """Get strategy configuration for specific prop firm and phase."""
+        phase_key = self.remap_phase_key_for_funded_payout(
+            firm_code, phase_key, funded_payout_count)
         # Normalize size_key: "$50,000" -> "50k", "$100,000" -> "100k", etc.
         size_key = self.convert_account_size_to_key(size_key, firm_code)
         self.logger.info(f"[DEBUG get_strategy_config] firm_code='{firm_code}', phase_key='{phase_key}', size_key='{size_key}'")
@@ -3088,8 +3173,8 @@ class PropFirmManager:
     })
 
     # Challenge floors follow the FundedNext Rapid Daily model unless a firm
-    # publishes its own. Funded floors come from _HARD_STOP_THRESHOLDS so the
-    # breach check and get_lock_level's SL sizing cannot drift apart.
+    # publishes its own. After funded trade 1, funded breach uses
+    # _FUNDED_POST_FT1_BREACH_FLOORS (not blueprint funded_floor keys).
     DEFAULT_CHALLENGE_FLOOR = 48000.0
     DEFAULT_FUNDED_FLOOR = 50100.0
     _CHALLENGE_FLOOR_RULES = ("evaluation_hard_floor", "cycle1_hard_floor")
@@ -3098,30 +3183,138 @@ class PropFirmManager:
         "funded_floor_locked_after_payout1",
         "funded_floor_locked_after_first_payout", "cycle2_5_hard_floor",
     )
+    _TOPSTEP_FUNDED_BREACH_CODES = frozenset({
+        "TopStep", "TopStep RTP", "TopStep 50K XFA",
+    })
+    _MFFU_FUNDED_BREACH_CODES = frozenset({
+        "MFFU_Flex", "MFFU Builder 50K", "MFFU Rapid EOD",
+    })
+    # FT1 funded breach (strictly below floor).
+    _NEG2000_FUNDED_BREACH_CODES = _TOPSTEP_FUNDED_BREACH_CODES | _MFFU_FUNDED_BREACH_CODES
+    # FT2+ funded breach ceilings (at or below triggers Fail).
+    _FUNDED_POST_FT2_BREACH_CEILING_DEFAULT = 50100.0
+    _FUNDED_POST_FT2_BREACH_CEILING_MFFU = 100.0
+    _FUNDED_POST_FT2_BREACH_CEILING_TOPSTEP = 0.0
+    _FUNDED_POST_FT2_BREACH_CEILING_OVERRIDES: Dict[str, float] = {
+        "AlphaFutures": 50000.0,
+    }
+    # Balance floor once funded trade 1 has been taken (strictly below triggers Fail).
+    _FUNDED_POST_FT1_BREACH_FLOORS: Dict[str, float] = {
+        "Funded Next Flex": 48500.0,
+        "Funded Next": 48000.0,
+        "TradeDay": 48000.0,
+        "Tradeify": 48000.0,
+        "Tradeify Select": 48000.0,
+        "Lucid": 48000.0,
+        "AlphaFutures": 48000.0,
+        "Apex": 48000.0,
+        "FTMO Futures Pro": 48000.0,
+        "Top One Futures": 48000.0,
+        "Blue Guardian Reserve": 48000.0,
+        "FundedNext Rapid Daily": 48000.0,
+    }
 
-    def get_breach_floor(self, firm_code: str, phase: str = "Funded") -> float:
-        """Balance at or below which this account is breached.
+    def _normalize_breach_firm_code(self, firm_code: str) -> str:
+        code = str(firm_code or "").strip()
+        if code in ("LucidMaxx", "Lucid Maxx"):
+            return "Lucid"
+        if code in ("MFFU", "My Funded Futures"):
+            return "MFFU_Flex"
+        if code in ("Trade Day", "Trade day"):
+            return "TradeDay"
+        return code
 
-        A 0.0 hard stop is a real floor, not a missing one — TopStep funded
-        accounts start at $0 and so can never breach on balance alone.
+    def get_ft2_breach_ceiling(self, firm_code: str) -> float:
+        """Max balance (inclusive) before FT2+ auto-Fail after funded trade 2."""
+        code = self._normalize_breach_firm_code(firm_code)
+        raw = str(firm_code or "").strip()
+        if code in self._MFFU_FUNDED_BREACH_CODES or raw in ("MFFU", "My Funded Futures"):
+            return self._FUNDED_POST_FT2_BREACH_CEILING_MFFU
+        if code in self._TOPSTEP_FUNDED_BREACH_CODES:
+            return self._FUNDED_POST_FT2_BREACH_CEILING_TOPSTEP
+        override = self._FUNDED_POST_FT2_BREACH_CEILING_OVERRIDES.get(code)
+        if override is not None:
+            return float(override)
+        return self._FUNDED_POST_FT2_BREACH_CEILING_DEFAULT
+
+    def get_breach_floor(self, firm_code: str, phase: str = "Funded",
+                         *, after_funded_trade1: bool = False,
+                         after_funded_trade2: bool = False) -> Optional[float]:
+        """Funded breach threshold for auto-Fail (see breach_uses_at_or_below).
+
+        Challenge: floor $48k (strictly below). Funded pre-FT1: None.
+        After FT1 only: -$2k (TopStep/MFFU) or _FUNDED_POST_FT1_BREACH_FLOORS.
+        After FT2+: MFFU $100, TopStep $0, Alpha $50k, others $50,100.
         """
+        code = self._normalize_breach_firm_code(firm_code)
         rules = (self.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        if not rules and code != firm_code:
+            rules = (self.firm_blueprints.get(code) or {}).get("rules") or {}
         if str(phase or "").strip().lower().startswith("challenge"):
             keys = self._CHALLENGE_FLOOR_RULES
             default = self.DEFAULT_CHALLENGE_FLOOR
-        else:
-            if firm_code in self._HARD_STOP_THRESHOLDS:
-                return float(self._HARD_STOP_THRESHOLDS[firm_code])
-            keys = self._FUNDED_FLOOR_RULES
-            default = self.DEFAULT_FUNDED_FLOOR
-        for key in keys:
+            for key in keys:
+                value = rules.get(key)
+                if value:
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        continue
+            return default
+
+        if after_funded_trade2:
+            return self.get_ft2_breach_ceiling(firm_code)
+
+        if not after_funded_trade1:
+            return None
+
+        neg2000 = self._NEG2000_FUNDED_BREACH_CODES
+        if code in neg2000 or firm_code in neg2000:
+            return -2000.0
+        if code in ("MFFU", "My Funded Futures"):
+            return -2000.0
+
+        post = self._FUNDED_POST_FT1_BREACH_FLOORS.get(code)
+        if post is not None:
+            return float(post)
+        if code in self._HARD_STOP_THRESHOLDS:
+            return float(self._HARD_STOP_THRESHOLDS[code])
+        for key in self._FUNDED_FLOOR_RULES:
             value = rules.get(key)
             if value:
                 try:
                     return float(value)
                 except (TypeError, ValueError):
                     continue
-        return default
+        return self.DEFAULT_FUNDED_FLOOR
+
+    def breach_uses_at_or_below(self, phase: str, *, after_funded_trade2: bool) -> bool:
+        """True when Fail uses balance <= floor (FT2+ funded); else strictly below."""
+        if str(phase or "").strip().lower().startswith("challenge"):
+            return False
+        return bool(after_funded_trade2)
+
+    @staticmethod
+    def evaluate_breach_blown(
+        *,
+        on_funded: bool,
+        after_ch1: bool,
+        after_ft1: bool,
+        after_ft2: bool,
+        floor: Optional[float],
+        balance: float,
+        has_trades: bool,
+    ) -> bool:
+        """Whether auto-Fail breach is legitimate (trade gates + balance vs floor)."""
+        if floor is None or not has_trades:
+            return False
+        if on_funded and after_ft2:
+            return balance <= float(floor)
+        if on_funded and after_ft1:
+            return balance < float(floor)
+        if not on_funded and after_ch1:
+            return balance < float(floor)
+        return False
 
     def resolve_next_phase_key(self, firm_code: str, current_key: str,
                                outcome: str):
@@ -3405,22 +3598,25 @@ class PropFirmManager:
     # while the MT5 hedge stays open.
 
     _HARD_STOP_THRESHOLDS: Dict[str, float] = {
-        # MFFU / MFFU_Flex: detected dynamically (see adjust_farming_tp_sl)
-        "TopStep":          -2000.0,  # Funded starts at $0; breaches at -$2,000
+        "TopStep":          -2000.0,
         "TopStep RTP":      -2000.0,
-        "Funded Next":      50000.0,
+        "TopStep 50K XFA":  -2000.0,
+        "MFFU_Flex":        -2000.0,
+        "MFFU Builder 50K": -2000.0,
+        "MFFU Rapid EOD":   -2000.0,
+        "Funded Next":      48000.0,
         "Funded Next Flex": 48500.0,
-        "TradeDay":         50000.0,
-        "Tradeify":         50000.0,
-        "Tradeify Select":  50100.0,
-        "Blue Guardian Reserve": 50100.0,
-        "FTMO Futures Pro": 50000.0,
-        "FundedNext Rapid Daily": 50100.0,
-        "AlphaFutures":     50000.0,
-        "Apex":             50000.0,
-        "Lucid":            50000.0,
-        "Top One Futures":  50000.0,
-        "Funded Futures Family": 48000.0,  # $50k − $2k EOD max drawdown
+        "TradeDay":         48000.0,
+        "Tradeify":         48000.0,
+        "Tradeify Select":  48000.0,
+        "Blue Guardian Reserve": 48000.0,
+        "FTMO Futures Pro": 48000.0,
+        "FundedNext Rapid Daily": 48000.0,
+        "AlphaFutures":     48000.0,
+        "Apex":             48000.0,
+        "Lucid":            48000.0,
+        "Top One Futures":  48000.0,
+        "Funded Futures Family": 48000.0,
     }
 
     # ── Profit targets for auto-status computation ────────────────────
@@ -3478,14 +3674,10 @@ class PropFirmManager:
         if profit >= target:
             return "Pass"
 
-        # Check if balance is at or below breach threshold
-        if firm_code in ("MFFU", "MFFU_Flex", "My Funded Futures"):
-            if current_balance < 50100.0:
-                hard_stop = 0.0
-            else:
-                hard_stop = 50100.0
-        else:
-            hard_stop = self._HARD_STOP_THRESHOLDS.get(firm_code, 50000.0)
+        norm = self._normalize_breach_firm_code(firm_code)
+        hard_stop = self._HARD_STOP_THRESHOLDS.get(norm, 48000.0)
+        if firm_code in ("MFFU", "My Funded Futures"):
+            hard_stop = -2000.0
 
         # Several firms have a hard stop equal to the $50,000 starting balance,
         # so an untouched account would read as a breach. It cannot have
@@ -3523,17 +3715,10 @@ class PropFirmManager:
         if mt5_tp <= 0:
             return config
 
-        # Determine hard-stop threshold
-        if firm_code in ("MFFU", "MFFU_Flex", "My Funded Futures"):
-            # MFFU zero-start vs traditional detection:
-            # If balance < $50,100 it can't be a traditional $50k account
-            # (would already be breached), so it must be zero-start.
-            if current_balance < 50100.0:
-                hard_stop = 0.0
-            else:
-                hard_stop = 50100.0
-        else:
-            hard_stop = self._HARD_STOP_THRESHOLDS.get(firm_code, 50000.0)
+        norm = self._normalize_breach_firm_code(firm_code)
+        hard_stop = self._HARD_STOP_THRESHOLDS.get(norm, 48000.0)
+        if firm_code in ("MFFU", "My Funded Futures"):
+            hard_stop = -2000.0
 
         distance_to_max_loss = current_balance - hard_stop
         if distance_to_max_loss <= 0:
