@@ -112,8 +112,8 @@ def _reset_cashflow_section(sec: Dict[str, Any], *, challenge_fees: float | None
     if challenge_fees is not None:
         out["challenge_fees"] = float(challenge_fees)
     out.setdefault("payouts", 0.0)
-    out.setdefault("hedging_results", 0.0)
-    out.setdefault("farming_results", 0.0)
+    out["hedging_results"] = 0.0
+    out["farming_results"] = 0.0
     # With discrepancy forced to 0 in hedging_review, net_profit should be:
     # payouts + hedging + farming - challenge_fees
     out["net_profit"] = round(

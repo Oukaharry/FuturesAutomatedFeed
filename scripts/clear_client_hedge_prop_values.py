@@ -42,7 +42,7 @@ def _should_clear_key(key: str) -> bool:
 
     if k.startswith("Hedge Result"):
         return True
-    if k in ("Hedge Net", "Hedge Net.1"):
+    if k in ("Hedge Net", "Hedge Net.1", "Farming Net"):
         return True
     if k.startswith("Hedge Day"):
         return True
