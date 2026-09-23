@@ -9069,6 +9069,25 @@ class TradeOpssAIApp:
                                 f"⚠ Funded cycle TP {acct_num}: no cycle goal or trade 1 TP "
                                 "available — keeping blueprint TP", "WARN")
 
+                    cycle_floor, floor_source = self._funded_cycle_hard_floor(
+                        firm_code, config, account_min_eq)
+                    threshold = (cycle_floor if cycle_floor is not None
+                                 else self.prop_firm_mgr.get_lock_level(firm_code))
+                    sl_mode = self._funded_sl_mode(firm_code)
+                    self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
+                             f"trade_index={trade_index} floor=${threshold} ({floor_source}) "
+                             f"mode={sl_mode} tick_value={tick_value}")
+                    config = self.prop_firm_mgr.calculate_funded_sl(
+                        config, balance, threshold, trade_index, tick_value,
+                        sl_mode=sl_mode)
+                    audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                          status="applied", balance=balance, balance_source=bal_src,
+                          trade_index=trade_index, lock_level=threshold,
+                          target_account_id=target_account_id,
+                          cycle_floor_source=floor_source,
+                          funded_profit=funded_profit,
+                          sl_after=config.get("tradovate_sl_ticks"))
+
                     if trade_index >= 2:
                         if (is_ftmo_pro or is_tradeify_select or is_reserve_ft2_plus
                                 or is_mffu_rapid_eod or is_topstep_xfa):
@@ -9092,31 +9111,6 @@ class TradeOpssAIApp:
                                   tp_after=config.get("tradovate_tp_ticks"),
                                   sl_after=config.get("tradovate_sl_ticks"))
                             return config
-                        # Trade 2+ risks only the remaining buffer above the
-                        # account's live minimum-equity floor. A documented
-                        # blueprint floor is used only when live data is absent.
-                        cycle_floor, floor_source = self._funded_cycle_hard_floor(
-                            firm_code, config, account_min_eq)
-                        threshold = (cycle_floor if cycle_floor is not None
-                                     else self.prop_firm_mgr.get_lock_level(firm_code))
-                        sl_mode = self._funded_sl_mode(firm_code)
-                        self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
-                                 f"trade_index={trade_index} floor=${threshold} ({floor_source}) "
-                                 f"mode={sl_mode} tick_value={tick_value}")
-                        config = self.prop_firm_mgr.calculate_funded_sl(
-                            config, balance, threshold, trade_index, tick_value,
-                            sl_mode=sl_mode)
-                        audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
-                              status="applied", balance=balance, balance_source=bal_src,
-                              trade_index=trade_index, lock_level=threshold,
-                              target_account_id=target_account_id,
-                              cycle_floor_source=floor_source,
-                              funded_profit=funded_profit,
-                              sl_after=config.get("tradovate_sl_ticks"))
-                    else:
-                        self.log(
-                            f"🧮 Funded SL {acct_num}: trade_index=1 — "
-                            f"keeping blueprint SL={config.get('tradovate_sl_ticks')}t")
             except Exception as _fe:
                 self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
                 audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
@@ -9248,6 +9242,27 @@ class TradeOpssAIApp:
               sl_before=_before_sl, sl_after=config.get("tradovate_sl_ticks"),
               reasons=list(config.get('_adj_reasons') or []))
         return config
+
+    @staticmethod
+    def _apply_tradeify_select_ft2_stop(config, balance, tick_value):
+        """Size Tradeify Select funded trade 2+ risk to its $50,100 floor."""
+        adjusted = config.copy()
+        qty = float(adjusted.get("tradovate_qty", 0) or 0)
+        if qty <= 0 or tick_value <= 0:
+            return adjusted
+        floor = 50100.0
+        risk_dollars = float(balance) - floor
+        if risk_dollars < tick_value * qty:
+            adjusted["_skip_order_reason"] = (
+                f"Tradeify Select Trade 2+ has no room above the $50,100 floor "
+                f"(live balance ${balance:,.2f})")
+            return adjusted
+        sl_ticks = min(600, int(risk_dollars // (tick_value * qty)))
+        adjusted["tradovate_sl_ticks"] = sl_ticks
+        adjusted["_sl_was_adjusted"] = True
+        adjusted.setdefault("_adj_reasons", []).append(
+            f"Tradeify Select FT2+ SL={sl_ticks}t (${risk_dollars:,.0f} to $50,100 floor)")
+        return adjusted
 
     # ── Auto-Trade Scheduler Logic ──
 

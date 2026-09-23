@@ -3912,15 +3912,12 @@ class PropFirmManager:
                             sl_mode: Optional[str] = None) -> Dict:
         """Funded-account SL rule (REPLACES midnight-floor + TMDL for funded).
 
-        Applies to every firm's Funded and Double Dip phases:
+                Applies to every funded trade, including funded trade 1:
 
-          • Trade 1 (funded_trade1 / doubledip_1): SL risk is fixed at
-            exactly $2,000 (FUNDED_TRADE1_SL_DOLLARS).
-          • Trade 2+:  SL risk dollars = current_balance - threshold, where
-            `threshold` is the FLAT lock level (TopStep $0, MFFU $100,
-            others $50,000) — i.e. the literal distance from the firm's
-            hard drawdown floor. NOT the trailing min(lock, balance−$2,000):
-            the SL must match exactly how much room is left to the floor.
+                    • SL risk dollars = current_balance - threshold, where `threshold`
+                        is the account's current hard drawdown floor. This preserves the
+                        full remaining buffer for the specific account, regardless of
+                        whether it is FT1, FT2, FT3, FT4, or FT5.
 
         SL is converted to ticks (sl_dollars / (tick × qty)), floored at
         _SL_MIN_TICKS. The MT5 hedge TP is re-derived from the new SL via
@@ -3946,10 +3943,12 @@ class PropFirmManager:
         if qty <= 0 or tick_value <= 0:
             return adjusted
 
-        if trade_index <= 1:
-            return adjusted
-
         sl_dollars = current_balance - threshold
+        if sl_dollars < tick_value * qty:
+            adjusted['_skip_order_reason'] = (
+                f"Funded trade {trade_index} has no room above its "
+                f"${threshold:,.0f} floor (live balance ${current_balance:,.2f})")
+            return adjusted
         basis = (f"funded trade {trade_index} — balance "
                  f"${current_balance:,.0f} − threshold ${threshold:,.0f}")
 

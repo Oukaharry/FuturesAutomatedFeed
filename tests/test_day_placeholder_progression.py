@@ -1,3 +1,5 @@
+import pytest
+
 from trader_companion.trader_app import TradeOpssAIApp
 from trader_companion.prop_firm_manager import PropFirmManager
 
@@ -207,6 +209,39 @@ def test_completed_trade_with_queued_day_requires_fresh_history():
     row = _row(**{"Hedge Result 1": "$0.00", "Hedge Result 2": "THURSDAY"})
 
     assert app._outcome_history_needed(row) is True
+
+
+def test_tradeify_select_funded_trade_two_stop_uses_live_floor_buffer():
+    config = {"tradovate_qty": 2, "tradovate_sl_ticks": 260}
+
+    adjusted = TradeOpssAIApp._apply_tradeify_select_ft2_stop(
+        config, balance=52941.0, tick_value=5.0)
+
+    assert adjusted["tradovate_sl_ticks"] == 284
+    assert adjusted["tradovate_sl_ticks"] * adjusted["tradovate_qty"] * 5 == 2840
+    assert "_skip_order_reason" not in adjusted
+
+
+def test_tradeify_select_funded_trade_two_is_blocked_at_floor():
+    config = {"tradovate_qty": 2, "tradovate_sl_ticks": 260}
+
+    adjusted = TradeOpssAIApp._apply_tradeify_select_ft2_stop(
+        config, balance=50100.0, tick_value=5.0)
+
+    assert "no room above the $50,100 floor" in adjusted["_skip_order_reason"]
+
+
+@pytest.mark.parametrize("trade_index", [1, 2, 3, 4, 5])
+def test_every_funded_trade_sizes_stop_from_live_balance_and_floor(trade_index):
+    manager = PropFirmManager()
+    config = {"tradovate_qty": 2, "tradovate_sl_ticks": 200}
+
+    adjusted = manager.calculate_funded_sl(
+        config, current_balance=52941.0, threshold=50100.0,
+        trade_index=trade_index, tick_value=5.0)
+
+    assert adjusted["tradovate_sl_ticks"] == 284
+    assert adjusted["tradovate_sl_ticks"] * 2 * 5 == 2840
 
 
 def test_untraded_day_placeholder_does_not_require_history_refresh():
