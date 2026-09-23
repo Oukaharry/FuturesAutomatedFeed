@@ -2033,18 +2033,19 @@ class TradeOpssAIApp:
         # Trade direction source
         ctk.CTkLabel(toolbar, text="SIGNAL", font=("Segoe UI", 9, "bold"),
                      text_color="#38BDF8").pack(side="left", padx=(8, 6), pady=5)
-        self._signal_mode_control = ctk.CTkSegmentedButton(
+        self._signal_mode_control = ctk.CTkComboBox(
             toolbar,
             values=["Random / Firm", "Random / All", "ML"],
             variable=self._signal_choice_var,
             command=self._select_trade_signal_mode,
-            width=292, height=28,
+            state="readonly", width=170, height=28,
             fg_color=self.C_BG_THIRD,
-            selected_color=self.C_ACCENT,
-            selected_hover_color=self.C_ACCENT_HV,
-            unselected_color=self.C_BG_THIRD,
-            unselected_hover_color=self.C_BORDER,
+            border_color=self.C_BORDER,
+            button_color=self.C_ACCENT,
+            button_hover_color=self.C_ACCENT_HV,
             text_color=self.C_TEXT,
+            dropdown_fg_color=self.C_BG_SEC,
+            dropdown_hover_color=self.C_BG_THIRD,
             font=("Segoe UI", 9, "bold"),
         )
         self._signal_mode_control.pack(side="left", padx=(0, 8), pady=5)
