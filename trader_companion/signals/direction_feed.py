@@ -1,8 +1,8 @@
 """Share one ML direction across every companion, via the dashboard.
 
-Only a companion with MT5 attached can run the ensemble, so that companion
-publishes its reading and the dashboard rebroadcasts it. Companions with no
-MT5 — which would otherwise coin-flip — subscribe instead.
+Any companion with MT5 connected auto-publishes; the dashboard grants one
+publisher lease at a time. Others subscribe. When the publisher disconnects
+MT5, the lease expires and the next connected companion can take over.
 
 The signal is a LIVE reading, not a daily bias: it is re-scored every bar and
 may flip during the session. Consumers accept any signal published within
@@ -21,6 +21,7 @@ SIGNAL_MAX_AGE_SEC = 300
 
 SETTING_KEY = "ml_direction_signal"
 PUBLISH_PATH = "/api/signals/direction"
+RELEASE_PATH = "/api/signals/direction/release"
 _TIMEOUT_SEC = 15
 
 
@@ -87,12 +88,25 @@ def direction_from(signal, max_age_sec=SIGNAL_MAX_AGE_SEC, now=None):
 
 
 def publish(dashboard_url, signal, headers=None):
-    """Send this companion's reading to the dashboard. True when stored."""
+    """POST direction to the dashboard. Returns (stored, http_status)."""
     if not dashboard_url or not signal:
-        return False
+        return False, 0
     response = requests.post(
         f"{str(dashboard_url).rstrip('/')}{PUBLISH_PATH}",
         json=signal,
+        headers=headers or {"Content-Type": "application/json"},
+        timeout=_TIMEOUT_SEC,
+    )
+    return response.status_code == 200, response.status_code
+
+
+def release_publisher_lease(dashboard_url, email, publisher_id, headers=None):
+    """Drop this companion's publisher lease so another MT5 host can broadcast."""
+    if not dashboard_url or not email or not publisher_id:
+        return False
+    response = requests.post(
+        f"{str(dashboard_url).rstrip('/')}{RELEASE_PATH}",
+        json={"email": email, "publisher_id": publisher_id},
         headers=headers or {"Content-Type": "application/json"},
         timeout=_TIMEOUT_SEC,
     )

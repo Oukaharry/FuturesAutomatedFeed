@@ -1695,10 +1695,11 @@ class TradeOpssAIApp:
         self.client_info = None
         self._hedge_account_profile = {}
 
-        # ML direction publisher (MT5 + ML unlock — no Auto-Push required)
+        # ML direction publisher (implicit when MT5 + dashboard creds — no toggle)
         self._ml_publish_enabled = False
         self._ml_publish_thread = None
         self._ml_publisher_id = uuid.uuid4().hex
+        self._ml_holds_publisher_lease = False
         # Live server signal stream (toolbar + logs on login)
         self._signal_stream_enabled = False
         self._signal_stream_thread = None
@@ -1921,7 +1922,6 @@ class TradeOpssAIApp:
 
     def setup_ui(self):
         """Setup the modern CTk user interface — two-column single-screen layout."""
-        self.ml_mode_var = tk.BooleanVar(value=False)
         self._ensure_signal_mode_vars()
         if not CTK_AVAILABLE:
             # ── Fallback: simple ttk layout ──
@@ -1941,6 +1941,7 @@ class TradeOpssAIApp:
             tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Settings")
             self._build_dashboard_tab(tab_dash)
             self._build_trading_engine_ui(tab_dash)
+            self._build_ml_publisher_ui(self.notebook)
             log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
             log_frame.pack(fill="both", expand=True, padx=8, pady=4)
             self.log_text = scrolledtext.ScrolledText(log_frame, height=6, bg='#0a0e1a',
@@ -2180,6 +2181,7 @@ class TradeOpssAIApp:
         tab_settings = self.notebook.add("  Settings  ")
 
         self._build_combined_settings_tab(tab_settings)
+        self._build_ml_publisher_ui(self.notebook)
 
         # ── Bottom status bar ──
         status_bar = ctk.CTkFrame(outer, fg_color=self.C_BG_SEC, height=24, corner_radius=0)
@@ -2305,20 +2307,13 @@ class TradeOpssAIApp:
         self.log("🧠 ML direction selected; random fallback stays implicit")
 
     def _build_ml_publisher_ui(self, parent):
-        """Switch that makes this companion an ML publisher candidate.
-
-        Scoring the ensemble needs MT5 and is heavy, so exactly one machine
-        should run it; everyone else reads its broadcast.
-        """
-        self.ml_mode_var = tk.BooleanVar(value=False)
-        self._ml_status_var = tk.StringVar(value="reads signals only")
+        """Status chip: implicit ML publisher when MT5 is connected (server picks one)."""
+        if not getattr(self, "_ml_status_var", None):
+            self._ml_status_var = tk.StringVar(value="ML: connect MT5 to publish")
 
         if not CTK_AVAILABLE:
             row = tk.Frame(parent, bg="#161B22")
             row.pack(fill="x", padx=8, pady=4)
-            self._ml_toggle_btn = tk.Button(row, text="Enable ML",
-                                            command=self._toggle_ml_publisher)
-            self._ml_toggle_btn.pack(side="left", padx=(0, 8))
             tk.Label(row, textvariable=self._ml_status_var,
                      bg="#161B22", fg="#8B949E").pack(side="left")
             return
@@ -2326,44 +2321,21 @@ class TradeOpssAIApp:
         bar = ctk.CTkFrame(parent, fg_color="transparent")
         ctk.CTkLabel(bar, textvariable=self._ml_status_var, font=("Segoe UI", 9),
                      text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 8))
-        self._ml_toggle_btn = ctk.CTkButton(
-            bar, text="Enable ML", width=110, height=28,
-            fg_color=self.C_BG_THIRD, hover_color=self.C_BORDER,
-            border_width=1, border_color=self.C_BORDER,
-            text_color=self.C_TEXT, font=("Segoe UI", 10, "bold"),
-            corner_radius=6, command=self._toggle_ml_publisher)
-        self._ml_toggle_btn.pack(side="left")
-        # Rides in the tabview's own header strip, level with the Settings tab.
         bar.place(in_=self.notebook, relx=1.0, x=-12, y=8, anchor="ne")
-
-    def _toggle_ml_publisher(self):
-        """Enable or disable ML publishing for this companion."""
-        if self._ml_mode_enabled():
-            self.ml_mode_var.set(False)
-            self._stop_ml_direction_publisher()
-            self._refresh_ml_publisher_ui()
-            self.log("🤖 ML publishing disabled — this companion now reads signals only")
-            return
-
-        self.ml_mode_var.set(True)
         self._refresh_ml_publisher_ui()
-        self._last_direction_publish = None
-        self._last_direction_publish_attempt = None
-        self.log("🤖 ML enabled — server lease selects one companion to broadcast")
-        self._start_ml_direction_publisher()
 
     def _refresh_ml_publisher_ui(self):
-        enabled = self._ml_mode_enabled()
-        status = "broadcasting direction" if enabled else "reads signals only"
         try:
-            self._ml_status_var.set(status)
-            if CTK_AVAILABLE:
-                self._ml_toggle_btn.configure(
-                    text="Disable ML" if enabled else "Enable ML",
-                    fg_color="#DC2626" if enabled else self.C_BG_THIRD)
-            else:
-                self._ml_toggle_btn.configure(
-                    text="Disable ML" if enabled else "Enable ML")
+            if not self._dashboard_credentials_ready():
+                self._ml_status_var.set("ML: need email + dashboard URL")
+                return
+            if not self._mt5_connected_for_ml():
+                self._ml_status_var.set("ML: connect MT5 to publish")
+                return
+            if getattr(self, "_ml_holds_publisher_lease", False):
+                self._ml_status_var.set("ML: broadcasting (server lease)")
+                return
+            self._ml_status_var.set("ML: follower — another companion publishes")
         except Exception:
             pass
 
@@ -2797,6 +2769,8 @@ class TradeOpssAIApp:
         if self.pusher.connected:
             success, msg = self.pusher.disconnect_mt5()
             self.mt5_btn.configure(text="Connect MT5")
+            if success:
+                self._on_mt5_disconnected()
             self.log(msg)
         else:
             login = self.mt5_login.get().strip()
@@ -5179,22 +5153,78 @@ class TradeOpssAIApp:
     # One M5 bar — republishing faster cannot say anything new.
     _DIRECTION_PUBLISH_INTERVAL_SEC = 300
 
+    def _dashboard_credentials_ready(self):
+        try:
+            email = self.client_email_entry.get().strip()
+            url = self.url_entry.get().strip()
+            return bool(email and url)
+        except Exception:
+            return False
+
+    def _mt5_connected_for_ml(self):
+        if getattr(self.pusher, "connected", False):
+            return True
+        if MT5_AVAILABLE:
+            try:
+                return bool(mt5.terminal_info())
+            except Exception:
+                pass
+        return False
+
+    def _should_run_ml_publisher(self):
+        """Implicit publisher: dashboard creds + live MT5 (server lease picks one)."""
+        return self._dashboard_credentials_ready() and self._mt5_connected_for_ml()
+
+    def _on_mt5_disconnected(self):
+        """Stop renewing the server lease so another MT5 companion can take over."""
+        held_lease = getattr(self, "_ml_holds_publisher_lease", False)
+        self._ml_holds_publisher_lease = False
+        self._stop_ml_direction_publisher()
+        if held_lease:
+            threading.Thread(target=self._release_ml_publisher_lease, daemon=True).start()
+        try:
+            self.root.after(0, self._refresh_ml_publisher_ui)
+            self.root.after(0, self._update_direction_mode_banner)
+        except Exception:
+            pass
+
+    def _release_ml_publisher_lease(self):
+        try:
+            from trader_companion.signals import direction_feed
+        except ImportError:
+            return
+        email = ""
+        dashboard_url = ""
+        try:
+            email = self.client_email_entry.get().strip().lower()
+            dashboard_url = self.url_entry.get().strip().rstrip("/")
+        except Exception:
+            return
+        if not email or not dashboard_url:
+            return
+        pub_id = getattr(self, "_ml_publisher_id", "")
+        try:
+            direction_feed.release_publisher_lease(
+                dashboard_url, email, pub_id, headers=_companion_request_headers())
+        except Exception:
+            pass
+
     def _ensure_ml_direction_publisher_running(self):
-        """Start the ML publish loop when this companion is enabled."""
-        if self._ml_mode_enabled():
+        """Start the ML publish loop when MT5 is connected (no manual toggle)."""
+        if self._should_run_ml_publisher():
             self._start_ml_direction_publisher()
 
     def _start_ml_direction_publisher(self):
         """Background ML scoring + dashboard broadcast (no Auto-Push required)."""
         if self._ml_publish_enabled:
             return
-        if not self._ml_mode_enabled():
+        if not self._should_run_ml_publisher():
             return
         self._ml_publish_enabled = True
         self._ml_publish_thread = threading.Thread(
             target=self._ml_direction_publisher_loop, daemon=True)
         self._ml_publish_thread.start()
-        self.log("📡 ML direction publisher started — scoring and broadcasting automatically")
+        self.log("📡 ML publisher active — will broadcast when model has BUY/SELL")
 
     def _stop_ml_direction_publisher(self):
         self._ml_publish_enabled = False
@@ -5207,13 +5237,14 @@ class TradeOpssAIApp:
                 if not self._ml_publish_enabled:
                     return
                 time.sleep(1)
-            if not self._ml_mode_enabled():
-                continue
+            if not self._should_run_ml_publisher():
+                self._ml_publish_enabled = False
+                return
             self.root.after(0, self._run_direction_publish_if_due)
 
     def _run_direction_publish_if_due(self):
         """Publish this companion's ML direction for MT5-less companions."""
-        if not self._ml_mode_enabled():
+        if not self._should_run_ml_publisher():
             return
         now = time.monotonic()
         last_ok = getattr(self, "_last_direction_publish", None)
@@ -5287,23 +5318,35 @@ class TradeOpssAIApp:
         signal["email"] = email
         signal["publisher_id"] = getattr(self, "_ml_publisher_id", "")
         try:
-            published = direction_feed.publish(
+            published, http_status = direction_feed.publish(
                 dashboard_url, signal, headers=_companion_request_headers())
         except Exception as exc:
             self.log(f"⚠ Direction broadcast failed: {exc}", "WARN")
             return
         if published:
+            self._ml_holds_publisher_lease = True
             self._last_direction_publish = time.monotonic()
             d = str(signal.get("direction") or "").lower()
             if d in ("buy", "sell"):
                 self._last_streamed_direction = d
                 self._streamed_signal_valid = True
-                self.root.after(0, self._update_direction_mode_banner)
+            self.root.after(0, self._update_direction_mode_banner)
+            self.root.after(0, self._refresh_ml_publisher_ui)
             self.log(
                 f"📡 Broadcast {signal['direction'].upper()} for {mt5_ticker} "
                 f"(confidence {signal.get('confidence')})")
+        elif http_status == 409:
+            self._ml_holds_publisher_lease = False
+            self.root.after(0, self._refresh_ml_publisher_ui)
+            self._log_ml_publish_throttled(
+                "lease",
+                "ℹ Another companion holds the ML publisher lease — following its signal")
         else:
-            self.log("ℹ ML publisher lease held by another companion; reading its signal", "INFO")
+            self._ml_holds_publisher_lease = False
+            self.log(
+                "⚠ Direction broadcast rejected by server "
+                f"(HTTP {http_status}; check email auth / version)",
+                "WARN")
 
     def _log_ml_publish_throttled(self, key: str, message: str, interval_sec: int = 60):
         """Avoid spamming the log while the publisher is warming up."""
@@ -13521,20 +13564,6 @@ class TradeOpssAIApp:
         digest = hashlib.sha256(entered.encode("utf-8")).hexdigest()
         return hmac.compare_digest(digest, cls._ML_PASSWORD_SHA256)
 
-    def _ml_mode_enabled(self):
-        """True when ML publishing was unlocked with the password.
-
-        The password gates the unlock action; it is never kept in memory or
-        written to disk, so only this flag is persisted.
-        """
-        var = getattr(self, "ml_mode_var", None)
-        if var is None:
-            return False
-        try:
-            return bool(var.get())
-        except Exception:
-            return False
-
     def _split_payout_mode_enabled(self):
         """True when the Split (Tradeify) toolbar checkbox is checked."""
         var = getattr(self, "funded_split_payout_var", None)
@@ -13656,7 +13685,7 @@ class TradeOpssAIApp:
         if var is None:
             return
         try:
-            if self._ml_mode_enabled():
+            if getattr(self, "_ml_holds_publisher_lease", False):
                 if getattr(self, "_streamed_signal_valid", False):
                     d = getattr(self, "_last_streamed_direction", None)
                     if d in ("buy", "sell"):
@@ -15667,7 +15696,6 @@ class TradeOpssAIApp:
             "sheet_url": self.sheet_url_entry.get(),
             "mt5_login": self.mt5_login.get(),
             "mt5_server": self.mt5_server.get(),
-            "ml_mode": getattr(self, "ml_mode_var", None).get() if getattr(self, "ml_mode_var", None) is not None else False,
         }
         # Trading engine settings
         if hasattr(self, 'broker_var'):
@@ -15718,10 +15746,8 @@ class TradeOpssAIApp:
                 if config.get('mt5_server'):
                     self.mt5_server.delete(0, tk.END)
                     self.mt5_server.insert(0, config.get('mt5_server', ''))
-                if config.get('ml_mode') is not None and getattr(self, 'ml_mode_var', None) is not None:
-                    self.ml_mode_var.set(bool(config.get('ml_mode')))
-                    self._refresh_ml_publisher_ui()
-                
+                self.root.after(800, self._ensure_ml_direction_publisher_running)
+
                 # Trading engine settings
                 if hasattr(self, 'broker_var'):
                     if config.get('broker_platform'):
@@ -15745,9 +15771,6 @@ class TradeOpssAIApp:
                             "ML" if saved_signal_mode == "ML (password required)" else saved_signal_mode)
                     if config.get('random_signal_scope'):
                         self.random_signal_scope_var.set(config['random_signal_scope'])
-                    if self.signal_mode_var.get() == "ML" and not self._ml_mode_enabled():
-                        self.signal_mode_var.set("Random")
-                        self.random_signal_scope_var.set("Unique per prop firm")
                     self._sync_signal_mode_ui()
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])

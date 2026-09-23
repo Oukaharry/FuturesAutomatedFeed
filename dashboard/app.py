@@ -13146,6 +13146,28 @@ def api_publish_direction_signal():
     return jsonify({'status': 'success', 'signal': signal})
 
 
+@app.route('/api/signals/direction/release', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_release_direction_publisher():
+    """Let the current lease holder release early (e.g. MT5 disconnected)."""
+    from dashboard.database import get_setting, set_setting
+    data = request.json or {}
+    email = str(data.get('email') or '').strip().lower()
+    publisher_id = str(data.get('publisher_id') or '').strip()
+    if not email or not publisher_id:
+        return jsonify({'status': 'error', 'message': 'email and publisher_id required'}), 400
+    if not get_client_by_email(email):
+        return jsonify({'status': 'error', 'message': 'Email not registered in the system'}), 404
+    try:
+        lease = json.loads(get_setting(DIRECTION_PUBLISHER_LEASE_SETTING) or '{}')
+    except (TypeError, ValueError):
+        lease = {}
+    if str(lease.get('publisher_id') or '') != publisher_id:
+        return jsonify({'status': 'success', 'released': False})
+    set_setting(DIRECTION_PUBLISHER_LEASE_SETTING, '{}', updated_by=email)
+    return jsonify({'status': 'success', 'released': True})
+
+
 @app.route('/api/signals/direction', methods=['GET'])
 @limiter.limit("240 per minute")
 def api_get_direction_signal():
