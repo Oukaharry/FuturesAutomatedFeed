@@ -1690,6 +1690,15 @@ class TradeOpssAIApp:
         self.client_info = None
         self._hedge_account_profile = {}
 
+        # ML direction publisher (MT5 + ML unlock — no Auto-Push required)
+        self._ml_publish_enabled = False
+        self._ml_publish_thread = None
+        # Live server signal stream (toolbar + logs on login)
+        self._signal_stream_enabled = False
+        self._signal_stream_thread = None
+        self._last_streamed_direction = None
+        self._streamed_signal_valid = False
+
         # Auto-trade scheduler state
         self.auto_trade_enabled = False
         self.auto_trade_thread = None
@@ -2052,7 +2061,11 @@ class TradeOpssAIApp:
             dropdown_hover_color=self.C_BG_THIRD,
             font=("Segoe UI", 9, "bold"),
         )
-        self._signal_mode_control.pack(side="left", padx=(0, 8), pady=5)
+        self._signal_mode_control.pack(side="left", padx=(0, 6), pady=5)
+        self._direction_mode_var = tk.StringVar(value="⏳ Waiting for ML signal…")
+        ctk.CTkLabel(toolbar, textvariable=self._direction_mode_var,
+                     font=("Segoe UI", 9, "bold"), text_color="#38BDF8").pack(
+            side="left", padx=(0, 8), pady=5)
         self._ctk_button(toolbar, text="TP/SL Plan", command=self._open_tp_sl_plan,
                  fg=self.C_BG_THIRD, hover=self.C_BORDER, width=88).pack(side="left", padx=(0, 6), pady=5)
 
@@ -2360,6 +2373,7 @@ class TradeOpssAIApp:
         """Unlock or disable ML publishing for this companion."""
         if self._ml_mode_enabled():
             self.ml_mode_var.set(False)
+            self._stop_ml_direction_publisher()
             self._refresh_ml_publisher_ui()
             self.log("🤖 ML publishing disabled — this companion now reads signals only")
             return
@@ -2375,9 +2389,10 @@ class TradeOpssAIApp:
 
         self.ml_mode_var.set(True)
         self._refresh_ml_publisher_ui()
-        # Publish on the next auto-push cycle rather than waiting out the timer.
         self._last_direction_publish = None
-        self.log("🤖 ML access enabled — direct MT5 signals are available")
+        self._last_direction_publish_attempt = None
+        self.log("🤖 ML access enabled — direct MT5 signals + server broadcast")
+        self._start_ml_direction_publisher()
 
     def _refresh_ml_publisher_ui(self):
         enabled = self._ml_mode_enabled()
@@ -2663,6 +2678,8 @@ class TradeOpssAIApp:
                             # with the toolbar Auto-Push toggle.
                             self.root.after(2000, lambda: self._update_auto_push_status(
                                 "Sync: off — press Auto-Push to start"))
+                            self.root.after(3000, self._start_signal_stream)
+                            self.root.after(3500, self._ensure_ml_direction_publisher_running)
                         self.root.after(0, _on_success)
                     else:
                         error_msg = data.get("message", "Client not found")
@@ -2832,6 +2849,8 @@ class TradeOpssAIApp:
                 self.mt5_btn.configure(text="Disconnect MT5")
                 self._start_m1_feed_after_mt5_connect()
                 self._log_market_feed_status()
+                self._ensure_ml_direction_publisher_running()
+                self._run_direction_publish_if_due()
             self.log(msg, "INFO" if success else "ERROR")
 
     def _auto_connect_mt5(self):
@@ -2846,6 +2865,8 @@ class TradeOpssAIApp:
                     pass
                 self._start_m1_feed_after_mt5_connect()
                 self._log_market_feed_status()
+                self._ensure_ml_direction_publisher_running()
+                self._run_direction_publish_if_due()
                 return
             login = self.mt5_login.get().strip()
             password = self.mt5_password.get()
@@ -2882,6 +2903,8 @@ class TradeOpssAIApp:
             if success:
                 self._start_m1_feed_after_mt5_connect()
                 self._log_market_feed_status()
+                self._ensure_ml_direction_publisher_running()
+                self._run_direction_publish_if_due()
 
         self.root.after(0, _connect_on_ui)
 
@@ -5068,32 +5091,62 @@ class TradeOpssAIApp:
     # One M5 bar — republishing faster cannot say anything new.
     _DIRECTION_PUBLISH_INTERVAL_SEC = 300
 
+    def _ensure_ml_direction_publisher_running(self):
+        """Start the ML publish loop when this companion is the unlocked publisher."""
+        if self._ml_mode_enabled():
+            self._start_ml_direction_publisher()
+
+    def _start_ml_direction_publisher(self):
+        """Background ML scoring + dashboard broadcast (no Auto-Push required)."""
+        if self._ml_publish_enabled:
+            return
+        if not self._ml_mode_enabled():
+            return
+        self._ml_publish_enabled = True
+        self._ml_publish_thread = threading.Thread(
+            target=self._ml_direction_publisher_loop, daemon=True)
+        self._ml_publish_thread.start()
+        self.log("📡 ML direction publisher started — scoring and broadcasting automatically")
+
+    def _stop_ml_direction_publisher(self):
+        self._ml_publish_enabled = False
+
+    def _ml_direction_publisher_loop(self):
+        """Score and publish on a short retry cadence until the model is ready."""
+        self.root.after(0, self._run_direction_publish_if_due)
+        while self._ml_publish_enabled:
+            for _ in range(15):
+                if not self._ml_publish_enabled:
+                    return
+                time.sleep(1)
+            if not self._ml_mode_enabled():
+                continue
+            self.root.after(0, self._run_direction_publish_if_due)
+
     def _run_direction_publish_if_due(self):
         """Publish this companion's ML direction for MT5-less companions."""
-        if not self.auto_push_enabled:
-            return
-        # Only the unlocked, MT5-attached companion carries the publish load.
         if not self._ml_mode_enabled():
             return
         now = time.monotonic()
-        last = getattr(self, "_last_direction_publish", None)
-        if last is not None and now - last < self._DIRECTION_PUBLISH_INTERVAL_SEC:
+        last_ok = getattr(self, "_last_direction_publish", None)
+        if last_ok is not None and now - last_ok < self._DIRECTION_PUBLISH_INTERVAL_SEC:
             return
-        self._last_direction_publish = now
+        last_try = getattr(self, "_last_direction_publish_attempt", None)
+        retry_gap = 30 if last_ok is None else 45
+        if last_try is not None and now - last_try < retry_gap:
+            return
+        self._last_direction_publish_attempt = now
         threading.Thread(target=self._publish_ml_direction, daemon=True).start()
 
     def _publish_ml_direction(self):
-        """Score the ensemble and broadcast the result via the dashboard.
-
-        Silent no-op without MT5 — those companions are consumers, and only a
-        reading backed by live bars is worth broadcasting.
-        """
+        """Score the ensemble and broadcast the result via the dashboard."""
         try:
             from trader_companion.signals import direction_feed
             from trader_companion.signals.ml_direction import (
                 ensure_trained_async, get_ml_direction,
             )
         except ImportError:
+            self.log("⚠ ML direction modules unavailable — cannot broadcast", "WARN")
             return
         email = ""
         try:
@@ -5106,11 +5159,16 @@ class TradeOpssAIApp:
         except Exception:
             pass
         if not email or not dashboard_url:
+            self.log("⚠ ML broadcast skipped — need client email and dashboard URL", "WARN")
             return
         try:
             if not self._ensure_mt5_for_signals():
+                self._log_ml_publish_throttled(
+                    "mt5_wait",
+                    "⏳ ML broadcast waiting for MT5 (connect login or wait for auto-connect)…")
                 return
-        except Exception:
+        except Exception as exc:
+            self.log(f"⚠ ML broadcast: MT5 check failed: {exc}", "WARN")
             return
 
         symbol = self._resolve_mt5_hedge_symbol() or "ustech"
@@ -5124,10 +5182,18 @@ class TradeOpssAIApp:
                 ensure_trained_async(symbol)
             except Exception:
                 pass
+            reason = result.get("reason") or result.get("message") or "model warming up"
+            self._log_ml_publish_throttled(
+                "not_ready",
+                f"⏳ ML not ready for {symbol} ({reason}) — training/scoring, retrying…")
             return
 
         signal = direction_feed.build_signal(result, symbol=symbol, source=email)
         if not signal:
+            lean = result.get("direction") or result.get("lean") or "neutral"
+            self._log_ml_publish_throttled(
+                "neutral",
+                f"⏳ ML reading is {lean} — not broadcasting (need clear BUY/SELL)")
             return
         signal["email"] = email
         try:
@@ -5137,9 +5203,30 @@ class TradeOpssAIApp:
             self.log(f"⚠ Direction broadcast failed: {exc}", "WARN")
             return
         if published:
+            self._last_direction_publish = time.monotonic()
+            d = str(signal.get("direction") or "").lower()
+            if d in ("buy", "sell"):
+                self._last_streamed_direction = d
+                self._streamed_signal_valid = True
+                self.root.after(0, self._update_direction_mode_banner)
             self.log(
                 f"📡 Broadcast {signal['direction'].upper()} for {symbol} "
                 f"(confidence {signal.get('confidence')})")
+        else:
+            self.log("⚠ Direction broadcast rejected by server (check email auth / version)", "WARN")
+
+    def _log_ml_publish_throttled(self, key: str, message: str, interval_sec: int = 60):
+        """Avoid spamming the log while the publisher is warming up."""
+        now = time.monotonic()
+        store = getattr(self, "_ml_publish_log_throttle", None)
+        if store is None:
+            store = {}
+            self._ml_publish_log_throttle = store
+        last = store.get(key)
+        if last is not None and now - last < interval_sec:
+            return
+        store[key] = now
+        self.log(message)
 
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
@@ -13098,6 +13185,119 @@ class TradeOpssAIApp:
         except Exception:
             pass
         return None, "unavailable"
+
+    def _update_direction_mode_banner(self):
+        """Toolbar: live server ML direction, or waiting/stale (never stale as 'live')."""
+        var = getattr(self, "_direction_mode_var", None)
+        if var is None:
+            return
+        try:
+            if self._ml_mode_enabled():
+                if getattr(self, "_streamed_signal_valid", False):
+                    d = getattr(self, "_last_streamed_direction", None)
+                    if d in ("buy", "sell"):
+                        var.set(f"📡 ML Publisher → {d.upper()}")
+                        return
+                var.set("📡 ML Publisher (broadcasting…)")
+                return
+            if getattr(self, "_streamed_signal_valid", False):
+                d = getattr(self, "_last_streamed_direction", None)
+                if d in ("buy", "sell"):
+                    emoji = "🟢" if d == "buy" else "🔴"
+                    var.set(f"{emoji} ML Signal: {d.upper()} (live from server)")
+                    return
+            var.set("⏳ Waiting for fresh ML signal…")
+        except Exception:
+            pass
+
+    # ── ML signal stream (login, ~30s poll, toolbar + logs) ─────────────────
+    _SIGNAL_STREAM_INTERVAL_SEC = 30
+
+    def _start_signal_stream(self):
+        if self._signal_stream_enabled:
+            return
+        self._signal_stream_enabled = True
+        self._streamed_signal_valid = False
+        self._signal_stream_thread = threading.Thread(
+            target=self._signal_stream_loop, daemon=True)
+        self._signal_stream_thread.start()
+        self.log("📡 ML signal stream started — receiving live direction from server")
+        self._update_direction_mode_banner()
+
+    def _signal_stream_loop(self):
+        try:
+            from trader_companion.signals import direction_feed
+        except ImportError:
+            self._signal_stream_enabled = False
+            return
+        self._fetch_and_log_signal(direction_feed, is_initial=True)
+        while self._signal_stream_enabled:
+            for _ in range(self._SIGNAL_STREAM_INTERVAL_SEC):
+                if not self._signal_stream_enabled:
+                    return
+                time.sleep(1)
+            self._fetch_and_log_signal(direction_feed)
+
+    def _fetch_and_log_signal(self, direction_feed, is_initial=False):
+        dashboard_url = ""
+        try:
+            dashboard_url = self.url_entry.get().strip().rstrip("/")
+        except Exception:
+            pass
+        if not dashboard_url:
+            if is_initial:
+                self.root.after(0, lambda: self.log(
+                    "⚠ No dashboard URL — cannot fetch ML signals", "WARN"))
+            return
+        try:
+            signal = direction_feed.fetch(
+                dashboard_url, headers=_companion_request_headers())
+        except Exception as exc:
+            self.root.after(0, lambda e=exc: self.log(
+                f"⚠ ML signal fetch failed: {e}", "WARN"))
+            return
+
+        def _mark_stale():
+            self._streamed_signal_valid = False
+            self._update_direction_mode_banner()
+
+        if not signal:
+            if is_initial:
+                self.root.after(0, lambda: self.log(
+                    "📡 No ML signal on server yet — waiting for publisher to broadcast"))
+            self.root.after(0, _mark_stale)
+            return
+
+        direction = direction_feed.direction_from(signal)
+        age_sec = direction_feed.signal_age_seconds(signal)
+        max_age = direction_feed.SIGNAL_MAX_AGE_SEC
+
+        if direction is None:
+            age_min = int(age_sec or 0) // 60
+            ma = max_age // 60
+            self.root.after(0, lambda am=age_min, m=ma: self.log(
+                f"⚠ ML signal is {am} min old (max {m} min) — waiting for fresh signal",
+                "WARN"))
+            self.root.after(0, _mark_stale)
+            return
+
+        source = signal.get("source", "unknown")
+        confidence = signal.get("confidence")
+        conf_str = f" (conf={confidence})" if confidence else ""
+        age_str = f"{int(age_sec or 0)}s" if age_sec is not None else "unknown"
+        prev = self._last_streamed_direction
+        changed = is_initial or prev != direction
+
+        def _on_fresh(d=direction, c=conf_str, a=age_str, s=source, ch=changed, p=prev):
+            self._last_streamed_direction = d
+            self._streamed_signal_valid = True
+            self._update_direction_mode_banner()
+            if ch:
+                emoji = "🟢" if d == "buy" else "🔴"
+                ct = f" [changed from {p.upper()}]" if p and p != d else ""
+                self.log(f"{emoji} ML Signal: {d.upper()}{c} — age {a}, from {s}{ct}")
+
+        self.root.after(0, _on_fresh)
 
     # The signal is live, so refetch often; the publisher scores every 5 min.
     _DIRECTION_FETCH_TTL_SEC = 30
