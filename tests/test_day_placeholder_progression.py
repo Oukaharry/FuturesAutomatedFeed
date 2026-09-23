@@ -158,6 +158,41 @@ def test_flat_broker_position_allows_dashboard_outcome_update():
     assert app._account_has_open_position(_row(**{"Prop Firm": "FundedNext"})) is False
 
 
+def test_all_trade_phases_use_the_general_close_watcher():
+    class Root:
+        def after(self, delay, callback):
+            assert delay == 5000
+
+    app = _scrub_app()
+    app.root = Root()
+    app._pending_farming_closes = {}
+    app._farming_close_poll_active = False
+    broker = object()
+
+    app._track_account_close(broker, "FNFT-1")
+
+    assert app._pending_farming_closes["fnft-1"]["broker"] is broker
+    assert app._farming_close_poll_active is True
+
+
+def test_recovery_uses_shared_funded_next_connection_for_flex_rows():
+    class Broker:
+        def has_open_position_for_account(self, account):
+            return False, account
+
+    app = _scrub_app()
+    app._broker_connections = {"Funded Next": {"account": Broker()}}
+    app._locate_progression_cells = lambda row: ("Hedge Result 1", "Challenge", "Hedge Result 2")
+    tracked = []
+    app._track_account_close = lambda broker, account: tracked.append((broker, account))
+    row = _row(**{"Prop Firm": "FundedNext Flex", "Hedge Result 1": "$0.00"})
+
+    app._resume_pending_account_closes([row])
+
+    assert len(tracked) == 1
+    assert tracked[0][1] == "FNFT-1"
+
+
 LIVE_BLUEPRINT = {
     "tradovate_symbol": "NQZ6",
     "tradovate_qty": 2,

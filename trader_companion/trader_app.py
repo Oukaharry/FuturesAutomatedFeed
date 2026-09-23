@@ -4890,8 +4890,8 @@ class TradeOpssAIApp:
         except Exception as e:
             self.log(f"❌ Auto-push check error: {e}", "ERROR")
 
-    def _track_farming_close(self, broker_account, account_number):
-        """Watch one companion-submitted Tradovate farming account until it is flat."""
+    def _track_account_close(self, broker_account, account_number):
+        """Watch a submitted broker account until it is flat, then reconcile it."""
         if not broker_account or not account_number:
             return
         account_key = str(account_number).strip().lower()
@@ -4904,12 +4904,42 @@ class TradeOpssAIApp:
             self._farming_close_poll_active = True
             self.root.after(5000, self._poll_pending_farming_closes)
 
-    def _resume_pending_farming_closes(self, evaluations):
-        """Restore farming-close watches for $0.00 markers found after restart."""
+    def _track_farming_close(self, broker_account, account_number):
+        """Compatibility wrapper for the general post-fill close watcher."""
+        self._track_account_close(broker_account, account_number)
+
+    def _resume_pending_account_closes(self, evaluations):
+        """Restore close watches for unresolved $0.00 trade markers after restart."""
         for evaluation in evaluations or []:
             if not isinstance(evaluation, dict) or evaluation.get("_deleted"):
                 continue
-            unresolved_slot = 0
+            traded_field, _phase, placeholder = self._locate_progression_cells(evaluation)
+            if not traded_field or not placeholder:
+                continue
+            value = self._cell(evaluation.get(traded_field))
+            try:
+                is_zero_marker = float(value.replace("$", "").replace(",", "")) == 0
+            except (AttributeError, TypeError, ValueError):
+                is_zero_marker = False
+            if not is_zero_marker:
+                continue
+
+            account_number = self._primary_trade_account(evaluation)
+            firm_name = self._cell(evaluation.get("Prop Firm"))
+            connection_key = self._broker_connection_key(firm_name)
+            connection = (self._broker_connections.get(connection_key) or {}).get("account")
+            if connection and hasattr(connection, "has_open_position_for_account"):
+                self._track_account_close(connection, account_number)
+                self.log(
+                    f"↻ Resumed close watch: {account_number} / {traded_field}"
+                )
+
+    def _resume_pending_farming_closes(self, evaluations):
+        """Restore farming close watches before a next-day cell is queued."""
+        for evaluation in evaluations or []:
+            if not isinstance(evaluation, dict) or evaluation.get("_deleted"):
+                continue
+            has_unresolved_zero = False
             for slot in range(1, 61):
                 value = self._cell(evaluation.get(f"Hedge Day {slot}"))
                 try:
@@ -4917,18 +4947,16 @@ class TradeOpssAIApp:
                 except (AttributeError, TypeError, ValueError):
                     is_zero_marker = False
                 if is_zero_marker and not self._cell(evaluation.get(f"Prop Day {slot}")):
-                    unresolved_slot = slot
-            if not unresolved_slot:
+                    has_unresolved_zero = True
+                    break
+            if not has_unresolved_zero:
                 continue
-
             account_number = self._primary_trade_account(evaluation)
             firm_name = self._cell(evaluation.get("Prop Firm"))
-            connection = (self._broker_connections.get(firm_name) or {}).get("account")
+            connection_key = self._broker_connection_key(firm_name)
+            connection = (self._broker_connections.get(connection_key) or {}).get("account")
             if connection and hasattr(connection, "has_open_position_for_account"):
                 self._track_farming_close(connection, account_number)
-                self.log(
-                    f"🌾 Resumed close watch: {account_number} / Hedge Day {unresolved_slot}"
-                )
 
     def _poll_pending_farming_closes(self):
         """Check tracked farming positions without blocking the Tk event loop."""
@@ -4968,6 +4996,12 @@ class TradeOpssAIApp:
                     # This is lifecycle-driven, not a user-initiated Push. A full
                     # refresh waits for Tradovate daily P/L before posting it.
                     self.push_data(full_prop_refresh=True)
+                    # Status/progression must not wait for Auto-Push or the
+                    # normal five-minute history cache after a TP/SL closes.
+                    threading.Thread(
+                        target=lambda: self._apply_outcome_corrections(force_history=True),
+                        daemon=True,
+                    ).start()
                 if self._pending_farming_closes:
                     self.root.after(5000, self._poll_pending_farming_closes)
                 else:
@@ -5021,7 +5055,7 @@ class TradeOpssAIApp:
                 return f"Hit {label}{trade_number}", f"resolved {outcome} on {traded_field}"
         return None, None
 
-    def _apply_outcome_corrections(self):
+    def _apply_outcome_corrections(self, force_history=False):
         """Re-home pending placeholders once their trade has resolved.
 
         The placeholder is queued at fill time, before TP/SL is known, so the
@@ -5041,6 +5075,8 @@ class TradeOpssAIApp:
             if resp.status_code != 200:
                 return
             evaluations = (resp.json() or {}).get("evaluations", []) or []
+            if force_history:
+                self._trade_outcome_history(force=True)
 
             force_fields = []
             for ev in evaluations:
@@ -5585,6 +5621,7 @@ class TradeOpssAIApp:
         "funded next": "Funded Next",
         "fundednext": "Funded Next",
         "funded next flex": "Funded Next",
+        "fundednext flex": "Funded Next",
         "fundednextflex": "Funded Next",
         "funded next rapid daily": "Funded Next",
         "fundednext rapid daily": "Funded Next",
@@ -7893,7 +7930,7 @@ class TradeOpssAIApp:
                 self.root.after(0, lambda ce=connect_evals, pa=prop_accounts: self._populate_broker_rows(ce, pa))
                 # Queue eligibility excludes $0.00 markers, so recover their
                 # close watches from the complete dashboard data separately.
-                self.root.after(1500, lambda evs=evaluations: self._resume_pending_farming_closes(evs))
+                self.root.after(1500, lambda evs=evaluations: self._resume_pending_account_closes(evs))
 
                 # Status poll can be slow and touches Tradovate; defer so trade rows render first
                 if not RELEASE_DISABLE_STATUS_POLL:
@@ -8744,8 +8781,8 @@ class TradeOpssAIApp:
                         )
                     except Exception:
                         pass
-                if platform == "Tradovate" and str(row_data.get("current_phase") or "").lower() == "farming":
-                    self._track_farming_close(broker_account, acct_num)
+                if platform == "Tradovate":
+                    self._track_account_close(broker_account, acct_num)
 
                 # 2. MT5 hedge (opposite direction)
                 if hedging and mt5_api:
@@ -10804,8 +10841,8 @@ class TradeOpssAIApp:
                             )
                         except Exception:
                             pass
-                    if platform == "Tradovate" and str(row_data.get("current_phase") or "").lower() == "farming":
-                        self._track_farming_close(broker_account, acct_num)
+                    if platform == "Tradovate":
+                        self._track_account_close(broker_account, acct_num)
 
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
