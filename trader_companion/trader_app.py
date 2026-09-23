@@ -6886,7 +6886,18 @@ class TradeOpssAIApp:
         if self._on_funded_leg(ev):
             phase_display, _ = self._detect_eval_phase(ev)
             names = ("Funded",) if phase_display != "Farming" else ("Funded", "Farming")
-            return [(n, flist) for n, flist in self._ALL_PHASE_FIELD_SETS if n in names]
+            funded_sets = [
+                (name, fields) for name, fields in self._ALL_PHASE_FIELD_SETS
+                if name in names
+            ]
+            # Some dashboard imports store the active funded queue in primary
+            # Hedge Result cells. Phase identity alone cannot relocate that
+            # placeholder, so use its actual column when funded cells are blank.
+            has_funded_placeholder, _ = self._scan_day_placeholders(
+                ev, funded_sets)
+            if has_funded_placeholder:
+                return funded_sets
+            return self._ALL_PHASE_FIELD_SETS
         return self._ALL_PHASE_FIELD_SETS
 
     def _is_superseded_challenge_row(self, ev, all_evals) -> bool:
@@ -6942,7 +6953,10 @@ class TradeOpssAIApp:
     def _primary_account_looks_funded(self, ev) -> bool:
         """Recognize funded-only imports stored in the primary account columns."""
         account = self._cell_account(ev.get("Account #"))
-        if not account:
+        # Tradeify evaluation and funded rows both carry Date Started in the
+        # primary columns. Only FTDF-prefixed accounts are funded; TDFY rows
+        # remain evaluation rows and their weekday slots live in Hedge Result N.
+        if not account or not account.upper().startswith("FTDF"):
             return False
         detected = None
         try:

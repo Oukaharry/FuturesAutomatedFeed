@@ -212,6 +212,39 @@ def test_confirmed_funded_breach_replaces_stale_pass_status():
     assert row["Status"] == "Fail"
 
 
+def test_tradeify_evaluation_primary_placeholder_is_not_filtered_as_funded():
+    app = _scrub_app()
+    row = {
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFYSL50469269857",
+        "Date Started": "2026-09-23",
+        "Status P1": "In Progress",
+        "Hedge Result 1": "WEDNESDAY",
+    }
+
+    active, _connect, skipped = app._partition_evaluations_for_scan([row], today_wd=2)
+
+    assert active == [row]
+    assert skipped["funded_done"] == 0
+
+
+def test_funded_import_uses_primary_placeholder_when_funded_columns_are_blank():
+    app = _scrub_app()
+    row = {
+        "Prop Firm": "Funded Next",
+        "Account #": "FNFT-primary-funded-import",
+        "Date Started": "2026-09-01",
+        "Payout 1": "$1,000.00",
+        "Status": "In Progress",
+        "Hedge Result 1": "WEDNESDAY",
+    }
+
+    active, _connect, skipped = app._partition_evaluations_for_scan([row], today_wd=2)
+
+    assert active == [row]
+    assert skipped["funded_done"] == 0
+
+
 def test_open_broker_position_blocks_dashboard_outcome_update():
     class Broker:
         def has_open_position_for_account(self, account):
