@@ -5922,30 +5922,30 @@ def _extract_companion_version(data=None):
 
 
 def _companion_version_denied(data=None):
-    """403 when companion version is missing or below the allowed floor."""
+    """403 when companion version is missing or below MIN_COMPANION_VERSION.
+
+    REQUIRED_COMPANION_VERSION is the release target (messages / ops only).
+    Auth never uses string equality to REQUIRED — only semver >= MIN (default
+    1.12.1+). To lock a ship, raise MIN_COMPANION_VERSION on the server.
+    """
     version = _extract_companion_version(data)
     required = _required_companion_version()
     minimum = _min_companion_version()
     exact = _companion_version_exact_required()
+
     if not version:
-        hint = required if exact else minimum
         return jsonify({
             "status": "error",
-            "message": f"TradeOpssAI client required. Update to v{hint} or newer and sign in again.",
+            "message": (
+                f"TradeOpssAI client required. Update to v{minimum} or newer "
+                f"and sign in again."
+            ),
             "required_version": required,
             "min_version": minimum,
             "exact_match": exact,
         }), 403
-    if exact:
-        if version != required:
-            return jsonify({
-                "status": "error",
-                "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
-                "required_version": required,
-                "min_version": minimum,
-                "exact_match": True,
-            }), 403
-    elif _companion_version_tuple(version) < _companion_version_tuple(minimum):
+
+    if _companion_version_tuple(version) < _companion_version_tuple(minimum):
         return jsonify({
             "status": "error",
             "message": (
@@ -5954,7 +5954,7 @@ def _companion_version_denied(data=None):
             ),
             "required_version": required,
             "min_version": minimum,
-            "exact_match": False,
+            "exact_match": exact,
         }), 403
     return None
 
@@ -6023,17 +6023,16 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
-    Version is checked first: >= MIN_COMPANION_VERSION (default), or exact
-    REQUIRED_COMPANION_VERSION when COMPANION_VERSION_EXACT=1.
+    Version is checked first: semver >= MIN_COMPANION_VERSION (default 1.12.1+).
     """
     try:
-        denied = _companion_version_denied()
-        if denied:
-            return denied
-
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
+
+        denied = _companion_version_denied(data)
+        if denied:
+            return denied
 
         email = data.get('email', '').strip().lower()
         if not email:
