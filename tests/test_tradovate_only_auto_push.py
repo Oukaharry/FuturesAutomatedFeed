@@ -1,5 +1,6 @@
 from unittest.mock import Mock, patch
 
+from dashboard.app import _reconcile_tradovate_farming_days
 from trader_companion.trader_app import TradeOpssAIApp
 
 
@@ -92,3 +93,21 @@ def test_scan_retains_dashboard_rows_for_post_connection_recovery():
     app._last_dashboard_evaluations = list(rows)
 
     assert app._last_dashboard_evaluations == rows
+
+
+def test_prop_day_reconciliation_accepts_primary_column_funded_import():
+    row = {
+        "Prop Firm": "Tradeify",
+        "Account #": "FTDFYSLX50969754357",
+        "Status": "In Progress",
+        "Hedge Day 1": "$0.00",
+    }
+    match_log = []
+
+    _reconcile_tradovate_farming_days([row], [{
+        "account_name": "FTDFYSLX50969754357",
+        "mnq_daily_pnl": [{"date": "2026-09-23", "net_pnl": 150.20}],
+    }], match_log, today="2026-09-23")
+
+    assert row["Prop Day 1"] == "150.20"
+    assert row["Hedge Day 2"] == "THURSDAY"

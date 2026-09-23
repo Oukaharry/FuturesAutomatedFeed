@@ -2578,7 +2578,11 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
     for row_index, evaluation in enumerate(evaluations or []):
         if not isinstance(evaluation, dict) or evaluation.get('_deleted'):
             continue
-        account_key = str(evaluation.get('Account #.1') or '').strip()
+        # Most funded rows use Account #.1, but imported funded accounts may
+        # keep their Tradovate account in the primary column.
+        account_key = str(
+            evaluation.get('Account #.1') or evaluation.get('Account #') or ''
+        ).strip()
         funded_status = str(
             evaluation.get('Status') or evaluation.get('Status Funded') or ''
         ).strip()
