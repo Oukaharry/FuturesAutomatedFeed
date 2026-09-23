@@ -239,6 +239,7 @@ def short_mt5_comment(
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict, deque
 import random
+import uuid
 import re
 import logging
 
@@ -1693,6 +1694,7 @@ class TradeOpssAIApp:
         # ML direction publisher (MT5 + ML unlock — no Auto-Push required)
         self._ml_publish_enabled = False
         self._ml_publish_thread = None
+        self._ml_publisher_id = uuid.uuid4().hex
         # Live server signal stream (toolbar + logs on login)
         self._signal_stream_enabled = False
         self._signal_stream_thread = None
@@ -2049,7 +2051,7 @@ class TradeOpssAIApp:
                      text_color="#38BDF8").pack(side="left", padx=(8, 6), pady=5)
         self._signal_mode_control = ctk.CTkComboBox(
             toolbar,
-            values=["Random / Firm", "Random / All", "ML"],
+            values=["ML / Firm"],
             variable=self._signal_choice_var,
             command=self._select_trade_signal_mode,
             state="readonly", width=170, height=28,
@@ -2304,42 +2306,27 @@ class TradeOpssAIApp:
 
     def _ensure_signal_mode_vars(self):
         if not hasattr(self, "signal_mode_var"):
-            self.signal_mode_var = tk.StringVar(value="Random")
+            self.signal_mode_var = tk.StringVar(value="ML")
         if not hasattr(self, "random_signal_scope_var"):
             self.random_signal_scope_var = tk.StringVar(value="Unique per prop firm")
         if not hasattr(self, "_signal_choice_var"):
-            self._signal_choice_var = tk.StringVar(value="Random / Firm")
+            self._signal_choice_var = tk.StringVar(value="ML / Firm")
 
     def _sync_signal_mode_ui(self):
         self._ensure_signal_mode_vars()
-        if self.signal_mode_var.get() == "ML":
-            choice = "ML"
-        elif self.random_signal_scope_var.get() == "Same for all prop firms":
-            choice = "Random / All"
-        else:
-            choice = "Random / Firm"
-        self._signal_choice_var.set(choice)
+        self.signal_mode_var.set("ML")
+        self.random_signal_scope_var.set("Unique per prop firm")
+        self._signal_choice_var.set("ML / Firm")
 
     def _select_trade_signal_mode(self, choice):
         self._ensure_signal_mode_vars()
-        if choice == "ML":
-            if not self._ml_mode_enabled():
-                self._toggle_ml_publisher()
-            if not self._ml_mode_enabled():
-                self.signal_mode_var.set("Random")
-                self.random_signal_scope_var.set("Unique per prop firm")
-                self._sync_signal_mode_ui()
-                return
-            self.signal_mode_var.set("ML")
-            self.log("🧠 Direct MT5 ML signal selected")
-            return
-        self.signal_mode_var.set("Random")
-        self.random_signal_scope_var.set(
-            "Same for all prop firms" if choice == "Random / All" else "Unique per prop firm")
-        self.log(f"🎲 {choice} signal selected")
+        self.signal_mode_var.set("ML")
+        self.random_signal_scope_var.set("Unique per prop firm")
+        self._sync_signal_mode_ui()
+        self.log("🧠 ML direction selected; random fallback stays implicit")
 
     def _build_ml_publisher_ui(self, parent):
-        """Password-gated switch that makes this companion the ML publisher.
+        """Switch that makes this companion an ML publisher candidate.
 
         Scoring the ensemble needs MT5 and is heavy, so exactly one machine
         should run it; everyone else reads its broadcast.
@@ -2371,7 +2358,7 @@ class TradeOpssAIApp:
         bar.place(in_=self.notebook, relx=1.0, x=-12, y=8, anchor="ne")
 
     def _toggle_ml_publisher(self):
-        """Unlock or disable ML publishing for this companion."""
+        """Enable or disable ML publishing for this companion."""
         if self._ml_mode_enabled():
             self.ml_mode_var.set(False)
             self._stop_ml_direction_publisher()
@@ -2379,20 +2366,11 @@ class TradeOpssAIApp:
             self.log("🤖 ML publishing disabled — this companion now reads signals only")
             return
 
-        entered = simpledialog.askstring(
-            "Enable ML", "Enter the ML publisher password:", show="*")
-        if entered is None:
-            return
-        if not self._ml_password_ok(entered):
-            messagebox.showerror("Access Denied", "Incorrect password.")
-            self.log("🚫 ML publishing unlock failed — incorrect password", "WARN")
-            return
-
         self.ml_mode_var.set(True)
         self._refresh_ml_publisher_ui()
         self._last_direction_publish = None
         self._last_direction_publish_attempt = None
-        self.log("🤖 ML access enabled — direct MT5 signals + server broadcast")
+        self.log("🤖 ML enabled — server lease selects one companion to broadcast")
         self._start_ml_direction_publisher()
 
     def _refresh_ml_publisher_ui(self):
@@ -5127,7 +5105,7 @@ class TradeOpssAIApp:
             if not force_fields and not breaches:
                 return
             self._pending_breach_alerts.clear()
-            requests.post(
+            push_response = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json={
                     "email": email,
@@ -5140,6 +5118,18 @@ class TradeOpssAIApp:
                 headers=_companion_request_headers(),
                 timeout=30,
             )
+            if push_response.status_code != 200:
+                self.log(f"⚠ Outcome correction push rejected ({push_response.status_code}): "
+                         f"{push_response.text[:300]}", "WARN")
+                return
+            try:
+                push_result = push_response.json() or {}
+            except ValueError:
+                push_result = {}
+            if push_result.get("status") not in (None, "success"):
+                self.log(f"⚠ Outcome correction push failed: {push_result}", "WARN")
+            else:
+                self.log(f"📤 Outcome correction persisted ({len(set(force_fields))} field(s))")
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
 
@@ -5179,7 +5169,7 @@ class TradeOpssAIApp:
             return False
 
     def _run_hourly_farming_refresh_if_due(self):
-        """Refresh Tradovate farming history hourly while Auto-Push is enabled."""
+        """Force broker-history reconciliation hourly while Auto-Push is enabled."""
         if not self.auto_push_enabled:
             return
         now = time.monotonic()
@@ -5187,8 +5177,11 @@ class TradeOpssAIApp:
         if last_refresh is not None and now - last_refresh < 3600:
             return
         self._last_hourly_farming_refresh = now
-        self.log("🌾 Hourly farming scan — refreshing Tradovate Net P/L")
-        self.push_data(full_prop_refresh=True)
+        self.log("🔎 Hourly broker scan — refreshing history, statuses, and breaches")
+        threading.Thread(
+            target=lambda: self._apply_outcome_corrections(force_history=True),
+            daemon=True,
+        ).start()
 
     # A payout lands hours before the next hourly farming scan would notice it.
     _OUTCOME_CORRECTION_INTERVAL_SEC = 300
@@ -5208,7 +5201,7 @@ class TradeOpssAIApp:
     _DIRECTION_PUBLISH_INTERVAL_SEC = 300
 
     def _ensure_ml_direction_publisher_running(self):
-        """Start the ML publish loop when this companion is the unlocked publisher."""
+        """Start the ML publish loop when this companion is enabled."""
         if self._ml_mode_enabled():
             self._start_ml_direction_publisher()
 
@@ -5313,6 +5306,7 @@ class TradeOpssAIApp:
                 f"⏳ ML reading is {lean} — not broadcasting (need clear BUY/SELL)")
             return
         signal["email"] = email
+        signal["publisher_id"] = getattr(self, "_ml_publisher_id", "")
         try:
             published = direction_feed.publish(
                 dashboard_url, signal, headers=_companion_request_headers())
@@ -5330,7 +5324,7 @@ class TradeOpssAIApp:
                 f"📡 Broadcast {signal['direction'].upper()} for {mt5_ticker} "
                 f"(confidence {signal.get('confidence')})")
         else:
-            self.log("⚠ Direction broadcast rejected by server (check email auth / version)", "WARN")
+            self.log("ℹ ML publisher lease held by another companion; reading its signal", "INFO")
 
     def _log_ml_publish_throttled(self, key: str, message: str, interval_sec: int = 60):
         """Avoid spamming the log while the publisher is warming up."""
@@ -9838,14 +9832,7 @@ class TradeOpssAIApp:
         offset_minutes = 0 if immediate else random.randint(0, 120)
         scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
 
-        signal_mode = self.signal_mode_var.get()
-        self._auto_trade_use_signal = signal_mode == "ML"
-        if self._auto_trade_use_signal and not self._ml_mode_enabled():
-            self.log("⛔ Enable ML and enter its password before scheduling ML trades", "WARN")
-            messagebox.showwarning(
-                "Enable ML Required",
-                "Select Enable ML beside Settings and enter the ML password before scheduling ML trades.")
-            return
+        self._auto_trade_use_signal = True
         self._auto_trade_random_scope = self.random_signal_scope_var.get()
         self._auto_trade_scheduled_dt = scheduled_eat
         self._auto_trade_enter_now = immediate
@@ -9859,15 +9846,8 @@ class TradeOpssAIApp:
             firms_in_rows.add(str(pf).strip() or "Unknown")
 
         self._auto_trade_firm_sides = {}
-        if self._auto_trade_use_signal:
-            self.auto_trade_firms_var.set("  🧠 ML direction resolves at entry time")
-            mode_label = "ML direction at entry time"
-        else:
-            shared = self._auto_trade_random_scope == "Same for all prop firms"
-            self.auto_trade_firms_var.set(
-                "  🎲 One random direction for all prop firms" if shared else
-                "  🎲 One random direction per prop firm")
-            mode_label = "shared random direction" if shared else "random direction per prop firm"
+        self.auto_trade_firms_var.set("  🧠 ML direction resolves per prop firm at entry time")
+        mode_label = "ML direction at entry time; per-firm fallback if unavailable"
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
@@ -10581,10 +10561,7 @@ class TradeOpssAIApp:
 
         self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
-        if use_signal:
-            self.log("🧠 Resolving the connected MT5 ML direction at entry time")
-        else:
-            self.log("🎲 Auto-trade using daily random direction per prop firm")
+        self.log("🧠 Resolving live ML direction per prop firm at entry time")
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         default_platform = self.broker_var.get()
@@ -10977,12 +10954,11 @@ class TradeOpssAIApp:
                     with firm_sides_lock:
                         side = firm_sides.get(family_key)
                     if side not in ("buy", "sell"):
-                        self._ai_trace("WARN", f"{acct_num}: NO ML signal — trade skipped")
-                        self.root.after(0, lambda an=acct_num: self.log(
-                            f"⛔ {an}: no ML signal — trade skipped", "WARN"))
-                        with total_success:
-                            counters["fail"] += 1
-                        continue
+                        side = random.choice(["buy", "sell"])
+                        with firm_sides_lock:
+                            firm_sides.setdefault(family_key, side)
+                        self.root.after(0, lambda an=acct_num, s=side: self.log(
+                            f"🎲 {an}: ML unavailable — implicit fallback {s.upper()}", "WARN"))
                 else:
                     if locked_side in ("buy", "sell"):
                         side = locked_side

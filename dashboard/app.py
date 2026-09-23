@@ -13075,6 +13075,8 @@ def api_set_slack_webhook():
 # publishes here and every other companion reads the result instead of
 # coin-flipping.
 DIRECTION_SIGNAL_SETTING = 'ml_direction_signal'
+DIRECTION_PUBLISHER_LEASE_SETTING = 'ml_direction_publisher_lease'
+_DIRECTION_PUBLISHER_LEASE_SEC = 360
 
 
 @app.route('/api/signals/direction', methods=['POST'])
@@ -13085,7 +13087,7 @@ def api_publish_direction_signal():
     Email-gated like the other companion endpoints: an unauthenticated write
     here would let anyone choose the direction every funded account trades.
     """
-    from dashboard.database import set_setting
+    from dashboard.database import get_setting, set_setting
     data = request.json or {}
     email = str(data.get('email') or '').strip().lower()
     if not email:
@@ -13099,6 +13101,34 @@ def api_publish_direction_signal():
     if direction not in ('buy', 'sell'):
         return jsonify({'status': 'error', 'message': 'direction must be buy or sell'}), 400
 
+    publisher_id = str(data.get('publisher_id') or '').strip()
+    if not publisher_id:
+        return jsonify({'status': 'error', 'message': 'publisher_id required'}), 400
+    now = _kenya_now()
+    try:
+        lease = json.loads(get_setting(DIRECTION_PUBLISHER_LEASE_SETTING) or '{}')
+    except (TypeError, ValueError):
+        lease = {}
+    owner = str(lease.get('publisher_id') or '')
+    try:
+        expires_at = datetime.fromisoformat(str(lease.get('expires_at') or ''))
+    except ValueError:
+        expires_at = None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=now.tzinfo)
+    if owner and owner != publisher_id and expires_at and expires_at > now:
+        return jsonify({
+            'status': 'publisher_active',
+            'message': 'Another companion holds the ML publisher lease',
+            'lease_expires_at': expires_at.isoformat(timespec='seconds'),
+        }), 409
+    lease_expires = now + timedelta(seconds=_DIRECTION_PUBLISHER_LEASE_SEC)
+    set_setting(DIRECTION_PUBLISHER_LEASE_SETTING, json.dumps({
+        'publisher_id': publisher_id,
+        'source': client_info.get('client') or email,
+        'expires_at': lease_expires.isoformat(timespec='seconds'),
+    }), updated_by=email)
+
     signal = {
         'direction': direction,
         'confidence': data.get('confidence'),
@@ -13107,7 +13137,7 @@ def api_publish_direction_signal():
         'model': data.get('model'),
         'source': client_info.get('client') or email,
         'date': str(data.get('date') or '').strip() or _kenya_today_str(),
-        'published_at': _kenya_now().isoformat(timespec='seconds'),
+        'published_at': now.isoformat(timespec='seconds'),
     }
     set_setting(DIRECTION_SIGNAL_SETTING, json.dumps(signal), updated_by=email)
     app.logger.info(
