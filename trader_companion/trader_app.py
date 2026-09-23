@@ -2003,6 +2003,10 @@ class TradeOpssAIApp:
                                                command=self._toggle_auto_trade,
                                                fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=110)
         self.auto_trade_btn.pack(side="left", padx=(8, 4), pady=5)
+        self.enter_now_btn = self._ctk_button(toolbar, text="Enter Now",
+                              command=self._enter_trades_now,
+                              fg="#D97706", hover="#B45309", width=92)
+        self.enter_now_btn.pack(side="left", padx=(0, 6), pady=5)
 
         self.auto_trade_status_var = tk.StringVar(value="Off")
         ctk.CTkLabel(toolbar, textvariable=self.auto_trade_status_var,
@@ -9240,8 +9244,26 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_close_all, daemon=True, name="CloseAll").start()
 
-    def _start_auto_trade(self):
-        """Activate auto-trade: compute randomized start time, begin countdown."""
+    def _enter_trades_now(self):
+        """Run the armed trade pipeline immediately after password confirmation."""
+        if self.auto_trade_enabled:
+            messagebox.showwarning(
+                "Auto-Trade Active",
+                "Stop the active auto-trade batch before entering trades immediately.")
+            return
+        entered = simpledialog.askstring(
+            "Enter Trades Now", "Enter the immediate-trade password:", show="*")
+        if entered is None:
+            return
+        if not self._ml_password_ok(entered):
+            messagebox.showerror("Access Denied", "Incorrect password.")
+            self.log("🚫 Immediate trade unlock failed — incorrect password", "WARN")
+            return
+        self.log("⚡ Immediate trade entry authorized")
+        self._start_auto_trade(immediate=True)
+
+    def _start_auto_trade(self, immediate=False):
+        """Activate auto-trade, either immediately or after a randomized delay."""
         from datetime import datetime, timedelta, timezone
 
         # Validation: need trades loaded
@@ -9268,9 +9290,8 @@ class TradeOpssAIApp:
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
-        # Auto-trade is the only execution path.
-        # Every press randomizes the start 0-120 minutes from the click itself.
-        offset_minutes = random.randint(0, 120)
+        # Auto-trade randomizes normal starts; the guarded command enters now.
+        offset_minutes = 0 if immediate else random.randint(0, 120)
         scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
 
         signal_mode = self.signal_mode_var.get()
@@ -9283,6 +9304,7 @@ class TradeOpssAIApp:
             return
         self._auto_trade_random_scope = self.random_signal_scope_var.get()
         self._auto_trade_scheduled_dt = scheduled_eat
+        self._auto_trade_enter_now = immediate
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
         self._auto_trade_side_lock_logged = set()
@@ -9308,7 +9330,10 @@ class TradeOpssAIApp:
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
         self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
-        self.log(f"⏰ Auto-trade scheduled at {time_str} ({mode_label})")
+        if immediate:
+            self.log(f"⚡ Entering trades now ({mode_label})")
+        else:
+            self.log(f"⏰ Auto-trade scheduled at {time_str} ({mode_label})")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -9473,6 +9498,7 @@ class TradeOpssAIApp:
         self.auto_trade_enabled = False
         self._auto_trade_stop.set()
         self._auto_trade_scheduled_dt = None
+        self._auto_trade_enter_now = False
         self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
@@ -9553,6 +9579,7 @@ class TradeOpssAIApp:
         """Natural completion when every queued trade has been taken."""
         self.auto_trade_enabled = False
         self._auto_trade_scheduled_dt = None
+        self._auto_trade_enter_now = False
         self._auto_trade_waiting_gate = False
         self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
         if CTK_AVAILABLE:
@@ -10376,9 +10403,10 @@ class TradeOpssAIApp:
                                 config_tmp = self.prop_firm_mgr.get_strategy_config(
                                     firm_code, phase_key, acct_size)
                             mt5_sym = self._resolve_mt5_hedge_symbol(config_tmp or {})
-                            self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
-                            if self._auto_trade_stop.is_set():
-                                break
+                            if not getattr(self, "_auto_trade_enter_now", False):
+                                self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
+                                if self._auto_trade_stop.is_set():
+                                    break
                             sig = self._get_signal_direction(mt5_sym)
                             req = firm_locks.get(family_key)
                             if req and sig in ("buy", "sell") and sig != req:
