@@ -10,6 +10,8 @@ import random
 import hashlib
 import tempfile
 import re
+import subprocess
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -17,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from dotenv import load_dotenv
 
 # Ensure all companion logs land in mt5_trading.log
@@ -41,6 +44,38 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 DEFAULT_SYMBOL = os.getenv("TRADOVATE_SYMBOL") or "MNQZ6"
 DEFAULT_TP = os.getenv("TRADOVATE_TAKEPROFIT_TICKS")
 DEFAULT_SL = os.getenv("TRADOVATE_STOPLOSS_TICKS")
+
+# ── Report CSV row utilities (column names vary by report definition) ──
+
+def _row_pick(row, *names):
+    for n in names:
+        for k, v in row.items():
+            if k.lower() == n.lower():
+                return v
+    return None
+
+
+def _row_norm_date(val):
+    import datetime as _dt
+    if not val:
+        return None
+    val = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return _dt.datetime.strptime(val[:10], fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    if len(val) >= 10 and val[4] == '-' and val[7] == '-':
+        return val[:10]
+    return None
+
+
+def _row_num(val):
+    try:
+        return float(str(val).replace('$', '').replace(',', '').strip() or 0)
+    except ValueError:
+        return 0.0
+
 
 class TradovateAccount:
     """
@@ -83,6 +118,30 @@ class TradovateAccount:
     def normalize_trading_mode(mode):
         """Callers say 'Live', 'live trading', 'LIVE'; internally it is 'Live Trading'."""
         return "Live Trading" if "live" in str(mode or "").strip().lower() else "Simulation"
+
+    @staticmethod
+    def _cached_chromedriver_path():
+        """Return a cached driver matching the installed Chrome major version."""
+        chrome_binary = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        try:
+            version = subprocess.check_output(
+                [chrome_binary, "--version"], text=True, timeout=2,
+                stderr=subprocess.DEVNULL,
+            )
+            major = int(re.search(r"\d+", version).group())
+        except Exception:
+            return None
+
+        cache_root = Path.home() / ".cache" / "selenium" / "chromedriver"
+        candidates = []
+        for driver in cache_root.glob("*/*/chromedriver"):
+            try:
+                parts = tuple(int(part) for part in driver.parent.name.split("."))
+                if parts and parts[0] == major and os.access(driver, os.X_OK):
+                    candidates.append((parts, driver))
+            except ValueError:
+                continue
+        return str(max(candidates)[1]) if candidates else None
 
     def __init__(self, username, password, pair_id=None, trading_mode="Simulation"):
         self.username = username
@@ -369,16 +428,28 @@ class TradovateAccount:
         chrome_options.add_experimental_option("prefs", prefs)
         
         try:
-            # Create the WebDriver instance - let Selenium Manager handle ChromeDriver automatically
+            # Prefer a compatible local Selenium cache. Selenium Manager can take
+            # minutes while it performs a network version check even when its
+            # matching driver is already on disk.
             logging.info("[CHROME] Initializing Chrome browser...")
-            logging.info("[CHROME] Using Selenium Manager for automatic ChromeDriver version matching")
-            logging.info("[CHROME] Selenium Manager will download ChromeDriver if needed (happens once per Chrome update)")
-            logging.info("[CHROME] If already cached, Chrome will launch immediately...")
+            cached_driver = self._cached_chromedriver_path()
+            if cached_driver:
+                logging.info(f"[CHROME] Using cached ChromeDriver: {cached_driver}")
+            else:
+                logging.info("[CHROME] No matching cached driver; using Selenium Manager fallback")
+
+            def _launch_driver():
+                if cached_driver:
+                    return webdriver.Chrome(
+                        service=Service(executable_path=cached_driver),
+                        options=chrome_options,
+                    )
+                return webdriver.Chrome(options=chrome_options)
             
             import time
             start_time = time.time()
             try:
-                driver = webdriver.Chrome(options=chrome_options)
+                driver = _launch_driver()
             except Exception as launch_err:
                 msg = str(launch_err).lower()
                 if "user data directory is already in use" in msg:
@@ -398,7 +469,7 @@ class TradovateAccount:
                         pass
                     chrome_options.add_argument(f"--user-data-dir={fallback_dir}")
                     logging.warning(f"[CHROME] Persistent profile still locked - retrying with a temporary profile: {fallback_dir}")
-                    driver = webdriver.Chrome(options=chrome_options)
+                    driver = _launch_driver()
                 else:
                     raise
             elapsed = time.time() - start_time
@@ -3262,7 +3333,189 @@ class TradovateAccount:
             self._placing_order = False
 
     # ── Tradovate REST API — Trade History ────────────────────────────────
-    
+
+    def _report_fetch(self, report_name, account_name, start_date, end_date):
+        """Request a CSV report from Tradovate's reporting service.
+
+        The Account Reports UI uses a dedicated host (rpt-demo/rpt-live
+        .tradovateapi.com) whose history reaches much further back than the
+        rolling /cashBalanceLog and /fill/list feeds. Payload shape mirrors
+        the trader web client exactly. Returns raw CSV text or None.
+        """
+        if audit:
+            audit("tradovate.report.request", report=str(report_name),
+                  account=str(account_name), start=str(start_date), end=str(end_date))
+        body = {
+            "name": report_name,
+            "params": [
+                {"name": "startDate", "value": start_date},
+                {"name": "endDate", "value": end_date},
+                {"name": "account", "value": account_name},
+            ],
+            "representationType": "csv",
+            "timezone": 0,
+        }
+        js = f"""
+        var cb = arguments[arguments.length - 1];
+        (async function() {{
+            try {{
+                var auth = JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{{}}');
+                var token = auth.token || '';
+                var env = auth.environment || 'demo';
+                var host = env === 'live' ? 'rpt-live' : 'rpt-demo';
+                var r = await fetch('https://' + host + '.tradovateapi.com/v1/reports/requestreport', {{
+                    method: 'POST',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }},
+                    body: JSON.stringify({json.dumps(body)})
+                }});
+                var txt = await r.text();
+                var d = null;
+                try {{ d = JSON.parse(txt); }} catch(e) {{}}
+                cb({{ok: r.ok, status: r.status, data: d, text: txt}});
+            }} catch(e) {{
+                cb({{ok: false, error: e.toString()}});
+            }}
+        }})();
+        """
+        try:
+            result = self.driver.execute_async_script(js)
+            if result and result.get('ok'):
+                data = result.get('data')
+                if isinstance(data, dict) and data.get('errorText'):
+                    if audit:
+                        audit("tradovate.report.response", report=str(report_name),
+                              account=str(account_name), ok=False,
+                              error=str(data['errorText']))
+                    print(f"[REPORT] {report_name} for {account_name} rejected: {data['errorText']}")
+                    return None
+                # Server wraps CSV as {"data": "..."} — fall back to raw text.
+                csv_text = data.get('data') if isinstance(data, dict) else None
+                if csv_text is None:
+                    csv_text = result.get('text') or ''
+                if audit:
+                    audit("tradovate.report.response", report=str(report_name),
+                          account=str(account_name), ok=True,
+                          status=int(result.get('status', 200) or 200),
+                          rows=csv_text.count('\n'))
+                return csv_text
+            status = result.get('status', '?') if result else '?'
+            err = result.get('error', '') if result else 'no result'
+            if audit:
+                audit("tradovate.report.response", report=str(report_name),
+                      account=str(account_name), ok=False, status=status, error=str(err))
+            print(f"[REPORT] {report_name} for {account_name} FAILED: status={status} error={err}")
+            return None
+        except Exception as e:
+            if audit:
+                audit("tradovate.report.exception", report=str(report_name),
+                      account=str(account_name), error=str(e))
+            print(f"[REPORT] {report_name} for {account_name} exception: {e}")
+            return None
+
+    @staticmethod
+    def _parse_report_csv(csv_text):
+        """Parse Tradovate report CSV into a list of dicts.
+
+        Live format: quoted numbers with thousands separators and
+        space-padded values (e.g. " Trade Paired"), so use the csv module
+        and strip everything. '_'-prefixed header names are unprefixed.
+        """
+        if not csv_text:
+            return []
+        import csv as _csv
+        import io
+        reader = _csv.reader(io.StringIO(csv_text))
+        try:
+            header = next(reader)
+        except StopIteration:
+            return []
+        names = [h.strip().lstrip('_') for h in header]
+        rows = []
+        for parts in reader:
+            if not parts or not any(p.strip() for p in parts):
+                continue
+            if len(parts) < len(names):
+                continue
+            rows.append({n: parts[i].strip() for i, n in enumerate(names) if n})
+        return rows
+
+    def _fetch_report_rows_chunked(self, report_name, account_name, max_days=365):
+        """Fetch report rows in windows under the server's ~2-month range cap.
+
+        Walks backward from tomorrow; stops after the first empty window once
+        any data has been seen (the account didn't exist earlier).
+        """
+        from datetime import date, timedelta
+        chunk = timedelta(days=60)
+        end = date.today() + timedelta(days=1)
+        floor = end - timedelta(days=max_days)
+        rows = []
+        while end > floor:
+            start = max(end - chunk, floor)
+            csv_text = self._report_fetch(
+                report_name, account_name,
+                start.strftime("%m/%d/%Y"), end.strftime("%m/%d/%Y"))
+            chunk_rows = self._parse_report_csv(csv_text)
+            if chunk_rows:
+                rows.extend(chunk_rows)
+            elif rows or csv_text is None:
+                break
+            end = start
+        return rows
+
+    def _find_cash_report_name(self):
+        """Discover the cash-history report definition name, or None."""
+        definitions = self._report_definitions()
+        if not definitions:
+            return None
+        for d in definitions:
+            name = str(d.get('name', ''))
+            if 'cash' in name.lower():
+                return name
+        return None
+
+    def _report_definitions(self):
+        """List available report definitions from the reporting service."""
+        js = """
+        var cb = arguments[arguments.length - 1];
+        (async function() {
+            try {
+                var auth = JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{}');
+                var token = auth.token || '';
+                var env = auth.environment || 'demo';
+                var host = env === 'live' ? 'rpt-live' : 'rpt-demo';
+                var r = await fetch('https://' + host + '.tradovateapi.com/v1/reports/requestreportdefinitions', {
+                    headers: {'Authorization': 'Bearer ' + token, 'Accept': 'application/json'}
+                });
+                var txt = await r.text();
+                var d = null;
+                try { d = JSON.parse(txt); } catch(e) {}
+                cb({ok: r.ok, status: r.status, data: d});
+            } catch(e) {
+                cb({ok: false, error: e.toString()});
+            }
+        })();
+        """
+        try:
+            result = self.driver.execute_async_script(js)
+            if result and result.get('ok'):
+                data = result.get('data')
+                # Server wraps the list: {"reports": [...]}
+                if isinstance(data, dict):
+                    data = data.get('reports')
+                if isinstance(data, list):
+                    return data
+            status = result.get('status', '?') if result else '?'
+            print(f"[REPORT] definitions FAILED: status={status}")
+            return None
+        except Exception as e:
+            print(f"[REPORT] definitions exception: {e}")
+            return None
+
     def _api_fetch(self, endpoint, method="GET", body=None):
         """Execute a fetch() call in the browser against the Tradovate REST API.
         Returns parsed JSON data or None on failure."""
@@ -3983,6 +4236,63 @@ class TradovateAccount:
         """Get current working orders via the REST API."""
         return self._api_fetch("/order/list") or []
 
+    @staticmethod
+    def _daily_pnl_from_report_rows(rows):
+        """Aggregate parsed cash-history report rows into daily P&L entries.
+
+        Returns {date_str: {trades, gross_pnl, fees, balance_eod}}.
+        """
+        from collections import defaultdict
+
+        daily = defaultdict(lambda: {"trades": 0, "gross_pnl": 0.0, "fees": 0.0, "balance_eod": 0.0})
+        for row in rows:
+            date_str = _row_norm_date(_row_pick(row, 'tradeDate', 'date', 'timestamp'))
+            if not date_str:
+                continue
+            # Report emits display names like " Trade Paired" — normalize.
+            ctype = str(_row_pick(row, 'cashChangeType', 'Cash Change Type', 'type') or '').replace(' ', '')
+            delta = _row_num(_row_pick(row, 'delta', 'change'))
+            balance = _row_pick(row, 'amount', 'balance', 'cashBalance')
+            d = daily[date_str]
+            if balance is not None:
+                d["balance_eod"] = _row_num(balance)
+            if ctype == "TradePaired":
+                d["gross_pnl"] += delta
+                d["trades"] += 1
+            elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
+                d["fees"] += delta
+        return dict(daily)
+
+    @staticmethod
+    def _mnq_daily_pnl_from_report_rows(rows):
+        """Daily net P&L for report days that include MNQ trading (farming days).
+
+        Matches get_mnq_daily_pnl semantics: a day counts if it has any MNQ
+        Trade Paired entry, and its net includes the whole day's P&L and fees.
+        Returns [{"date": "YYYY-MM-DD", "net_pnl": float}, ...] sorted by date.
+        """
+        from collections import defaultdict
+
+        daily = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0, "mnq": False})
+        for row in rows:
+            date_str = _row_norm_date(_row_pick(row, 'tradeDate', 'date', 'timestamp'))
+            if not date_str:
+                continue
+            ctype = str(_row_pick(row, 'cashChangeType', 'Cash Change Type', 'type') or '').replace(' ', '')
+            contract = str(_row_pick(row, 'contract') or '').strip().upper()
+            delta = _row_num(_row_pick(row, 'delta', 'change'))
+            d = daily[date_str]
+            if ctype == "TradePaired":
+                d["gross_pnl"] += delta
+                if contract.startswith('MNQ'):
+                    d["mnq"] = True
+            elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
+                d["fees"] += delta
+        return [
+            {"date": ds, "net_pnl": round(v["gross_pnl"] + v["fees"], 2)}
+            for ds, v in sorted(daily.items()) if v["mnq"]
+        ]
+
     def get_trade_history(self):
         """Get full trade history for ALL accounts under this login.
         
@@ -4008,7 +4318,19 @@ class TradovateAccount:
 
             # Shared data — fetch once for all accounts
             all_fills = self._api_fetch("/fill/list") or []
+            all_orders = self._api_fetch("/order/list") or []
             all_autoliq = self._api_fetch("/userAccountAutoLiq/list") or []
+
+            # Recent Tradovate fill responses omit accountId. Parent orders
+            # retain it, so use that relationship to keep every returned fill
+            # visible in the account's reference history.
+            order_account_ids = {
+                order.get('id'): order.get('accountId')
+                for order in all_orders if order.get('id') is not None
+            }
+
+            def _fill_account_id(fill):
+                return fill.get('accountId', order_account_ids.get(fill.get('orderId')))
 
             # Resolve contract names for fills
             contract_cache = {}
@@ -4023,6 +4345,12 @@ class TradovateAccount:
             for al in all_autoliq:
                 autoliq_by_acct[al.get('accountId', al.get('account'))] = al
 
+            # Reporting service reaches further back than the rolling feeds.
+            # Discover the cash-history report name once; None disables merge.
+            cash_report_name = self._find_cash_report_name()
+            if cash_report_name:
+                print(f"[HISTORY] Using {cash_report_name!r} report for full cash history")
+
             from collections import defaultdict
             results = []
 
@@ -4035,7 +4363,7 @@ class TradovateAccount:
                 snapshot = self._api_fetch("/cashBalance/getCashBalanceSnapshot", "POST", {"accountId": aid}) or {}
 
                 # Filter fills for this account
-                acct_fills = [f for f in all_fills if f.get('accountId') == aid]
+                acct_fills = [f for f in all_fills if _fill_account_id(f) == aid]
 
                 # Build daily P&L from cashBalanceLog
                 daily_raw = defaultdict(lambda: {"trades": 0, "gross_pnl": 0.0, "fees": 0.0, "balance_eod": 0.0})
@@ -4050,6 +4378,20 @@ class TradovateAccount:
                         daily_raw[date_str]["trades"] += 1
                     elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
                         daily_raw[date_str]["fees"] += delta
+
+                # Merge older days from the reporting service (reference only —
+                # rolling cashBalanceLog stays authoritative for its window).
+                if cash_report_name:
+                    report_rows = self._fetch_report_rows_chunked(cash_report_name, aname)
+                    if report_rows:
+                        report_daily = self._daily_pnl_from_report_rows(report_rows)
+                        added = 0
+                        for date_str, d in report_daily.items():
+                            if date_str not in daily_raw:
+                                daily_raw[date_str] = d
+                                added += 1
+                        if added:
+                            print(f"[HISTORY] {aname}: +{added} older day(s) from {cash_report_name} report")
 
                 daily_pnl = []
                 for date_str in sorted(daily_raw.keys()):
@@ -4149,8 +4491,9 @@ class TradovateAccount:
             mnq_contract_ids = {cid for cid, name in contract_cache.items()
                                 if str(name).upper().startswith('MNQ')}
 
-            if not mnq_contract_ids:
-                return []
+            # Rolling fills only cover recent days — the reporting service
+            # backfills MNQ farming days for the account's whole life.
+            cash_report_name = self._find_cash_report_name()
 
             from collections import defaultdict
             results = []
@@ -4167,30 +4510,38 @@ class TradovateAccount:
                         date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
                         mnq_dates.add(date_str)
 
-                if not mnq_dates:
-                    continue
-
-                # Get daily P&L from cashBalanceLog for MNQ dates only
-                balance_logs = self._api_fetch(f"/cashBalanceLog/ldeps?masterids={aid}") or []
-
                 daily_raw = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0})
-                for entry in balance_logs:
-                    td = entry.get('tradeDate', {})
-                    date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
-                    if date_str not in mnq_dates:
-                        continue
-                    ctype = entry.get('cashChangeType', '')
-                    delta = entry.get('delta', 0)
-                    if ctype == "TradePaired":
-                        daily_raw[date_str]["gross_pnl"] += delta
-                    elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
-                        daily_raw[date_str]["fees"] += delta
+                if mnq_dates:
+                    # Get daily P&L from cashBalanceLog for MNQ dates only
+                    balance_logs = self._api_fetch(f"/cashBalanceLog/ldeps?masterids={aid}") or []
+                    for entry in balance_logs:
+                        td = entry.get('tradeDate', {})
+                        date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+                        if date_str not in mnq_dates:
+                            continue
+                        ctype = entry.get('cashChangeType', '')
+                        delta = entry.get('delta', 0)
+                        if ctype == "TradePaired":
+                            daily_raw[date_str]["gross_pnl"] += delta
+                        elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
+                            daily_raw[date_str]["fees"] += delta
 
                 mnq_daily = []
                 for date_str in sorted(daily_raw.keys()):
                     d = daily_raw[date_str]
                     net = round(d["gross_pnl"] + d["fees"], 2)
                     mnq_daily.append({"date": date_str, "net_pnl": net})
+
+                # Backfill farming days the rolling window can't see.
+                if cash_report_name:
+                    report_rows = self._fetch_report_rows_chunked(cash_report_name, aname)
+                    if report_rows:
+                        seen = {e["date"] for e in mnq_daily}
+                        added = [e for e in self._mnq_daily_pnl_from_report_rows(report_rows)
+                                 if e["date"] not in seen]
+                        if added:
+                            mnq_daily = sorted(mnq_daily + added, key=lambda e: e["date"])
+                            print(f"[FARMING] {aname}: +{len(added)} older MNQ day(s) from {cash_report_name} report")
 
                 if mnq_daily:
                     results.append({

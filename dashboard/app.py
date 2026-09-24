@@ -2516,6 +2516,52 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     return 1, completed
 
 
+def _seed_farming_history(evaluation, daily_pnl, row_num, match_log):
+    """Seed Prop Days from broker history when the row has no farming records.
+
+    Backfills accounts whose farming happened before the dashboard ever saw
+    them (the daily writer only records today, and repair needs traded slots).
+    """
+    if _last_traded_hedge_day_slot(evaluation) is not None:
+        return 0
+    if any(str(evaluation.get(f'Prop Day {n}') or '').strip() for n in range(1, 61)):
+        return 0
+    history = sorted({
+        str(day.get('date')): float(day.get('net_pnl') or 0)
+        for day in daily_pnl or [] if day and day.get('date')
+    }.items())
+    if not history:
+        return 0
+    try:
+        cycle_start = max(1, int(evaluation.get('_Farming Cycle Start') or 1))
+    except (TypeError, ValueError):
+        cycle_start = 1
+    rules = _farming_rules_for(evaluation)
+    required = int(rules['days'])
+    min_profit = float(rules['min_profit'])
+    seeded = 0
+    progress = 1  # funded TP counts implicitly as qualifying day 1
+    for offset, (date, net_pnl) in enumerate(history[:60]):
+        slot = cycle_start + offset
+        field = f'Prop Day {slot}'
+        if _eval_push_field_blocked(evaluation, field, phase_code='FA'):
+            continue
+        evaluation[field] = f'{net_pnl:.2f}'
+        evaluation[f'_{field} Date'] = date
+        seeded += 1
+        if net_pnl > 0 and net_pnl >= min_profit and progress < required:
+            progress += 1
+        progress_field = f'Prop Progress {slot}'
+        if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
+            progress_date = datetime.strptime(date, '%Y-%m-%d').strftime('%-m/%-d/%y')
+            evaluation[progress_field] = f'{progress}/{required} {progress_date}'
+    if seeded:
+        match_log.append(
+            f"\U0001f331 Row {row_num} | seeded {seeded} Prop Day(s) from Tradovate history"
+        )
+    return seeded
+
+
 def _repair_farming_history(evaluation, daily_pnl, row_num, match_log):
     """Repair completed current-cycle Prop Days from full broker history."""
     try:
@@ -2622,6 +2668,7 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
         daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
         if not daily_pnl or account_key in reconciled_accounts:
             continue
+        _seed_farming_history(evaluation, daily_pnl, row_index + 2, match_log)
         _repair_farming_history(evaluation, daily_pnl, row_index + 2, match_log)
         written, complete = _write_farming_prop_days_and_progress(
             evaluation, daily_pnl, row_index + 2, match_log, today=today)

@@ -555,3 +555,44 @@ def test_push_clears_phantom_date_eight_without_new_farming():
     assert sessions is None
     assert updated[0]["Date 8"] == ""
     assert updated[0]["Prop Day 1"] == "-548.30"
+
+
+def test_seed_farming_history_backfills_empty_row():
+    from dashboard.app import _seed_farming_history
+
+    evaluation = {"Prop Firm": "Tradeify", "Status": "In Progress"}
+    log = []
+
+    seeded = _seed_farming_history(evaluation, [
+        {"date": "2026-09-16", "net_pnl": 143.10},
+        {"date": "2026-09-17", "net_pnl": 154.00},
+        {"date": "2026-09-18", "net_pnl": 154.00},
+        {"date": "2026-09-21", "net_pnl": 154.00},
+    ], 2, log)
+
+    assert seeded == 4
+    assert evaluation["Prop Day 1"] == "143.10"
+    assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
+    assert evaluation["Prop Day 4"] == "154.00"
+    assert evaluation["_Prop Day 4 Date"] == "2026-09-21"
+    # 143.10 is under Tradeify's $150 qualifying floor, so day 1 stays 1/5;
+    # the funded TP is implicit day 1 and each $154 day advances one step.
+    assert evaluation["Prop Progress 1"] == "1/5 9/16/26"
+    assert evaluation["Prop Progress 4"] == "4/5 9/21/26"
+    assert any("seeded 4 Prop Day" in line for line in log)
+
+
+def test_seed_farming_history_never_touches_rows_with_records():
+    from dashboard.app import _seed_farming_history
+
+    with_hedge = {"Hedge Day 1": "$0.00"}
+    assert _seed_farming_history(with_hedge, [
+        {"date": "2026-09-16", "net_pnl": 100.0},
+    ], 2, []) == 0
+    assert "Prop Day 1" not in with_hedge
+
+    with_prop = {"Prop Day 2": "50.00"}
+    assert _seed_farming_history(with_prop, [
+        {"date": "2026-09-16", "net_pnl": 100.0},
+    ], 2, []) == 0
+    assert "Prop Day 1" not in with_prop
