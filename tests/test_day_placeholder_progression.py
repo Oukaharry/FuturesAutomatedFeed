@@ -80,15 +80,17 @@ def test_active_row_is_untouched():
 def test_successful_challenge_fill_marks_status_p1_in_progress():
     row = _row(**{"Status P1": "Not Started"})
 
-    assert _app()._mark_trade_in_progress(row) == "Status P1"
+    assert _app()._mark_trade_in_progress(row) == ["Status P1", "Date Started"]
     assert row["Status P1"] == "In Progress"
+    assert row["Date Started"]
 
 
 def test_successful_funded_fill_marks_funded_status_in_progress():
     row = _row(**{"Account #.1": "FNFT-funded", "Status": "Not Started"})
 
-    assert _app()._mark_trade_in_progress(row) == "Status"
+    assert _app()._mark_trade_in_progress(row) == ["Status", "Date Started.1"]
     assert row["Status"] == "In Progress"
+    assert row["Date Started.1"]
 
 
 def test_funded_account_date_and_payout_mark_sparse_row_as_ft2():
@@ -115,7 +117,7 @@ def test_sparse_funded_breach_writes_funded_status_field():
     app = _scrub_app()
     app._derive_account_status = lambda evaluation: ("Fail", "balance below funded floor")
 
-    assert app._apply_status_update(row) == ["Status"]
+    assert app._apply_status_update(row) == ["Status", "Date Ended.1"]
     assert row["Status"] == "Fail"
     assert row["Status P1"] == "Pass"
 
@@ -146,7 +148,7 @@ def test_sparse_funded_payout_row_breaches_at_ft2_floor_from_history():
 def test_successful_fill_does_not_replace_terminal_status():
     row = _row(**{"Status P1": "Pass"})
 
-    assert _app()._mark_trade_in_progress(row) is None
+    assert _app()._mark_trade_in_progress(row) == ["Date Started"]
     assert row["Status P1"] == "Pass"
 
 
@@ -178,7 +180,7 @@ def test_resolved_challenge_loss_without_daily_loss_limit_is_a_breach():
     })
     app = _status_app("loss")
 
-    assert app._apply_status_update(row) == ["Status P1"]
+    assert app._apply_status_update(row) == ["Status P1", "Date Ended"]
     assert row["Status P1"] == "Fail"
 
 
@@ -219,7 +221,7 @@ def test_second_daily_loss_limit_hit_breaches_the_account():
     })
     app = _dll_status_app("loss", losing_days=2)
 
-    assert app._apply_status_update(row) == ["Status P1"]
+    assert app._apply_status_update(row) == ["Status P1", "Date Ended"]
     assert row["Status P1"] == "Fail"
 
 
@@ -236,8 +238,9 @@ def test_confirmed_breach_replaces_provisional_hit_tp_status():
     app = _scrub_app()
     app._derive_account_status = lambda evaluation: ("Fail", "balance below breach floor")
 
-    assert app._apply_status_update(row) == ["Status P1"]
+    assert app._apply_status_update(row) == ["Status P1", "Date Ended"]
     assert row["Status P1"] == "Fail"
+    assert row["Date Ended"]
 
 
 def test_confirmed_funded_breach_replaces_stale_pass_status():
@@ -249,7 +252,7 @@ def test_confirmed_funded_breach_replaces_stale_pass_status():
     app = _scrub_app()
     app._derive_account_status = lambda evaluation: ("Fail", "balance below funded floor")
 
-    assert app._apply_status_update(row) == ["Status"]
+    assert app._apply_status_update(row) == ["Status", "Date Ended.1"]
     assert row["Status"] == "Fail"
 
 
@@ -656,7 +659,7 @@ def test_account_missing_from_tradovate_is_marked_failed():
     })
     app = _vanish_app(["TDFY-ALIVE"], ["TDFY-ALIVE"])
 
-    assert app._apply_tradovate_vanish_breaches([row]) == ["Status P1"]
+    assert app._apply_tradovate_vanish_breaches([row]) == ["Status P1", "Date Ended"]
     assert row["Status P1"] == "Fail"
     assert "no longer exists on Tradovate" in row["_derived_Status P1"]
 
@@ -806,3 +809,61 @@ def test_dll_firm_keeps_its_static_floor():
     status, _reason = app._derive_account_status(row)
     # DLL firm: no SOD floor — 52,900 is above any static challenge floor.
     assert status != "Fail"
+
+
+def test_fill_stamps_status_and_date_started_per_leg():
+    app = _scrub_app()
+
+    challenge = {"Account #": "TDFY-1", "Status P1": "Not Started"}
+    changed = app._mark_trade_in_progress(challenge)
+    assert "Status P1" in changed and "Date Started" in changed
+    assert challenge["Status P1"] == "In Progress"
+    assert challenge["Date Started"]
+
+    funded = {"Account #.1": "FTDFY-1", "Status": "-", "Date Started": "2026-09-01"}
+    changed = app._mark_trade_in_progress(funded)
+    assert "Date Started.1" in changed
+    assert funded["Date Started"] == "2026-09-01"  # challenge date untouched
+
+    already = {"Account #": "TDFY-2", "Status P1": "In Progress",
+               "Date Started": "2026-09-01"}
+    assert app._mark_trade_in_progress(already) == []
+
+
+def test_terminal_status_stamps_date_ended_per_leg():
+    app = _scrub_app()
+
+    challenge = {}
+    assert app._stamp_stage_end_date(challenge, "Status P1", "Fail") == ["Date Ended"]
+    assert challenge["Date Ended"]
+
+    funded = {"Date Ended": "2026-09-01"}
+    assert app._stamp_stage_end_date(funded, "Status", "Completed") == ["Date Ended.1"]
+    assert funded["Date Ended"] == "2026-09-01"
+
+    assert app._stamp_stage_end_date({}, "Status P1", "Hit TP1") == []
+    kept = {"Date Ended": "2026-09-01"}
+    assert app._stamp_stage_end_date(kept, "Status P1", "Fail") == []
+    assert kept["Date Ended"] == "2026-09-01"
+
+
+def test_date_started_backfills_from_first_traded_day():
+    app = _scrub_app()
+    app._trade_outcome_history = lambda force=False: {
+        "tdfy-1": {"daily_pnl": [
+            {"date": "2026-09-15", "trades": 0},
+            {"date": "2026-09-16", "trades": 1, "net_pnl": 150.0},
+        ]},
+        "ftdfy-1": {"daily_pnl": [
+            {"date": "2026-09-20", "trades": 2, "net_pnl": 300.0},
+        ]},
+    }
+    ev = {"Account #": "TDFY-1", "Account #.1": "FTDFY-1"}
+
+    changed = app._stamp_started_dates(ev)
+
+    assert set(changed) == {"Date Started", "Date Started.1"}
+    assert ev["Date Started"] == "2026-09-16"
+    assert ev["Date Started.1"] == "2026-09-20"
+    # Second pass is a no-op.
+    assert app._stamp_started_dates(ev) == []

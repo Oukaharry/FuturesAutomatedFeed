@@ -13847,6 +13847,8 @@ def update_data():
                                     _r['Status P1'] = 'Not Started'
                                 if not str(_r.get('Status') or '').strip():
                                     _r['Status'] = '-'
+                                if not str(_r.get('Date Purchased') or '').strip():
+                                    _r['Date Purchased'] = _kenya_today_str()
                                 _seed_new_row_day_placeholder(_r)
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     elif data.get('create_evaluation'):
@@ -13854,7 +13856,7 @@ def update_data():
                         new_row = {
                             "Prop Firm": "My Funded Futures",
                             "Account Size": "$100,000",
-                            "Date Purchased": "",
+                            "Date Purchased": _kenya_today_str(),
                             "Fee": "0",
                             "Status P1": "Not Started",
                             "Status": "-",

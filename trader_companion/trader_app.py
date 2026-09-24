@@ -4996,8 +4996,43 @@ class TradeOpssAIApp:
         ev[field] = status
         note_field = f"_derived_{field}"
         ev[note_field] = reason
+        changed = [field]
+        changed.extend(self._stamp_stage_end_date(ev, field, status))
         self.log(f"📌 {self._primary_trade_account(ev)}: {field} → {status} ({reason})")
-        return [field]
+        return changed
+
+    def _stamp_stage_end_date(self, ev, status_field, status):
+        """Fill the leg's Date Ended when its stage resolves. Returns changed fields."""
+        if str(status) not in ("Pass", "Fail", "Completed"):
+            return []
+        ended_field = "Date Ended.1" if status_field == "Status" else "Date Ended"
+        if self._cell(ev.get(ended_field)):
+            return []
+        ev[ended_field] = kenya_today().strftime("%Y-%m-%d")
+        return [ended_field]
+
+    def _stamp_started_dates(self, ev):
+        """Backfill empty Date Started fields from the leg's first traded day."""
+        changed = []
+        history = None
+        for account_field, started_field in (("Account #", "Date Started"),
+                                             ("Account #.1", "Date Started.1")):
+            if self._cell(ev.get(started_field)):
+                continue
+            acct = self._cell_account(ev.get(account_field))
+            if not acct:
+                continue
+            if history is None:
+                history = self._trade_outcome_history()
+            entry = history.get(acct.strip().lower())
+            if not entry:
+                continue
+            for day in entry.get("daily_pnl") or []:
+                if day.get("trades"):
+                    ev[started_field] = str(day.get("date"))
+                    changed.append(started_field)
+                    break
+        return changed
 
     def _derive_trade_progress_status(self, ev):
         """Return a Hit TP/SL marker for the currently resolved trade.
@@ -5096,6 +5131,7 @@ class TradeOpssAIApp:
                 if self._account_has_open_position(ev):
                     continue
                 force_fields.extend(self._apply_status_update(ev))
+                force_fields.extend(self._stamp_started_dates(ev))
                 current, corrected = self._reconcile_outcome_placeholder(ev)
                 if not current or not corrected:
                     continue
@@ -7281,6 +7317,7 @@ class TradeOpssAIApp:
             ev[field] = "Fail"
             ev[f"_derived_{field}"] = reason
             force_fields.append(field)
+            force_fields.extend(self._stamp_stage_end_date(ev, field, "Fail"))
             self._record_breach_alert(
                 ev, self._resolve_firm_code(ev.get("Prop Firm", "")), phase,
                 0.0, None, reason_code="tradovate_vanish")
@@ -7315,6 +7352,7 @@ class TradeOpssAIApp:
             ev[f"_derived_{field}"] = reason
             evaluations.append(ev)
             force_fields.append(field)
+            force_fields.extend(self._stamp_stage_end_date(ev, field, "Fail"))
             phase = "Funded" if on_funded else "Challenge"
             self._record_breach_alert(
                 ev, meta.get("firm_code"), phase, 0.0, None,
@@ -8180,9 +8218,7 @@ class TradeOpssAIApp:
                 if acct_lower not in (a1, a0):
                     continue
                 matched_ev = ev
-                status_field = self._mark_trade_in_progress(ev)
-                if status_field:
-                    force_fields.append(status_field)
+                force_fields.extend(self._mark_trade_in_progress(ev))
                 cur = self._cell(ev.get(field_name))
                 if self._parse_day_token(cur) is not None:
                     ev[field_name] = "$0.00"
@@ -8245,15 +8281,25 @@ class TradeOpssAIApp:
             return False
 
     def _mark_trade_in_progress(self, evaluation):
-        """Set the active challenge or funded status after a broker fill."""
+        """Set the active status and stamp Date Started after a broker fill.
+
+        Returns the list of changed fields (possibly empty).
+        """
         if not isinstance(evaluation, dict):
-            return None
-        status_field = "Status" if self._cell(evaluation.get("Account #.1")) else "Status P1"
+            return []
+        changed = []
+        on_funded = bool(self._cell(evaluation.get("Account #.1")))
+        status_field = "Status" if on_funded else "Status P1"
         current = self._cell(evaluation.get(status_field)).lower()
         if current in ("", "not started", "in progress"):
-            evaluation[status_field] = "In Progress"
-            return status_field
-        return None
+            if evaluation.get(status_field) != "In Progress":
+                evaluation[status_field] = "In Progress"
+                changed.append(status_field)
+        started_field = "Date Started.1" if on_funded else "Date Started"
+        if not self._cell(evaluation.get(started_field)):
+            evaluation[started_field] = kenya_today().strftime("%Y-%m-%d")
+            changed.append(started_field)
+        return changed
 
     def _refresh_eval_for_account(self, acct_num):
         """Fetch fresh eval data from dashboard for a specific account.
@@ -11406,8 +11452,8 @@ class TradeOpssAIApp:
                         if _ev:
                             _sf = self._mark_trade_in_progress(_ev)
                             if _sf:
-                                self.root.after(0, lambda an=acct_num, sf=_sf:
-                                    self.log(f"🔄 Auto-status: {an} → {_sf}='In Progress'"))
+                                self.root.after(0, lambda an=acct_num, sf=", ".join(_sf):
+                                    self.log(f"🔄 Auto-status: {an} → {sf}"))
 
                     # Remove row from UI
                     def _remove(rd=row_data):
