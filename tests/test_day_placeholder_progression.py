@@ -169,7 +169,7 @@ def test_resolved_win_marks_challenge_status_hit_tp_for_trade_number():
     assert row["Status P1"] == "Hit TP1"
 
 
-def test_resolved_loss_marks_challenge_status_hit_sl_for_trade_number():
+def test_resolved_challenge_loss_without_daily_loss_limit_is_a_breach():
     row = _row(**{
         "Hedge Result 1": "100.00",
         "Hedge Result 2": "$0.00",
@@ -179,7 +179,48 @@ def test_resolved_loss_marks_challenge_status_hit_sl_for_trade_number():
     app = _status_app("loss")
 
     assert app._apply_status_update(row) == ["Status P1"]
-    assert row["Status P1"] == "Hit SL2"
+    assert row["Status P1"] == "Fail"
+
+
+def _dll_status_app(outcome, losing_days):
+    app = _status_app(outcome)
+    app._trade_outcome_history = lambda force=False: {
+        "fnft-1": {
+            "balance": 49000.0,
+            "daily_pnl": [
+                {"trades": 1, "net_pnl": -950.0}
+                for _ in range(losing_days)
+            ],
+        }
+    }
+    return app
+
+
+def test_first_daily_loss_limit_hit_marks_hit_sl1():
+    row = _row(**{
+        "Prop Firm": "FTMO Futures Pro",
+        "Hedge Result 1": "$0.00",
+        "Hedge Result 2": "TUESDAY",
+        "Status P1": "In Progress",
+    })
+    app = _dll_status_app("loss", losing_days=1)
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Hit SL1"
+
+
+def test_second_daily_loss_limit_hit_breaches_the_account():
+    row = _row(**{
+        "Prop Firm": "FTMO Futures Pro",
+        "Hedge Result 1": "-950.00",
+        "Hedge Result 2": "$0.00",
+        "Hedge Result 3": "THURSDAY",
+        "Status P1": "Hit SL1",
+    })
+    app = _dll_status_app("loss", losing_days=2)
+
+    assert app._apply_status_update(row) == ["Status P1"]
+    assert row["Status P1"] == "Fail"
 
 
 def test_trade_marker_does_not_replace_manual_status():
@@ -592,3 +633,70 @@ def test_hand_typed_marker_is_held_while_no_payout_has_landed():
 
     assert app._release_payout_placeholders([row]) == []
     assert row["Hedge Day 5"] == "PAYOUT"
+
+def _vanish_app(history_accounts, cached_accounts):
+    app = _scrub_app()
+    app._trade_outcome_history = lambda force=False: {
+        name.lower(): {"balance": 50000.0, "daily_pnl": []}
+        for name in history_accounts
+    }
+    app._outcome_cache = {
+        "Tradeify": (0.0, [{"account_name": n} for n in cached_accounts]),
+    }
+    app._broker_connection_key = lambda name: "Tradeify"
+    return app
+
+
+def test_account_missing_from_tradovate_is_marked_failed():
+    row = _row(**{
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFY-GONE",
+        "Hedge Result 1": "$0.00",
+        "Status P1": "In Progress",
+    })
+    app = _vanish_app(["TDFY-ALIVE"], ["TDFY-ALIVE"])
+
+    assert app._apply_tradovate_vanish_breaches([row]) == ["Status P1"]
+    assert row["Status P1"] == "Fail"
+    assert "no longer exists on Tradovate" in row["_derived_Status P1"]
+
+
+def test_account_still_on_tradovate_is_untouched():
+    row = _row(**{
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFY-ALIVE",
+        "Hedge Result 1": "$0.00",
+        "Status P1": "In Progress",
+    })
+    app = _vanish_app(["TDFY-ALIVE"], ["TDFY-ALIVE"])
+
+    assert app._apply_tradovate_vanish_breaches([row]) == []
+    assert row["Status P1"] == "In Progress"
+
+
+def test_vanish_needs_a_fresh_history_fetch_for_that_firm():
+    row = _row(**{
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFY-GONE",
+        "Hedge Result 1": "$0.00",
+        "Status P1": "In Progress",
+    })
+    # History exists for another firm but Tradeify's fetch returned nothing.
+    app = _vanish_app(["FNFT-OTHER"], [])
+
+    assert app._apply_tradovate_vanish_breaches([row]) == []
+    assert row["Status P1"] == "In Progress"
+
+
+def test_vanish_skips_rows_that_never_traded():
+    row = _row(**{
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFY-NEW",
+        "Hedge Result 1": "MON",
+        "Hedge Result 2": "",
+        "Status P1": "Not Started",
+    })
+    app = _vanish_app(["TDFY-ALIVE"], ["TDFY-ALIVE"])
+
+    assert app._apply_tradovate_vanish_breaches([row]) == []
+    assert row["Status P1"] == "Not Started"

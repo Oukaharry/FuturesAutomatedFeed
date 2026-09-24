@@ -127,3 +127,16 @@ def test_mnq_daily_pnl_excludes_nq_only_and_payout_days():
     dates = {d["date"] for d in TradovateAccount._mnq_daily_pnl_from_report_rows(rows)}
     assert "2026-09-15" not in dates  # NQ funded trade, not farming
     assert "2026-09-22" not in dates  # payout withdrawal only
+
+
+def test_open_position_trade_dates_only_counts_open_mnq():
+    positions = [
+        {"accountId": 1, "contractId": 10, "netPos": 2,
+         "tradeDate": {"year": 2026, "month": 9, "day": 24}},
+        {"accountId": 1, "contractId": 99, "netPos": 1,
+         "tradeDate": {"year": 2026, "month": 9, "day": 24}},  # not MNQ
+        {"accountId": 2, "contractId": 10, "netPos": 0,
+         "tradeDate": {"year": 2026, "month": 9, "day": 24}},  # flat
+    ]
+    out = TradovateAccount._open_position_trade_dates(positions, {10})
+    assert out == {1: {"2026-09-24"}}

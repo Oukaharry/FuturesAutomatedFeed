@@ -4984,19 +4984,67 @@ class TradeOpssAIApp:
         return [field]
 
     def _derive_trade_progress_status(self, ev):
-        """Return a Hit TP/SL marker for the currently resolved trade."""
-        traded_field, _phase, placeholder = self._locate_progression_cells(ev)
+        """Return a Hit TP/SL marker for the currently resolved trade.
+
+        Challenge losses follow the daily-loss-limit rule: 'Hit SL{n}' means
+        the n-th DLL hit, and only firms with a DLL survive the first one —
+        the second hit (or any loss without a DLL) breaches the account.
+        """
+        traded_field, _traded_phase, placeholder = self._locate_progression_cells(ev)
         if not traded_field or not placeholder:
             return None, None
-        _date, outcome = self._latest_resolved_outcome(self._primary_trade_account(ev))
+        account = self._primary_trade_account(ev)
+        _date, outcome = self._latest_resolved_outcome(account)
         if outcome not in ("win", "loss"):
             return None, None
-        for _phase_name, fields in self._ALL_PHASE_FIELD_SETS:
-            if traded_field in fields:
-                trade_number = fields.index(traded_field) + 1
-                label = "TP" if outcome == "win" else "SL"
-                return f"Hit {label}{trade_number}", f"resolved {outcome} on {traded_field}"
+        for phase_name, fields in self._ALL_PHASE_FIELD_SETS:
+            if traded_field not in fields:
+                continue
+            trade_number = fields.index(traded_field) + 1
+            if outcome == "win":
+                return f"Hit TP{trade_number}", f"resolved win on {traded_field}"
+            if phase_name != "Challenge":
+                return f"Hit SL{trade_number}", f"resolved loss on {traded_field}"
+            dll = self._challenge_daily_loss_limit(ev)
+            if not dll:
+                return "Fail", (f"challenge loss on {traded_field} with no daily "
+                                f"loss limit — account breached")
+            sl_hits = self._challenge_losing_days(account)
+            if sl_hits >= 2:
+                return "Fail", (f"second daily-loss-limit hit on {traded_field} "
+                                f"— account breached")
+            return "Hit SL1", f"first daily-loss-limit hit on {traded_field}"
         return None, None
+
+    def _challenge_daily_loss_limit(self, ev):
+        """The firm's evaluation daily loss limit, or None when it has none."""
+        mgr = self.prop_firm_mgr
+        if not mgr:
+            return None
+        firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+        if not firm_code:
+            return None
+        rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        return rules.get("evaluation_daily_loss_limit")
+
+    def _challenge_losing_days(self, account_number) -> int:
+        """Resolved losing days on the account — each one is a DLL hit."""
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return 0
+        entry = self._trade_outcome_history().get(key)
+        if not entry:
+            return 0
+        losses = 0
+        for day in entry.get("daily_pnl") or []:
+            if not day.get("trades"):
+                continue
+            try:
+                if float(day.get("net_pnl") or 0) < 0:
+                    losses += 1
+            except (TypeError, ValueError):
+                continue
+        return losses
 
     def _apply_outcome_corrections(self, force_history=False):
         """Re-home pending placeholders once their trade has resolved.
@@ -5053,6 +5101,7 @@ class TradeOpssAIApp:
             force_fields.extend(self._release_payout_placeholders(evaluations))
             force_fields.extend(self._release_dashboard_payout_placeholders(evaluations))
             force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
+            force_fields.extend(self._apply_tradovate_vanish_breaches(evaluations))
 
             breaches = list(self._pending_breach_alerts)
             if not force_fields and not breaches:
@@ -6141,6 +6190,9 @@ class TradeOpssAIApp:
         if reason_code == "dashboard_vanish":
             self.log(f"🚨 {account}: {phase} breach — account removed from "
                      f"dashboard after trading", "ERROR")
+        elif reason_code == "tradovate_vanish":
+            self.log(f"🚨 {account}: {phase} breach — account no longer "
+                     f"exists on Tradovate", "ERROR")
         else:
             self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
                      f"below floor {float(floor):,.2f}", "ERROR")
@@ -7153,6 +7205,54 @@ class TradeOpssAIApp:
                 if tier:
                     self._register_dashboard_vanish_watch(
                         fu, ev, firm_code, on_funded=True, tier=tier)
+
+    def _apply_tradovate_vanish_breaches(self, evaluations) -> list:
+        """Fail rows whose traded account is gone from Tradovate.
+
+        Breached prop accounts are removed from the Tradovate login, so a row
+        that has trades on the dashboard but no matching broker account is a
+        breach. Only rows whose firm has a live connection with a successful
+        history fetch are judged — a dropped session must not fail anyone.
+        """
+        force_fields = []
+        history = self._trade_outcome_history()
+        if not history:
+            return force_fields
+        # Firms whose latest history fetch actually returned accounts.
+        fresh_firms = set()
+        for firm_name, cached in (getattr(self, "_outcome_cache", None) or {}).items():
+            if cached and cached[1]:
+                fresh_firms.add(firm_name)
+        if not fresh_firms:
+            return force_fields
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            firm_key = self._broker_connection_key(self._cell(ev.get("Prop Firm")))
+            if firm_key not in fresh_firms:
+                continue
+            on_funded = self._on_funded_leg(ev)
+            has_traded = (self._has_taken_funded_trade1(ev) if on_funded
+                          else self._has_taken_challenge_trade1(ev))
+            if not has_traded:
+                continue
+            field = "Status" if on_funded else "Status P1"
+            current = self._cell(ev.get(field)).lower()
+            if any(kw in current for kw in self._INACTIVE_KEYWORDS):
+                continue
+            account = self._breach_balance_account(ev, on_funded)
+            if not account or str(account).strip().lower() in history:
+                continue
+            phase = "Funded" if on_funded else "Challenge"
+            reason = (f"account {account} no longer exists on Tradovate "
+                      f"(breached accounts are removed)")
+            ev[field] = "Fail"
+            ev[f"_derived_{field}"] = reason
+            force_fields.append(field)
+            self._record_breach_alert(
+                ev, self._resolve_firm_code(ev.get("Prop Firm", "")), phase,
+                0.0, None, reason_code="tradovate_vanish")
+        return force_fields
 
     def _apply_dashboard_vanish_breaches(self, evaluations) -> list:
         """Fail accounts that traded (CH1/FT1/FT2) but vanished from the dashboard."""

@@ -4447,6 +4447,20 @@ class TradovateAccount:
             traceback.print_exc()
             return None
 
+    @staticmethod
+    def _open_position_trade_dates(positions, contract_ids):
+        """{accountId: {trade-date}} for open positions in the given contracts."""
+        out = {}
+        for pos in positions or []:
+            if not pos.get('netPos'):
+                continue
+            if pos.get('contractId') not in contract_ids:
+                continue
+            td = pos.get('tradeDate') or {}
+            date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+            out.setdefault(pos.get('accountId'), set()).add(date_str)
+        return out
+
     def get_mnq_daily_pnl(self):
         """Get daily P&L for days with MNQ trading activity (farming days).
 
@@ -4494,6 +4508,11 @@ class TradovateAccount:
             # Rolling fills only cover recent days — the reporting service
             # backfills MNQ farming days for the account's whole life.
             cash_report_name = self._find_cash_report_name()
+
+            # A farming day is only pushed once its trade has fully closed —
+            # an open MNQ position holds today's row back until it resolves.
+            open_mnq_dates = self._open_position_trade_dates(
+                self._api_fetch("/position/list") or [], mnq_contract_ids)
 
             from collections import defaultdict
             results = []
@@ -4548,6 +4567,14 @@ class TradovateAccount:
                         if added:
                             mnq_daily = sorted(mnq_daily + added, key=lambda e: e["date"])
                             print(f"[FARMING] {aname}: +{len(added)} older MNQ day(s) from {cash_report_name} report")
+
+                held_back = open_mnq_dates.get(aid) or set()
+                if held_back:
+                    before = len(mnq_daily)
+                    mnq_daily = [e for e in mnq_daily if e["date"] not in held_back]
+                    if len(mnq_daily) != before:
+                        print(f"[FARMING] {aname}: holding back {before - len(mnq_daily)} "
+                              f"day(s) with an open MNQ position")
 
                 if mnq_daily:
                     results.append({
