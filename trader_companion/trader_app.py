@@ -6168,7 +6168,7 @@ class TradeOpssAIApp:
                 if sod > 0:
                     compact = re.sub(r"[^a-z0-9]", "",
                                      str(ev.get("Prop Firm") or firm_code).lower())
-                    daily_dd = 1500.0 if "fundednext" in compact else 2000.0
+                    daily_dd = 1500.0 if "fundednextflex" in compact else 2000.0
                     sod_floor = sod - daily_dd
                     floor = sod_floor if floor is None else max(float(floor), sod_floor)
 

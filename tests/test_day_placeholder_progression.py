@@ -726,7 +726,7 @@ def test_non_dll_challenge_breaches_at_sod_minus_2000():
     assert "53,000.00" in reason
 
 
-def test_fundednext_challenge_floor_is_sod_minus_1500():
+def test_fundednext_flex_floor_is_sod_minus_1500():
     row = {
         "Prop Firm": "Funded Next Flex",
         "Account #": "FNFT-1",
@@ -746,6 +746,31 @@ def test_fundednext_challenge_floor_is_sod_minus_1500():
     status, reason = app._derive_account_status(row)
     assert status == "Fail"
     assert "48,500.00" in reason
+
+
+def test_regular_fundednext_uses_the_2000_floor():
+    row = {
+        "Prop Firm": "FundedNext",
+        "Account #": "FNFT-2",
+        "Hedge Result 1": "$0.00",
+    }
+    app = _sod_floor_app({"fnft-2": {
+        "balance": 48400.0,
+        "balance_sod": 50000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -1600.0}],
+    }})
+
+    status, _reason = app._derive_account_status(row)
+    assert status is None  # 48,400 above the 48,000 floor
+
+    app = _sod_floor_app({"fnft-2": {
+        "balance": 47900.0,
+        "balance_sod": 50000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -2100.0}],
+    }})
+    status, reason = app._derive_account_status(row)
+    assert status == "Fail"
+    assert "48,000.00" in reason
 
 
 def test_non_dll_funded_trade1_breaches_at_sod_minus_2000():
