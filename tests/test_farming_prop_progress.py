@@ -575,24 +575,76 @@ def test_seed_farming_history_backfills_empty_row():
     assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
     assert evaluation["Prop Day 4"] == "154.00"
     assert evaluation["_Prop Day 4 Date"] == "2026-09-21"
+    assert evaluation["Hedge Day 4"] == "$0.00"
     # 143.10 is under Tradeify's $150 qualifying floor, so day 1 stays 1/5;
     # the funded TP is implicit day 1 and each $154 day advances one step.
     assert evaluation["Prop Progress 1"] == "1/5 9/16/26"
     assert evaluation["Prop Progress 4"] == "4/5 9/21/26"
-    assert any("seeded 4 Prop Day" in line for line in log)
+    assert any("rebuilt 4 Prop Day" in line for line in log)
 
 
-def test_seed_farming_history_never_touches_rows_with_records():
+def test_seed_farming_history_skips_when_history_fully_recorded():
     from dashboard.app import _seed_farming_history
 
-    with_hedge = {"Hedge Day 1": "$0.00"}
-    assert _seed_farming_history(with_hedge, [
-        {"date": "2026-09-16", "net_pnl": 100.0},
+    evaluation = {
+        "Prop Firm": "Tradeify",
+        "Prop Day 1": "154.00",
+        "_Prop Day 1 Date": "2026-09-16",
+    }
+    assert _seed_farming_history(evaluation, [
+        {"date": "2026-09-16", "net_pnl": 154.0},
     ], 2, []) == 0
-    assert "Prop Day 1" not in with_hedge
+    assert "Prop Day 2" not in evaluation
 
-    with_prop = {"Prop Day 2": "50.00"}
-    assert _seed_farming_history(with_prop, [
-        {"date": "2026-09-16", "net_pnl": 100.0},
-    ], 2, []) == 0
-    assert "Prop Day 1" not in with_prop
+
+def test_seed_farming_history_relocates_misplaced_today_record():
+    """Today's P/L landed in slot 1 because the dashboard never saw the older days."""
+    from dashboard.app import _seed_farming_history
+
+    evaluation = {
+        "Prop Firm": "Tradeify",
+        "Hedge Day 1": "$0.00",
+        "Prop Day 1": "-1.90",
+        "_Prop Day 1 Date": "2026-09-24",
+        "Prop Progress 1": "1/5 9/24/26",
+    }
+    log = []
+
+    seeded = _seed_farming_history(evaluation, [
+        {"date": "2026-09-16", "net_pnl": 152.40},
+        {"date": "2026-09-17", "net_pnl": 150.20},
+        {"date": "2026-09-18", "net_pnl": 150.20},
+        {"date": "2026-09-21", "net_pnl": 150.20},
+        {"date": "2026-09-23", "net_pnl": 150.20},
+        {"date": "2026-09-24", "net_pnl": -1.90},
+    ], 2, log)
+
+    assert seeded == 6
+    assert evaluation["Prop Day 1"] == "152.40"
+    assert evaluation["_Prop Day 1 Date"] == "2026-09-16"
+    assert evaluation["Prop Day 6"] == "-1.90"
+    assert evaluation["_Prop Day 6 Date"] == "2026-09-24"
+    # Cycle 1 completes on 09/21 (funded TP + four qualifying days) — the
+    # payout implicitly landed because farming resumed on 09/23 in cycle 2.
+    assert evaluation["Prop Progress 4"] == "5/5 9/21/26"
+    assert evaluation["_Farming Cycle Start"] == 5
+    assert evaluation["Prop Progress 5"] == "2/5 9/23/26"
+    assert evaluation["Prop Progress 6"] == "2/5 9/24/26"
+    assert evaluation.get("Hedge Day 7") != "PAYOUT"
+
+
+def test_seed_farming_history_marks_payout_when_last_day_completes_cycle():
+    from dashboard.app import _seed_farming_history
+
+    evaluation = {"Prop Firm": "Tradeify"}
+    _seed_farming_history(evaluation, [
+        {"date": "2026-09-16", "net_pnl": 152.40},
+        {"date": "2026-09-17", "net_pnl": 150.20},
+        {"date": "2026-09-18", "net_pnl": 150.20},
+        {"date": "2026-09-21", "net_pnl": 150.20},
+    ], 2, [])
+
+    assert evaluation["Prop Progress 4"] == "5/5 9/21/26"
+    assert evaluation["Hedge Day 5"] == "PAYOUT"
+    assert evaluation["_Hedge Day 5 Payout Due"] == "2026-09-21"
+    assert evaluation["_Farming Cycle Start"] == 5

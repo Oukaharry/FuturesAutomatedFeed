@@ -2517,47 +2517,80 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
 
 
 def _seed_farming_history(evaluation, daily_pnl, row_num, match_log):
-    """Seed Prop Days from broker history when the row has no farming records.
+    """Rebuild Prop Days from broker history when recorded days don't cover it.
 
-    Backfills accounts whose farming happened before the dashboard ever saw
-    them (the daily writer only records today, and repair needs traded slots).
+    The daily writer only records today and repair only realigns traded slots,
+    so farming that happened before the dashboard saw the account is invisible.
+    Broker history is authoritative: lay every farming day into consecutive
+    slots, restarting the qualifying count after each completed cycle (the
+    payout implicitly landed whenever more farming days follow).
     """
-    if _last_traded_hedge_day_slot(evaluation) is not None:
-        return 0
-    if any(str(evaluation.get(f'Prop Day {n}') or '').strip() for n in range(1, 61)):
-        return 0
     history = sorted({
         str(day.get('date')): float(day.get('net_pnl') or 0)
         for day in daily_pnl or [] if day and day.get('date')
-    }.items())
+    }.items())[:60]
     if not history:
         return 0
-    try:
-        cycle_start = max(1, int(evaluation.get('_Farming Cycle Start') or 1))
-    except (TypeError, ValueError):
-        cycle_start = 1
     rules = _farming_rules_for(evaluation)
     required = int(rules['days'])
     min_profit = float(rules['min_profit'])
+    # Funded TP/SL days dwarf farming targets; they are each cycle's implicit
+    # qualifying day 1 and must never occupy a Prop Day slot.
+    funded_scale = max(4 * min_profit, 1000.0)
+    history = [(date, pnl) for date, pnl in history if abs(pnl) < funded_scale]
+    if not history:
+        return 0
+    recorded = {
+        str(evaluation.get(f'_Prop Day {n} Date') or '').strip()
+        for n in range(1, 61)
+    }
+    recorded.discard('')
+    if all(date in recorded for date, _ in history):
+        return 0
     seeded = 0
     progress = 1  # funded TP counts implicitly as qualifying day 1
-    for offset, (date, net_pnl) in enumerate(history[:60]):
-        slot = cycle_start + offset
+    cycle_start = 1
+    completed_at_end = False
+    slot = 0
+    for slot, (date, net_pnl) in enumerate(history, start=1):
         field = f'Prop Day {slot}'
-        if _eval_push_field_blocked(evaluation, field, phase_code='FA'):
-            continue
-        evaluation[field] = f'{net_pnl:.2f}'
-        evaluation[f'_{field} Date'] = date
-        seeded += 1
+        if not _eval_push_field_blocked(evaluation, field, phase_code='FA'):
+            evaluation[field] = f'{net_pnl:.2f}'
+            evaluation[f'_{field} Date'] = date
+            seeded += 1
+        hedge_field = f'Hedge Day {slot}'
+        if (not _hedge_cell_currency_only(evaluation.get(hedge_field))
+                and not _eval_push_field_blocked(evaluation, hedge_field, phase_code='FA')):
+            evaluation[hedge_field] = '$0.00'
         if net_pnl > 0 and net_pnl >= min_profit and progress < required:
             progress += 1
         progress_field = f'Prop Progress {slot}'
         if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
             progress_date = datetime.strptime(date, '%Y-%m-%d').strftime('%-m/%-d/%y')
             evaluation[progress_field] = f'{progress}/{required} {progress_date}'
+        completed_at_end = progress >= required
+        if completed_at_end:
+            cycle_start = slot + 1
+            progress = 1
+    evaluation['_Farming Cycle Start'] = cycle_start
+    if completed_at_end:
+        payout_field = f'Hedge Day {slot + 1}'
+        if not _eval_push_field_blocked(evaluation, payout_field, phase_code='FA'):
+            evaluation[payout_field] = 'PAYOUT'
+            evaluation[f'_{payout_field} Payout Due'] = history[-1][0]
+    # Anything recorded beyond the rebuilt range is stale.
+    for extra in range(slot + 1, 61):
+        field = f'Prop Day {extra}'
+        if (str(evaluation.get(field) or '').strip()
+                and not _eval_push_field_blocked(evaluation, field, phase_code='FA')):
+            evaluation[field] = ''
+            evaluation.pop(f'_{field} Date', None)
+            progress_field = f'Prop Progress {extra}'
+            if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
+                evaluation[progress_field] = ''
     if seeded:
         match_log.append(
-            f"\U0001f331 Row {row_num} | seeded {seeded} Prop Day(s) from Tradovate history"
+            f"\U0001f331 Row {row_num} | rebuilt {seeded} Prop Day(s) from Tradovate history"
         )
     return seeded
 
