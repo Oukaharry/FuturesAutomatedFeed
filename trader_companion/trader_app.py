@@ -1729,6 +1729,8 @@ class TradeOpssAIApp:
         self._firm_billing_summary = {}   # {firm_name: {total_fees, total_payouts, records: [...]}}
         self.push_billing_btn = None
         self._status_poll_active = False   # real-time status polling flag
+        self._broker_keepalive_active = False
+        self._broker_keepalive_thread = None
         self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
         self._cached_acct_mappings = {}    # {firm_name: {acct_key: info}} cached on connect
         self._last_dashboard_evaluations = []
@@ -10415,6 +10417,71 @@ class TradeOpssAIApp:
             self.root.after(0, self._complete_auto_trade)
 
     _AUTO_TRADE_PROP_KEEPALIVE_SEC = 45
+    _BROKER_IDLE_KEEPALIVE_SEC = 60
+
+    def _start_broker_idle_keepalive(self):
+        """Ping broker Chrome sessions while idle so Tradovate does not time out."""
+        if self._broker_keepalive_active:
+            return
+        self._broker_keepalive_active = True
+        self._broker_keepalive_thread = threading.Thread(
+            target=self._broker_idle_keepalive_loop, daemon=True, name="broker-idle-keepalive")
+        self._broker_keepalive_thread.start()
+        self.log("🔄 Broker idle keepalive started (every 60s while connected)")
+
+    def _broker_idle_keepalive_loop(self):
+        while self._broker_keepalive_active:
+            for _ in range(self._BROKER_IDLE_KEEPALIVE_SEC):
+                if not self._broker_keepalive_active:
+                    return
+                time.sleep(1)
+            conns = getattr(self, "_broker_connections", None) or {}
+            if not any((c or {}).get("account") for c in conns.values()):
+                continue
+            try:
+                self._keep_prop_brokers_alive(context="idle")
+            except Exception:
+                pass
+
+    def _mark_broker_session_lost(self, firm_name, reason="session expired"):
+        """Sync Controls UI when Chrome reverted to login but status still shows Connected."""
+        conn = (getattr(self, "_broker_connections", None) or {}).get(firm_name)
+        if not conn:
+            return
+        if conn.get("session_lost"):
+            return
+        conn["session_lost"] = True
+        account = conn.get("account")
+        if account is not None:
+            try:
+                account.logged_in = False
+            except Exception:
+                pass
+
+        def _ui():
+            try:
+                conn["status_var"].set("❌")
+                btn = conn.get("connect_btn")
+                if btn and hasattr(btn, "configure"):
+                    btn.configure(text="Retry", fg_color="#450A0A")
+                lbl = conn.get("status_lbl")
+                if lbl and hasattr(lbl, "configure"):
+                    lbl.configure(text_color="#F87171")
+                connected = sum(
+                    1 for c in (self._broker_connections or {}).values()
+                    if c.get("account") and getattr(c.get("account"), "logged_in", False))
+                total = len(self._broker_connections or {})
+                self.broker_status_var.set(f"{connected}/{total} connected")
+            except Exception:
+                pass
+
+        self.root.after(0, _ui)
+        self.log(f"⚠ {firm_name}: {reason} — use Retry in Controls to reconnect", "WARN")
+
+    def _clear_broker_session_lost(self, firm_name):
+        conn = (getattr(self, "_broker_connections", None) or {}).get(firm_name)
+        if conn:
+            conn.pop("session_lost", None)
 
     def _keep_prop_brokers_alive(self, context="auto-trade"):
         """Ping broker trading UIs (Chrome) during long auto-trade waits."""
@@ -10433,6 +10500,23 @@ class TradeOpssAIApp:
                 if hasattr(account, "touch_trading_ui_keepalive"):
                     ok = account.touch_trading_ui_keepalive(context=f"{context}:{label}")
                     file_log.info("keepalive firm=%s ok=%s ctx=%s", label, ok, context)
+                    if not ok or not getattr(account, "logged_in", True):
+                        self._mark_broker_session_lost(
+                            label,
+                            "broker returned to login (idle timeout or disconnect)")
+                    elif ok and getattr(account, "logged_in", False):
+                        conn = (self._broker_connections or {}).get(label) or {}
+                        if conn.get("session_lost"):
+                            self._clear_broker_session_lost(label)
+                            def _restore(fn=label, c=conn):
+                                try:
+                                    c["status_var"].set("✅")
+                                    btn = c.get("connect_btn")
+                                    if btn and hasattr(btn, "configure"):
+                                        btn.configure(text="Connected", fg_color="#14532D")
+                                except Exception:
+                                    pass
+                            self.root.after(0, _restore)
                     if not ok:
                         self.log(f"⚠ Keepalive {label}: trading UI not reachable ({context})", "WARN")
                 elif hasattr(account, "get_account_stats"):
@@ -11812,14 +11896,18 @@ class TradeOpssAIApp:
                     self.topstepx_account = account
 
                 def _update_ui():
+                    self._clear_broker_session_lost(firm_name)
                     conn["status_var"].set("✅")
                     conn["connect_btn"].configure(text="Connected", fg_color="#14532D")
                     if hasattr(conn.get("status_lbl"), "configure"):
                         conn["status_lbl"].configure(text_color="#22C55E")
                     # Update global status
-                    connected = sum(1 for c in self._broker_connections.values() if c.get("account"))
+                    connected = sum(
+                        1 for c in self._broker_connections.values()
+                        if c.get("account") and getattr(c.get("account"), "logged_in", False))
                     total = len(self._broker_connections)
                     self.broker_status_var.set(f"{connected}/{total} connected")
+                    self._start_broker_idle_keepalive()
                     # AI warm-up (ML training + indicator vote) starts only
                     # when ALL populated brokers are connected & ready.
                     self._check_all_brokers_ready()

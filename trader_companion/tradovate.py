@@ -154,6 +154,9 @@ class TradovateAccount:
         self._first_stats_fetch = True
         self._placing_order = False  # Flag to block stats fetching during order placement
         self._login_timestamp = None  # Track when we logged in for debugging
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 3
+        self._last_reconnect_time = 0.0
 
         # Create unique instance key using both username and pair_id. Live keeps its
         # own key (and therefore its own browser/profile) so a real-money session and
@@ -1780,6 +1783,53 @@ class TradovateAccount:
             self._login_timestamp = None
             self.driver = None
 
+    def _on_login_page(self) -> bool:
+        try:
+            if not self.driver:
+                return False
+            url = (self.driver.current_url or "").strip().lower()
+            if "/welcome" in url and self.driver.find_elements(By.ID, "name-input"):
+                return True
+            if "signin" in url or "/login" in url:
+                return True
+        except Exception:
+            return True
+        return False
+
+    def _attempt_reconnect(self, context: str = "keepalive") -> bool:
+        """Re-login when idle timeout sent Chrome back to the welcome page."""
+        now = time.time()
+        if now - self._last_reconnect_time < 60:
+            logging.info(
+                "[RECONNECT] Tradovate skipped — %.0fs since last attempt (%s)",
+                now - self._last_reconnect_time, context)
+            return False
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logging.warning(
+                "[RECONNECT] Tradovate max attempts (%d) reached (%s)",
+                self._max_reconnect_attempts, context)
+            return False
+        self._reconnect_attempts += 1
+        self._last_reconnect_time = now
+        logging.info(
+            "[RECONNECT] Tradovate attempt %d/%d (%s)",
+            self._reconnect_attempts, self._max_reconnect_attempts, context)
+        try:
+            if self.driver:
+                try:
+                    self.driver.get("https://trader.tradovate.com/welcome")
+                    time.sleep(1.5)
+                except Exception as exc:
+                    logging.warning("[RECONNECT] Tradovate driver bad, clearing: %s", exc)
+                    self.driver = None
+            if self.login():
+                self._reconnect_attempts = 0
+                logging.info("[RECONNECT] Tradovate session restored (%s)", context)
+                return True
+        except Exception as exc:
+            logging.error("[RECONNECT] Tradovate failed (%s): %s", context, exc)
+        return False
+
     def touch_trading_ui_keepalive(self, context="auto-trade") -> bool:
         """Light Tradovate UI ping during long auto-trade waits (mt5_trading.log)."""
         if getattr(self, "_placing_order", False):
@@ -1793,9 +1843,15 @@ class TradovateAccount:
                 logging.warning("[KEEPALIVE] Tradovate not connected (%s)", context)
                 return False
             url = (self.driver.current_url or "").strip()
-            if "/welcome" in url.lower() and self.driver.find_elements(By.ID, "name-input"):
+            if self._on_login_page():
                 self.logged_in = False
                 logging.warning("[KEEPALIVE] Tradovate on login page (%s)", context)
+                self.lock.release()
+                try:
+                    if self._attempt_reconnect(context=f"keepalive:{context}"):
+                        return True
+                finally:
+                    self.lock.acquire(blocking=True)
                 return False
             self.driver.execute_script("window.dispatchEvent(new Event('focus'));")
             try:
