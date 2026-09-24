@@ -5034,6 +5034,116 @@ class TradeOpssAIApp:
                     break
         return changed
 
+    @staticmethod
+    def _parse_any_date(val):
+        """date object from the row's mixed date formats, or None."""
+        s = str(val or "").strip()
+        if not s or s in ("-", "—"):
+            return None
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d %m %Y",
+                    "%d/%m/%Y", "%m-%d-%Y", "%m-%d-%y"):
+            try:
+                return datetime.strptime(s[:10].strip(), fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _add_business_days(start, days):
+        cur = start
+        remaining = int(days)
+        while remaining > 0:
+            cur += timedelta(days=1)
+            if cur.weekday() < 5:
+                remaining -= 1
+        return cur
+
+    _CHALLENGE_END_STATUSES = ("fail", "breach", "pass", "ended", "lost", "closed")
+    _FUNDED_END_STATUSES = ("fail", "breach", "completed", "ended", "lost", "closed")
+
+    def _backfill_missing_end_dates(self, evaluations):
+        """Estimate and fill Date Ended for stages that resolved without one.
+
+        Evidence, best first: the leg's last traded broker day; recorded payout
+        and Prop Day dates; the funded leg's start (a pass ended the challenge
+        by then); Date Started advanced one business day per recorded trade.
+        Estimates never land in the future and never overwrite existing dates.
+        """
+        force_fields = []
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            p1 = self._cell(ev.get("Status P1")).lower()
+            if (any(kw in p1 for kw in self._CHALLENGE_END_STATUSES)
+                    and not self._cell(ev.get("Date Ended"))):
+                est = self._estimate_stage_end_date(ev, on_funded=False)
+                if est:
+                    ev["Date Ended"] = est.strftime("%Y-%m-%d")
+                    force_fields.append("Date Ended")
+                    self.log(f"🗓 {self._primary_trade_account(ev)}: challenge "
+                             f"Date Ended backfilled → {ev['Date Ended']}")
+            st = self._cell(ev.get("Status")).lower()
+            if (any(kw in st for kw in self._FUNDED_END_STATUSES)
+                    and not self._cell(ev.get("Date Ended.1"))
+                    and (self._cell_account(ev.get("Account #.1"))
+                         or self._on_funded_leg(ev))):
+                est = self._estimate_stage_end_date(ev, on_funded=True)
+                if est:
+                    ev["Date Ended.1"] = est.strftime("%Y-%m-%d")
+                    force_fields.append("Date Ended.1")
+                    self.log(f"🗓 {self._primary_trade_account(ev)}: funded "
+                             f"Date Ended backfilled → {ev['Date Ended.1']}")
+        return force_fields
+
+    def _estimate_stage_end_date(self, ev, on_funded):
+        """Best-evidence date a resolved stage ended, capped at today."""
+        candidates = []
+        acct = self._cell_account(ev.get("Account #.1" if on_funded else "Account #"))
+        if acct:
+            entry = self._trade_outcome_history().get(acct.strip().lower())
+            traded = [self._parse_any_date(d.get("date"))
+                      for d in (entry.get("daily_pnl") or []) if d.get("trades")] if entry else []
+            traded = [d for d in traded if d]
+            if traded:
+                candidates.append(max(traded))
+        if on_funded:
+            for n in range(1, 9):
+                d = self._parse_any_date(ev.get(f"Date {n}"))
+                if d:
+                    candidates.append(d)
+            for n in range(1, 61):
+                d = self._parse_any_date(ev.get(f"_Prop Day {n} Date"))
+                if d:
+                    candidates.append(d)
+        else:
+            # The funded leg starting means the challenge was over by then.
+            d = self._parse_any_date(ev.get("Date Started.1"))
+            if d:
+                candidates.append(d)
+        if not candidates:
+            started = self._parse_any_date(
+                ev.get("Date Started.1" if on_funded else "Date Started"))
+            if not started and not on_funded:
+                started = self._parse_any_date(ev.get("Date Purchased"))
+            if started:
+                fields = (self._FUNDED_HEDGE_FIELDS if on_funded
+                          else [f"Hedge Result {i}" for i in range(1, 6)])
+                trades = 0
+                for f in fields:
+                    val = self._cell(ev.get(f))
+                    if not val or self._parse_day_token(val) is not None:
+                        continue
+                    try:
+                        float(val.replace("$", "").replace(",", ""))
+                        trades += 1
+                    except ValueError:
+                        continue
+                # One resolved trade per business day, starting on day one.
+                candidates.append(self._add_business_days(started, max(trades - 1, 0)))
+        if not candidates:
+            return None
+        return min(max(candidates), kenya_today())
+
     def _derive_trade_progress_status(self, ev):
         """Return a Hit TP/SL marker for the currently resolved trade.
 
@@ -5154,6 +5264,7 @@ class TradeOpssAIApp:
             force_fields.extend(self._release_dashboard_payout_placeholders(evaluations))
             force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
             force_fields.extend(self._apply_tradovate_vanish_breaches(evaluations))
+            force_fields.extend(self._backfill_missing_end_dates(evaluations))
 
             breaches = list(self._pending_breach_alerts)
             if not force_fields and not breaches:

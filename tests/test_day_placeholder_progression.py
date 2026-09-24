@@ -867,3 +867,87 @@ def test_date_started_backfills_from_first_traded_day():
     assert ev["Date Started.1"] == "2026-09-20"
     # Second pass is a no-op.
     assert app._stamp_started_dates(ev) == []
+
+
+def _end_date_app(history=None):
+    app = _scrub_app()
+    app._trade_outcome_history = lambda force=False: history or {}
+    return app
+
+
+def test_end_date_backfill_uses_last_traded_broker_day():
+    row = {
+        "Account #": "TDFY-1",
+        "Status P1": "Fail",
+        "Date Started": "2026-09-10",
+    }
+    app = _end_date_app({"tdfy-1": {"daily_pnl": [
+        {"date": "2026-09-10", "trades": 1},
+        {"date": "2026-09-12", "trades": 1},
+        {"date": "2026-09-13", "trades": 0},
+    ]}})
+
+    assert app._backfill_missing_end_dates([row]) == ["Date Ended"]
+    assert row["Date Ended"] == "2026-09-12"
+
+
+def test_passed_challenge_ends_when_funded_leg_starts():
+    row = {
+        "Account #": "TDFY-1",
+        "Account #.1": "FTDFY-1",
+        "Status P1": "Pass",
+        "Status": "In Progress",
+        "Date Started": "2026-09-08",
+        "Date Started.1": "2026-09-15",
+    }
+    app = _end_date_app()
+
+    assert app._backfill_missing_end_dates([row]) == ["Date Ended"]
+    assert row["Date Ended"] == "2026-09-15"
+
+
+def test_funded_end_date_uses_latest_payout_or_prop_date():
+    row = {
+        "Account #.1": "FTDFY-1",
+        "Status": "Completed",
+        "Date Started.1": "2026-09-01",
+        "Date 1": "09/10/2026",
+        "_Prop Day 3 Date": "2026-09-18",
+    }
+    app = _end_date_app()
+
+    assert app._backfill_missing_end_dates([row]) == ["Date Ended.1"]
+    assert row["Date Ended.1"] == "2026-09-18"
+
+
+def test_end_date_estimated_from_trade_count_business_days():
+    # Started Friday 09/11 with three challenge trades -> Fri, Mon, Tue.
+    row = {
+        "Account #": "TDFY-1",
+        "Status P1": "Fail",
+        "Date Started": "2026-09-11",
+        "Hedge Result 1": "100.00",
+        "Hedge Result 2": "-50.00",
+        "Hedge Result 3": "$0.00",
+    }
+    app = _end_date_app()
+
+    assert app._backfill_missing_end_dates([row]) == ["Date Ended"]
+    assert row["Date Ended"] == "2026-09-15"
+
+
+def test_end_date_backfill_never_overwrites_or_guesses_blind():
+    kept = {
+        "Account #": "TDFY-1",
+        "Status P1": "Fail",
+        "Date Ended": "2026-09-01",
+    }
+    no_evidence = {"Account #": "TDFY-2", "Status P1": "Fail"}
+    active = {"Account #": "TDFY-3", "Status P1": "In Progress",
+              "Date Started": "2026-09-10"}
+    app = _end_date_app()
+
+    assert app._backfill_missing_end_dates([kept, no_evidence, active]) == []
+    assert kept["Date Ended"] == "2026-09-01"
+    assert "Date Ended" not in no_evidence
+    assert "Date Ended" not in active
