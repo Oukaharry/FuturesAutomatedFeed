@@ -140,3 +140,30 @@ def test_open_position_trade_dates_only_counts_open_mnq():
     ]
     out = TradovateAccount._open_position_trade_dates(positions, {10})
     assert out == {1: {"2026-09-24"}}
+
+
+NQ_FARMING_CSV = (
+    "Account,Transaction ID,Timestamp,Date,Delta,Amount,Cash Change Type,Currency,Contract\r\n"
+    'BG-1,1,09/15/2026 08:00:00,2026-09-15,"5,010.00","55,010.00", Trade Paired,USD,NQZ6\r\n'
+    'BG-1,2,09/16/2026 09:00:00,2026-09-16,160.00,"55,170.00", Trade Paired,USD,NQZ6\r\n'
+    'BG-1,3,09/16/2026 09:00:00,2026-09-16,-4.28,"55,165.72", Commission,USD,NQZ6\r\n'
+    'BG-1,4,09/17/2026 09:00:00,2026-09-17,"-1,900.00","53,265.72", Trade Paired,USD,NQZ6\r\n'
+    'BG-1,5,09/18/2026 09:00:00,2026-09-18,-190.00,"53,075.72", Trade Paired,USD,NQZ6\r\n'
+)
+
+
+def test_nq_farming_prefix_counts_nq_days():
+    rows = TradovateAccount._parse_report_csv(NQ_FARMING_CSV)
+    days = TradovateAccount._mnq_daily_pnl_from_report_rows(rows, ("NQ",))
+    assert [d["date"] for d in days] == [
+        "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"]
+    # default MNQ prefix finds none of these
+    assert TradovateAccount._mnq_daily_pnl_from_report_rows(rows) == []
+
+
+def test_funded_scale_guard_separates_funded_from_farming():
+    assert TradovateAccount._is_funded_scale_day(5010.0)      # funded TP
+    assert TradovateAccount._is_funded_scale_day(-1900.0)     # funded SL
+    assert not TradovateAccount._is_funded_scale_day(160.0)   # farming win
+    assert not TradovateAccount._is_funded_scale_day(-190.0)  # farming SL day
+    assert not TradovateAccount._is_funded_scale_day(-995.0)  # deep farming day

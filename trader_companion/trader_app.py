@@ -3111,6 +3111,18 @@ class TradeOpssAIApp:
     # Fetching fills + balance logs is slow; reuse within the same TTL window.
     _TRADOVATE_FARMING_CACHE_TTL = 300  # seconds
 
+    def _farming_prefixes_for_firm(self, firm_name):
+        """Contract prefixes that mark farming days for this firm's rows."""
+        try:
+            firm_code = self._resolve_firm_code(firm_name)
+            rules = (self.prop_firm_mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+            prefix = str(rules.get("farming_contract_prefix") or "").strip().upper()
+            if prefix:
+                return (prefix,)
+        except Exception:
+            pass
+        return ("MNQ",)
+
     @staticmethod
     def _format_farming_pnl_lines(firm_name, farming_data):
         """Format the exact Tradovate MNQ daily values shown in Live Activity."""
@@ -3589,7 +3601,8 @@ class TradeOpssAIApp:
                     # Manual push — block on the fetch so prop days land in THIS payload.
                     _log(f"🌾 {firm_name}: fetching Tradovate prop-day history (manual push — blocking)...")
                     try:
-                        data = tv_account.get_mnq_daily_pnl() or []
+                        data = tv_account.get_mnq_daily_pnl(
+                            self._farming_prefixes_for_firm(firm_name)) or []
                         self._tradovate_farming_cache[firm_name] = (time.time(), data)
                         if data:
                             total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in data)
@@ -3614,7 +3627,8 @@ class TradeOpssAIApp:
 
                     def _refresh_tv_cache(fn=firm_name, acc=tv_account):
                         try:
-                            data = acc.get_mnq_daily_pnl() or []
+                            data = acc.get_mnq_daily_pnl(
+                                self._farming_prefixes_for_firm(fn)) or []
                             self._tradovate_farming_cache[fn] = (time.time(), data)
                         except Exception as _e:
                             pass  # silently swallow; no-op on next push miss

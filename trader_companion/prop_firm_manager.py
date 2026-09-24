@@ -2133,6 +2133,9 @@ class PropFirmManager:
                 "funded_floor_locked_after_payout1": 48000,
                 "farming_days_required": 5,
                 "farming_min_profit_per_day": 150,
+                # Farming shares the NQ contract with funded trades, so day
+                # P/L scale — not symbol — separates the two phases.
+                "farming_contract_prefix": "NQ",
                 "payout2_5_min_net_profit_since_last_payout": 750,
                 "live_start_balance": 0,
                 "live_eod_drawdown": 2000,

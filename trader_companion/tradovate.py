@@ -4320,15 +4320,17 @@ class TradovateAccount:
         return dict(daily)
 
     @staticmethod
-    def _mnq_daily_pnl_from_report_rows(rows):
-        """Daily net P&L for report days that include MNQ trading (farming days).
+    def _mnq_daily_pnl_from_report_rows(rows, farming_prefixes=("MNQ",)):
+        """Daily net P&L for report days that include farming-contract trading.
 
-        Matches get_mnq_daily_pnl semantics: a day counts if it has any MNQ
-        Trade Paired entry, and its net includes the whole day's P&L and fees.
+        Matches get_mnq_daily_pnl semantics: a day counts if it has any
+        matching Trade Paired entry, and its net includes the whole day's
+        P&L and fees.
         Returns [{"date": "YYYY-MM-DD", "net_pnl": float}, ...] sorted by date.
         """
         from collections import defaultdict
 
+        prefixes = tuple(p.upper() for p in farming_prefixes)
         daily = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0, "mnq": False})
         for row in rows:
             date_str = _row_norm_date(_row_pick(row, 'tradeDate', 'date', 'timestamp'))
@@ -4340,7 +4342,7 @@ class TradovateAccount:
             d = daily[date_str]
             if ctype == "TradePaired":
                 d["gross_pnl"] += delta
-                if contract.startswith('MNQ'):
+                if contract.startswith(prefixes):
                     d["mnq"] = True
             elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
                 d["fees"] += delta
@@ -4348,6 +4350,17 @@ class TradovateAccount:
             {"date": ds, "net_pnl": round(v["gross_pnl"] + v["fees"], 2)}
             for ds, v in sorted(daily.items()) if v["mnq"]
         ]
+
+    @staticmethod
+    def _is_funded_scale_day(net_pnl):
+        """True for day P/L at funded-trade scale, not farming scale.
+
+        Same-contract firms (e.g. Blue Guardian: NQ everywhere) need this to
+        keep funded TP/SL days out of farming. Farming wins are ~$160 and
+        farming SL days bottom out near -$1,000; funded TPs start at +$1,010
+        and funded SLs at -$1,900.
+        """
+        return net_pnl >= 1000.0 or net_pnl <= -1500.0
 
     def get_trade_history(self):
         """Get full trade history for ALL accounts under this login.
@@ -4517,13 +4530,15 @@ class TradovateAccount:
             out.setdefault(pos.get('accountId'), set()).add(date_str)
         return out
 
-    def get_mnq_daily_pnl(self):
-        """Get daily P&L for days with MNQ trading activity (farming days).
+    def get_mnq_daily_pnl(self, farming_prefixes=("MNQ",)):
+        """Get daily P&L for days with farming-contract trading activity.
 
-        Identifies farming days by checking for MNQ contract fills, then
-        pulls the daily P&L from cashBalanceLog for those dates.
+        Identifies farming days by contract-prefix fills (MNQ by default;
+        Blue Guardian farms NQ), then pulls the daily P&L from cashBalanceLog
+        for those dates. Same-contract firms additionally drop funded-scale
+        days so the funded TP/SL never lands in a Prop Day cell.
 
-        Returns list of dicts, one per account that has MNQ activity:
+        Returns list of dicts, one per account that has farming activity:
             [{"account_name": str, "account_id": int,
               "mnq_daily_pnl": [{"date": "YYYY-MM-DD", "net_pnl": float}, ...]}]
         """
@@ -4557,9 +4572,13 @@ class TradovateAccount:
                     c = self._api_fetch(f"/contract/item?id={cid}")
                     contract_cache[cid] = c.get('name', str(cid)) if c else str(cid)
 
-            # Identify MNQ contract IDs
+            # Identify farming contract IDs
+            prefixes = tuple(p.upper() for p in (farming_prefixes or ("MNQ",)))
+            # Same-contract firms (prefix covers funded trades too) need the
+            # day-scale guard to keep funded TP/SL days out of farming.
+            same_contract_firm = "MNQ" not in prefixes
             mnq_contract_ids = {cid for cid, name in contract_cache.items()
-                                if str(name).upper().startswith('MNQ')}
+                                if str(name).upper().startswith(prefixes)}
 
             # Rolling fills only cover recent days — the reporting service
             # backfills MNQ farming days for the account's whole life.
@@ -4611,6 +4630,8 @@ class TradovateAccount:
                     if not d["paired"]:
                         continue
                     net = round(d["gross_pnl"] + d["fees"], 2)
+                    if same_contract_firm and self._is_funded_scale_day(net):
+                        continue
                     mnq_daily.append({"date": date_str, "net_pnl": net})
 
                 # Backfill farming days the rolling window can't see.
@@ -4618,11 +4639,12 @@ class TradovateAccount:
                     report_rows = self._fetch_report_rows_chunked(cash_report_name, aname)
                     if report_rows:
                         seen = {e["date"] for e in mnq_daily}
-                        added = [e for e in self._mnq_daily_pnl_from_report_rows(report_rows)
-                                 if e["date"] not in seen]
+                        added = [e for e in self._mnq_daily_pnl_from_report_rows(report_rows, prefixes)
+                                 if e["date"] not in seen
+                                 and not (same_contract_firm and self._is_funded_scale_day(e["net_pnl"]))]
                         if added:
                             mnq_daily = sorted(mnq_daily + added, key=lambda e: e["date"])
-                            print(f"[FARMING] {aname}: +{len(added)} older MNQ day(s) from {cash_report_name} report")
+                            print(f"[FARMING] {aname}: +{len(added)} older farming day(s) from {cash_report_name} report")
 
                 held_back = open_mnq_dates.get(aid) or set()
                 if held_back:
