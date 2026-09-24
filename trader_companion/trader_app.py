@@ -8294,11 +8294,19 @@ class TradeOpssAIApp:
                         + (f" | {c - a} account(s) connect for data only" if c > a else "")))
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
+                active_trade_firms = list(dict.fromkeys(
+                    str(ev.get("Prop Firm") or "").strip()
+                    for ev in active_evals if ev.get("Prop Firm")
+                ))
 
                 # Populate broker connection rows per prop firm — driven by every
                 # active account, not just the ones queued to trade today.
                 prop_accounts = data.get("prop_accounts", [])
-                self.root.after(0, lambda ce=connect_evals, pa=prop_accounts: self._populate_broker_rows(ce, pa))
+                self.root.after(
+                    0,
+                    lambda ce=connect_evals, pa=prop_accounts, af=active_trade_firms:
+                    self._populate_broker_rows(ce, pa, priority_firms=af),
+                )
                 # Queue eligibility excludes $0.00 markers, so recover their
                 # close watches from the complete dashboard data separately.
                 self.root.after(1500, lambda evs=evaluations: self._resume_pending_account_closes(evs))
@@ -8312,7 +8320,7 @@ class TradeOpssAIApp:
                             except Exception:
                                 pass
                         threading.Thread(target=_run, daemon=True).start()
-                    self.root.after(600, _delayed_poll)
+                    self.root.after(5000, _delayed_poll)
 
                 # Auto-launch browsers for prop firms that need dashboard monitoring
                 active_firms = list(dict.fromkeys(
@@ -11353,7 +11361,7 @@ class TradeOpssAIApp:
         if self.acct_size_var.get() not in account_sizes:
             self.acct_size_var.set(account_sizes[0])
 
-    def _populate_broker_rows(self, evaluations, prop_accounts):
+    def _populate_broker_rows(self, evaluations, prop_accounts, priority_firms=None):
         """Build one connection row per unique prop firm from active evaluations."""
         for child in self._broker_rows_frame.winfo_children():
             child.destroy()
@@ -11612,9 +11620,15 @@ class TradeOpssAIApp:
                 self.log(f"❌ Could not find Tradovate credentials for {_f}", "ERROR")
 
         if auto_count:
-            self.log(f"Broker credentials found for {auto_count} prop firm(s) — auto-connecting...")
-            # Auto-connect all firms that have credentials from dashboard
-            self.root.after(500, self._auto_connect_populated_brokers)
+            priority_count = len(priority_firms or [])
+            self.log(
+                f"Broker credentials found for {auto_count} prop firm(s) — "
+                f"launching Chrome for {priority_count} active firm(s) first..."
+            )
+            self.root.after(
+                0,
+                lambda pf=priority_firms: self._auto_connect_populated_brokers(pf),
+            )
 
     def _connect_broker_firm(self, firm_name):
         """Connect a single prop firm's broker account."""
@@ -11833,7 +11847,7 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_connect_all, daemon=True).start()
 
-    def _auto_connect_populated_brokers(self):
+    def _auto_connect_populated_brokers(self, priority_firms=None):
         """Auto-connect all broker rows that have dashboard credentials pre-filled."""
         to_connect = []
         for firm, conn in self._broker_connections.items():
@@ -11849,12 +11863,22 @@ class TradeOpssAIApp:
         if not to_connect:
             return
 
-        self.log(f"🔗 Auto-connecting {len(to_connect)} broker(s) from dashboard credentials...")
+        priority_keys = {
+            self._broker_login_family(firm)
+            for firm in (priority_firms or [])
+        }
+        to_connect.sort(key=lambda firm: (firm not in priority_keys, firm.lower()))
+        active_count = sum(firm in priority_keys for firm in to_connect)
+        self.log(
+            f"🔗 Auto-connecting {len(to_connect)} broker(s): "
+            f"{active_count} active first, then data-only accounts..."
+        )
 
         def _do_auto():
-            for firm in to_connect:
+            for index, firm in enumerate(to_connect):
+                if index == 0:
+                    self.log(f"🚀 Starting Chrome now for active broker {firm}")
                 self.root.after(0, lambda f=firm: self._connect_broker_firm(f))
-                time.sleep(3)  # stagger to avoid overwhelming
 
         threading.Thread(target=_do_auto, daemon=True).start()
 
