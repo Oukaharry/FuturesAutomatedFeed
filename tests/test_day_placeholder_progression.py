@@ -700,3 +700,84 @@ def test_vanish_skips_rows_that_never_traded():
 
     assert app._apply_tradovate_vanish_breaches([row]) == []
     assert row["Status P1"] == "Not Started"
+
+
+def _sod_floor_app(entry_by_account):
+    app = _scrub_app()
+    app._trade_outcome_history = lambda force=False: entry_by_account
+    app._detect_payouts = lambda account: []
+    return app
+
+
+def test_non_dll_challenge_breaches_at_sod_minus_2000():
+    row = {
+        "Prop Firm": "Tradeify",
+        "Account #": "TDFY-1",
+        "Hedge Result 1": "$0.00",
+    }
+    app = _sod_floor_app({"tdfy-1": {
+        "balance": 52900.0,
+        "balance_sod": 55000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -2100.0}],
+    }})
+
+    status, reason = app._derive_account_status(row)
+    assert status == "Fail"
+    assert "53,000.00" in reason
+
+
+def test_fundednext_challenge_floor_is_sod_minus_1500():
+    row = {
+        "Prop Firm": "Funded Next Flex",
+        "Account #": "FNFT-1",
+        "Hedge Result 1": "$0.00",
+    }
+    entry = {
+        "balance": 48600.0,
+        "balance_sod": 50000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -1400.0}],
+    }
+    app = _sod_floor_app({"fnft-1": entry})
+
+    status, _reason = app._derive_account_status(row)
+    assert status is None  # 48,600 above the 48,500 floor
+
+    entry["balance"] = 48400.0
+    status, reason = app._derive_account_status(row)
+    assert status == "Fail"
+    assert "48,500.00" in reason
+
+
+def test_non_dll_funded_trade1_breaches_at_sod_minus_2000():
+    row = {
+        "Prop Firm": "Tradeify",
+        "Account #.1": "FTDFY-1",
+        "Date Started.1": "2026-09-20",
+        "Hedge Result 1.1": "$0.00",
+    }
+    app = _sod_floor_app({"ftdfy-1": {
+        "balance": 48900.0,
+        "balance_sod": 51000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -2100.0}],
+    }})
+
+    status, reason = app._derive_account_status(row)
+    assert status == "Fail"
+    assert "49,000.00" in reason
+
+
+def test_dll_firm_keeps_its_static_floor():
+    row = {
+        "Prop Firm": "FTMO Futures Pro",
+        "Account #": "FTMO-1",
+        "Hedge Result 1": "$0.00",
+    }
+    app = _sod_floor_app({"ftmo-1": {
+        "balance": 52900.0,
+        "balance_sod": 55000.0,
+        "daily_pnl": [{"trades": 1, "net_pnl": -2100.0}],
+    }})
+
+    status, _reason = app._derive_account_status(row)
+    # DLL firm: no SOD floor — 52,900 is above any static challenge floor.
+    assert status != "Fail"

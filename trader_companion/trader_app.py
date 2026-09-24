@@ -2497,9 +2497,7 @@ class TradeOpssAIApp:
 
     def log(self, message, level="INFO"):
         """Add a message to the log, live activity display, and mt5_trading.log."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
+        # File/audit logging is thread-safe; do it inline to preserve ordering.
         try:
             from trader_companion.audit_log import log_gui
             log_gui(message, level)
@@ -2509,6 +2507,24 @@ class TradeOpssAIApp:
                 log_gui(message, level)
             except Exception:
                 pass
+        # Tcl/Tk is not thread-safe (segfaults on macOS): background threads
+        # must hand widget updates to the main event loop.
+        if threading.current_thread() is not threading.main_thread():
+            try:
+                self.root.after(0, lambda m=message, l=level: self._log_ui(m, l))
+            except Exception:
+                pass
+            return
+        self._log_ui(message, level)
+
+    def _log_ui(self, message, level="INFO"):
+        """Widget half of log() — must only run on the Tk main thread."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        try:
+            self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+            self.log_text.see(tk.END)
+        except Exception:
+            return
         # Feed into live display
         kind = "info"
         msg_lower = message.lower()
@@ -6139,6 +6155,22 @@ class TradeOpssAIApp:
             balance = float(entry.get("balance") or 0)
         except (TypeError, ValueError):
             return None, None
+
+        # Non-DLL firms run a daily minimum-equity floor of SOD - $2,000
+        # (FundedNext: SOD - $1,500) on the challenge and funded-trade-1 legs.
+        if not after_ft2:
+            dll_key = "funded_daily_loss_limit" if on_funded else "evaluation_daily_loss_limit"
+            if not rules.get(dll_key):
+                try:
+                    sod = float(entry.get("balance_sod") or 0)
+                except (TypeError, ValueError):
+                    sod = 0.0
+                if sod > 0:
+                    compact = re.sub(r"[^a-z0-9]", "",
+                                     str(ev.get("Prop Firm") or firm_code).lower())
+                    daily_dd = 1500.0 if "fundednext" in compact else 2000.0
+                    sod_floor = sod - daily_dd
+                    floor = sod_floor if floor is None else max(float(floor), sod_floor)
 
         has_trades = self._account_has_trades(entry)
         blown = mgr.evaluate_breach_blown(
