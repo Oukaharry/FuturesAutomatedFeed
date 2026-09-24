@@ -648,3 +648,41 @@ def test_seed_farming_history_marks_payout_when_last_day_completes_cycle():
     assert evaluation["Hedge Day 5"] == "PAYOUT"
     assert evaluation["_Hedge Day 5 Payout Due"] == "2026-09-21"
     assert evaluation["_Farming Cycle Start"] == 5
+
+
+def test_seed_farming_history_drops_phantom_today_partial():
+    """Fees from a still-open position must not stand as a farming day."""
+    from dashboard.app import _seed_farming_history
+
+    evaluation = {
+        "Prop Firm": "Tradeify",
+        "Hedge Day 6": "$0.00",
+        "Prop Day 6": "-1.90",
+        "_Prop Day 6 Date": "2026-09-24",
+        "Prop Progress 6": "2/5 9/24/26",
+    }
+    for slot, (date, pnl) in enumerate([
+        ("2026-09-16", "152.40"), ("2026-09-17", "150.20"),
+        ("2026-09-18", "150.20"), ("2026-09-21", "150.20"),
+        ("2026-09-23", "150.20"),
+    ], start=1):
+        evaluation[f"Prop Day {slot}"] = pnl
+        evaluation[f"_Prop Day {slot} Date"] = date
+        evaluation[f"Hedge Day {slot}"] = "$0.00"
+
+    # Broker history has no realized day for today (position still open).
+    seeded = _seed_farming_history(evaluation, [
+        {"date": "2026-09-16", "net_pnl": 152.40},
+        {"date": "2026-09-17", "net_pnl": 150.20},
+        {"date": "2026-09-18", "net_pnl": 150.20},
+        {"date": "2026-09-21", "net_pnl": 150.20},
+        {"date": "2026-09-23", "net_pnl": 150.20},
+    ], 2, [], today="2026-09-24")
+
+    assert seeded == 0  # recorded days already cover broker history
+    assert evaluation["Prop Day 6"] == ""
+    assert "_Prop Day 6 Date" not in evaluation
+    assert evaluation["Prop Progress 6"] == ""
+    # Slot 6 hedge marker stays so tonight's close lands in the same slot.
+    assert evaluation["Hedge Day 6"] == "$0.00"
+    assert evaluation["Prop Day 5"] == "150.20"

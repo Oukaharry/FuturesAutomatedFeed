@@ -4510,7 +4510,7 @@ class TradovateAccount:
                         date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
                         mnq_dates.add(date_str)
 
-                daily_raw = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0})
+                daily_raw = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0, "paired": 0})
                 if mnq_dates:
                     # Get daily P&L from cashBalanceLog for MNQ dates only
                     balance_logs = self._api_fetch(f"/cashBalanceLog/ldeps?masterids={aid}") or []
@@ -4523,12 +4523,18 @@ class TradovateAccount:
                         delta = entry.get('delta', 0)
                         if ctype == "TradePaired":
                             daily_raw[date_str]["gross_pnl"] += delta
+                            daily_raw[date_str]["paired"] += 1
                         elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
                             daily_raw[date_str]["fees"] += delta
 
                 mnq_daily = []
                 for date_str in sorted(daily_raw.keys()):
                     d = daily_raw[date_str]
+                    # A position-opening fill with no realized close is not a
+                    # farming day yet — fee-only entries would push phantom
+                    # P/L (e.g. -$1.90) into the dashboard.
+                    if not d["paired"]:
+                        continue
                     net = round(d["gross_pnl"] + d["fees"], 2)
                     mnq_daily.append({"date": date_str, "net_pnl": net})
 

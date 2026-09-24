@@ -2516,7 +2516,7 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
     return 1, completed
 
 
-def _seed_farming_history(evaluation, daily_pnl, row_num, match_log):
+def _seed_farming_history(evaluation, daily_pnl, row_num, match_log, today=None):
     """Rebuild Prop Days from broker history when recorded days don't cover it.
 
     The daily writer only records today and repair only realigns traded slots,
@@ -2525,6 +2525,7 @@ def _seed_farming_history(evaluation, daily_pnl, row_num, match_log):
     slots, restarting the qualifying count after each completed cycle (the
     payout implicitly landed whenever more farming days follow).
     """
+    today = today or _kenya_today_str()
     history = sorted({
         str(day.get('date')): float(day.get('net_pnl') or 0)
         for day in daily_pnl or [] if day and day.get('date')
@@ -2540,6 +2541,22 @@ def _seed_farming_history(evaluation, daily_pnl, row_num, match_log):
     history = [(date, pnl) for date, pnl in history if abs(pnl) < funded_scale]
     if not history:
         return 0
+    history_dates = {date for date, _ in history}
+    # A record dated today with no realized broker day behind it is a phantom
+    # partial (fees from a still-open position) — drop it before comparing.
+    if today not in history_dates:
+        for n in range(1, 61):
+            date_field = f'_Prop Day {n} Date'
+            if str(evaluation.get(date_field) or '').strip() != today:
+                continue
+            field = f'Prop Day {n}'
+            if _eval_push_field_blocked(evaluation, field, phase_code='FA'):
+                continue
+            evaluation[field] = ''
+            evaluation.pop(date_field, None)
+            progress_field = f'Prop Progress {n}'
+            if not _eval_push_field_blocked(evaluation, progress_field, phase_code='FA'):
+                evaluation[progress_field] = ''
     recorded = {
         str(evaluation.get(f'_Prop Day {n} Date') or '').strip()
         for n in range(1, 61)
@@ -2701,7 +2718,7 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
         daily_pnl = _match_tradovate_farming(tradovate_farming_days, account_key)
         if not daily_pnl or account_key in reconciled_accounts:
             continue
-        _seed_farming_history(evaluation, daily_pnl, row_index + 2, match_log)
+        _seed_farming_history(evaluation, daily_pnl, row_index + 2, match_log, today=today)
         _repair_farming_history(evaluation, daily_pnl, row_index + 2, match_log)
         written, complete = _write_farming_prop_days_and_progress(
             evaluation, daily_pnl, row_index + 2, match_log, today=today)
