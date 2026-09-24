@@ -1055,8 +1055,8 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
-app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.4') or '1.12.4'
-app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.1') or '1.12.1'
+app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.5') or '1.12.5'
+app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.5') or '1.12.5'
 app.config['COMPANION_VERSION_EXACT'] = True
 
 # ── Suppress SIGPIPE (benign client disconnect errors) ──────────────────────
@@ -5998,7 +5998,7 @@ def _required_companion_version():
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.4').strip() or '1.12.4'
+    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.5').strip() or '1.12.5'
 
 
 def _min_companion_version():
@@ -6009,7 +6009,7 @@ def _min_companion_version():
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return (os.getenv('MIN_COMPANION_VERSION') or '1.12.1').strip() or '1.12.1'
+    return (os.getenv('MIN_COMPANION_VERSION') or '1.12.5').strip() or '1.12.5'
 
 
 def _companion_version_exact_required():
