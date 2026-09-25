@@ -153,6 +153,31 @@ def test_losing_funded_trade_diverts_to_recovery_instead_of_the_next_build():
     ) == "Hedge Result 4.1"
 
 
+def test_mffu_builder_challenge_loss_uses_recovery_tp_not_ch1_repeat():
+    app = _app(_day(-1000.0, date="2026-09-20"))
+    ev = {
+        "Account #": ACCOUNT,
+        "Hedge Result 1": "closed",
+        "Hedge Result 2": "MON",
+    }
+    trade_keys = app.prop_firm_mgr._PHASE_TRADE_ORDER[FIRM]["Challenge"]
+    positional = trade_keys[1]  # HR2 index → challenge_recovery
+    pending = app._pending_phase_key_from_state_machine(
+        ev, FIRM, "Challenge", 1, trade_keys, trade_keys[0])
+    assert pending == "challenge_recovery"
+    cfg = app.prop_firm_mgr.get_strategy_config(FIRM, pending, "50k")
+    assert cfg["tradovate_tp_ticks"] == 401
+
+    # Placeholder still in HR1 after CH1 loss must not repeat 301t CH1.
+    ev_hr1 = {
+        "Account #": ACCOUNT,
+        "Hedge Result 1": "MON",
+    }
+    pending_hr1 = app._pending_phase_key_from_state_machine(
+        ev_hr1, FIRM, "Challenge", 0, trade_keys, "challenge_trade1")
+    assert pending_hr1 == "challenge_recovery"
+
+
 def test_unresolved_trade_falls_back_to_positional_order():
     app = _app(_day(0.0, trades=0))
     assert app._resolve_next_hedge_field(

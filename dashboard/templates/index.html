@@ -6409,6 +6409,22 @@
             }
         }
 
+        /** Escape strings embedded in HTML attribute values (input value="..."). */
+        function escapeHtmlAttr(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;');
+        }
+
+        /** Escape text inside elements (e.g. textarea body). */
+        function escapeHtmlText(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
         function renderHedgeAccounts(data) {
             const body = document.getElementById('hedge-accounts-body');
             const noDataMsg = document.getElementById('no-hedge-accounts-msg');
@@ -6453,31 +6469,31 @@
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.login || ''}" 
+                                   value="${escapeHtmlAttr(acc.login || '')}" 
                                    placeholder="Login ID"
                                    onchange="updateHedgeAccount(${index}, 'login', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.password || ''}" 
+                                   value="${escapeHtmlAttr(acc.password || '')}" 
                                    placeholder="Password"
                                    onchange="updateHedgeAccount(${index}, 'password', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.server || ''}" 
+                                   value="${escapeHtmlAttr(acc.server || '')}" 
                                    placeholder="Server Name"
                                    onchange="updateHedgeAccount(${index}, 'server', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.hedge_symbol || acc.mt5_symbol || ''}" 
+                                   value="${escapeHtmlAttr(acc.hedge_symbol || acc.mt5_symbol || '')}" 
                                    placeholder="USTECH / NAS100"
                                    onchange="updateHedgeAccount(${index}, 'hedge_symbol', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.name || ''}" 
+                                   value="${escapeHtmlAttr(acc.name || '')}" 
                                    placeholder="Account Name"
                                    onchange="updateHedgeAccount(${index}, 'name', this.value)">
                         </td>
@@ -6536,36 +6552,36 @@
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.login || ''}" 
+                                   value="${escapeHtmlAttr(acc.login || '')}" 
                                    placeholder="Login ID"
                                    onchange="updatePropAccount(${index}, 'login', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.password || ''}" 
+                                   value="${escapeHtmlAttr(acc.password || '')}" 
                                    placeholder="Password"
                                    onchange="updatePropAccount(${index}, 'password', this.value)">
                         </td>
                         <td>
                             <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
                                       placeholder="Notes..."
-                                      onchange="updatePropAccount(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
+                                      onchange="updatePropAccount(${index}, 'notes', this.value)">${escapeHtmlText(acc.notes || '')}</textarea>
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.discount_codes || ''}" 
+                                   value="${escapeHtmlAttr(acc.discount_codes || '')}" 
                                    placeholder="Codes"
                                    onchange="updatePropAccount(${index}, 'discount_codes', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.tradovate_username || ''}" 
+                                   value="${escapeHtmlAttr(acc.tradovate_username || '')}" 
                                    placeholder="Username"
                                    onchange="updatePropAccount(${index}, 'tradovate_username', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
-                                   value="${acc.tradovate_password || ''}" 
+                                   value="${escapeHtmlAttr(acc.tradovate_password || '')}" 
                                    placeholder="Password"
                                    onchange="updatePropAccount(${index}, 'tradovate_password', this.value)">
                         </td>
@@ -6707,21 +6723,21 @@
                     row.innerHTML = `
                         <td>
                             <input type="text" class="cell-input vps-field" style="width:100%" 
-                                   value="${acc.ip_address || ''}" 
+                                   value="${escapeHtmlAttr(acc.ip_address || '')}" 
                                    placeholder="IP:Port"
                                    ${ro ? 'readonly' : ''}
                                    onchange="updateVPSField(${index}, 'ip_address', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input vps-field" style="width:100%" 
-                                   value="${acc.username || ''}" 
+                                   value="${escapeHtmlAttr(acc.username || '')}" 
                                    placeholder="Administrator"
                                    ${ro ? 'readonly' : ''}
                                    onchange="updateVPSField(${index}, 'username', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input vps-field" style="width:100%" 
-                                   value="${acc.password || ''}" 
+                                   value="${escapeHtmlAttr(acc.password || '')}" 
                                    placeholder="Password"
                                    ${ro ? 'readonly' : ''}
                                    onchange="updateVPSField(${index}, 'password', this.value)">
@@ -6730,7 +6746,7 @@
                             <textarea class="cell-input vps-field" style="width:100%; min-height: 2em; resize: vertical;" 
                                       placeholder="Notes..."
                                       ${ro ? 'readonly' : ''}
-                                      onchange="updateVPSField(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
+                                      onchange="updateVPSField(${index}, 'notes', this.value)">${escapeHtmlText(acc.notes || '')}</textarea>
                         </td>
                         <td style="text-align:center;">
                             <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS" ${ro ? 'style="display:none"' : ''}>🗑️</button>
