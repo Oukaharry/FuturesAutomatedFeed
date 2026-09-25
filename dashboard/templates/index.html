@@ -8194,6 +8194,22 @@
             scheduleEvalSave();
         }
 
+        /** True for evaluation rows added this session (+ Add) not yet merged from server save. */
+        function isPendingNewEvaluationRow(ev) {
+            if (!ev || typeof ev !== 'object') return false;
+            const cid = ev._create_id;
+            return !!(cid && _pendingNewRowIds.has(String(cid)));
+        }
+
+        /** Default Tradeify-family picks to 50% Add-On on new rows only (existing rows unchanged). */
+        function normalizeTradeifyPropFirmDefault(firm) {
+            const raw = String(firm || '').trim();
+            if (raw === 'Tradeify' || raw === 'Tradeify Select') {
+                return 'Tradeify (50% Add-On)';
+            }
+            return raw;
+        }
+
         /** Map Tradovate/TopStep account prefix → dashboard Prop Firm label (mirrors prop_firm_manager.detect_prop_firm). */
         function detectPropFirmFromAccount(acct) {
             if (!acct || typeof acct !== 'string') return null;
@@ -8247,6 +8263,10 @@
             }
             
             const oldValue = currentData.evaluations[index][key];
+            const row = currentData.evaluations[index];
+            if (key === 'Prop Firm' && isPendingNewEvaluationRow(row)) {
+                value = normalizeTradeifyPropFirmDefault(value);
+            }
             currentData.evaluations[index][key] = value;
 
             // Auto-detect prop firm when account number is entered (challenge or funded leg)
@@ -8259,7 +8279,11 @@
                     // FNFT/FTFN prefixes map to generic FundedNext only. If the
                     // user already selected Funded Next Flex, keep it.
                     if (!(detected === 'FundedNext' && currentKey === 'fundednextflex')) {
-                        currentData.evaluations[index]['Prop Firm'] = detected;
+                        let firm = detected;
+                        if (firm === 'Tradeify' && isPendingNewEvaluationRow(row)) {
+                            firm = 'Tradeify (50% Add-On)';
+                        }
+                        currentData.evaluations[index]['Prop Firm'] = firm;
                         _changedFields[index].add('Prop Firm');
                     }
                 }
