@@ -13299,6 +13299,56 @@ def api_set_slack_webhook():
     return jsonify({'status': 'success', 'message': f'Slack webhook {action} successfully.'})
 
 
+@app.route('/api/settings/slack_bot_token', methods=['GET'])
+@require_role('super_admin')
+def api_get_slack_bot_token():
+    """Get the Slack bot token state (masked). Super admin only."""
+    from dashboard.database import get_setting
+    token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
+    source = 'env' if token else ''
+    if not token:
+        token = str(get_setting('slack_bot_token') or '').strip()
+        source = 'setting' if token else ''
+    if token:
+        masked = token[:10] + '...' + token[-4:] if len(token) > 20 else '***'
+        return jsonify({'status': 'success', 'configured': True,
+                        'source': source, 'masked_token': masked})
+    return jsonify({'status': 'success', 'configured': False, 'masked_token': ''})
+
+
+@app.route('/api/settings/slack_bot_token', methods=['POST'])
+@require_role('super_admin')
+def api_set_slack_bot_token():
+    """Set the Slack bot token used for channel/DM alerts. Super admin only."""
+    import requests as _requests
+    from dashboard.database import set_setting
+    data = request.get_json(force=True)
+    token = (data.get('token') or '').strip()
+    user = request.session_user.get('user_identifier', '')
+
+    if token:
+        if not token.startswith('xoxb-'):
+            return jsonify({'status': 'error',
+                            'message': 'Invalid bot token. Must start with xoxb-'}), 400
+        try:
+            check = _requests.post(
+                'https://slack.com/api/auth.test',
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=15,
+            ).json()
+        except Exception as exc:
+            return jsonify({'status': 'error',
+                            'message': f'Could not verify token with Slack: {exc}'}), 502
+        if not check.get('ok'):
+            return jsonify({'status': 'error',
+                            'message': f"Slack rejected the token: {check.get('error')}"}), 400
+        bot = f"{check.get('user')} ({check.get('team')})"
+    set_setting('slack_bot_token', token, updated_by=user)
+    action = f'configured — bot {bot}' if token else 'removed'
+    log_action('SLACK_BOT_TOKEN', 'super_admin', user, get_remote_address(), f'Slack bot token {action}')
+    return jsonify({'status': 'success', 'message': f'Slack bot token {action}.'})
+
+
 # Only a companion with MT5 attached can run the direction ensemble, so it
 # publishes here and every other companion reads the result instead of
 # coin-flipping.
