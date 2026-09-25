@@ -1612,6 +1612,10 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
         
         if not existing_val or str(existing_val).strip() in ('', '-'):
             continue
+
+        if _cell_is_payout_marker(existing_val):
+            merged[key] = existing_val
+            continue
         
         # Check if both existing and incoming have weekday markers (not numeric P&L)
         existing_has_weekday = bool(_weekday_abbrs_in_text(existing_val))
@@ -1658,6 +1662,9 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
         if not existing_val or str(existing_val).strip() in ('', '-'):
             continue
         incoming_val = incoming_row.get(key)
+        if _cell_is_payout_marker(existing_val):
+            merged[key] = existing_val
+            continue
         if key in manual_locked:
             merged[key] = existing_val
             continue
@@ -2320,11 +2327,35 @@ _FUNDED_HEDGE_FIELDS = (
 )
 
 
+def _cell_is_payout_marker(raw):
+    """True when a funded/farming hedge cell is awaiting payout (companion marker)."""
+    return str(raw or '').strip().upper() == 'PAYOUT'
+
+
+def _evaluation_has_payout_pending(evaluation):
+    """True when any Hedge Result / Hedge Day cell on the row holds PAYOUT."""
+    if not isinstance(evaluation, dict):
+        return False
+    for key, val in evaluation.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if not (key.startswith('Hedge Result') or key.startswith('Hedge Day')):
+            continue
+        if _cell_is_payout_marker(val):
+            return True
+    return False
+
+
 def _pending_payout_field(evaluation):
-    """Hedge Day cell holding a PAYOUT prompt, if the row has one."""
+    """First hedge cell holding a PAYOUT prompt, if the row has one."""
+    if not isinstance(evaluation, dict):
+        return None
     for slot in range(1, 61):
         field = f'Hedge Day {slot}'
-        if str(evaluation.get(field) or '').strip().upper() == 'PAYOUT':
+        if _cell_is_payout_marker(evaluation.get(field)):
+            return field
+    for field in _FUNDED_HEDGE_FIELDS:
+        if _cell_is_payout_marker(evaluation.get(field)):
             return field
     return None
 
@@ -2350,7 +2381,7 @@ def _resume_after_manual_payout_clear(evaluation):
         anchor = f'_{field} Payout Due'
         if anchor not in evaluation or field not in cleared:
             continue
-        if str(evaluation.get(field) or '').strip().upper() == 'PAYOUT':
+        if _cell_is_payout_marker(evaluation.get(field)):
             continue
         next_field = _next_funded_hedge_field(evaluation)
         if not next_field:
@@ -2708,6 +2739,12 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
             or funded_status.lower() == 'not started'
             or is_funded_phase_ended(funded_status)
         ):
+            continue
+        if _evaluation_has_payout_pending(evaluation):
+            match_log.append(
+                f"⏸ Row {row_index + 2} | PAYOUT pending in hedge cells — "
+                f"farming reconciliation skipped"
+            )
             continue
         resumed = _resume_after_manual_payout_clear(evaluation)
         if resumed:
@@ -3382,6 +3419,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     f"[MATCHED EVAL] eval_idx={evaluations.index(best_eval)} "
                     f"account={acc_num} phase={best_phase} num={best_num} drift={drift}"
                 )
+
+            if _evaluation_has_payout_pending(best_eval):
+                _payout_row = evaluations.index(best_eval) + 2
+                match_log.append(
+                    f"⏸ Row {_payout_row} | PAYOUT pending in hedge cells — "
+                    f"session skipped ({acc_num})"
+                )
+                continue
             
             # Determined Field Name
             field_name = "Hedge Result" # Default
@@ -3910,6 +3955,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
         eval_idx, matched_account = match
         logging.info(f"MATCHED: MT5 Account {account_number} -> Dashboard Account {matched_account}")
+
+        _ev_payout = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
+        if _ev_payout is not None and _evaluation_has_payout_pending(_ev_payout):
+            match_log.append(
+                f"⏸ Row {eval_idx + 2} | PAYOUT pending in hedge cells — "
+                f"skipped {account_number} _{phase_code}{trade_number or ''}"
+            )
+            continue
 
         # Defense-in-depth: refuse to write into a row whose target account
         # column is blank or a placeholder ("—", "-", "n/a", etc.).  Catches
@@ -6213,7 +6266,12 @@ def api_client_data():
             is_funded_fail = is_eval_phase_failed(status_funded)
             is_funded_completed = 'complete' in str(status_funded).strip().lower()
             is_funded_ended = is_funded_fail or is_funded_completed
-            ev["_is_active"] = not is_p1_fail and not is_funded_ended
+            payout_pending = _evaluation_has_payout_pending(ev)
+            ev["_is_active"] = (
+                not is_p1_fail and not is_funded_ended and not payout_pending
+            )
+            if payout_pending:
+                ev["_payout_pending"] = True
 
         return jsonify({
             "status": "success",
