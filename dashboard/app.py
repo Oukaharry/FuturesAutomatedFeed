@@ -1681,24 +1681,62 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             merged[key] = existing_val
 
 
-def _admin_slack_id_for_client(client_id):
-    """(admin_name, slack_user_id) for a client, either possibly blank."""
+def _admin_slack_route_for_client(client_id):
+    """(admin_name, slack_user_id, slack_channel_id) for a client's admin."""
     profile = get_client_profile(client_id) or {}
     admin = profile.get('admin') or ''
     data = SYSTEM_HIERARCHY.get('admins', {}).get(admin, {}) or {}
-    return admin, str(data.get('slack_user_id') or '').strip()
+    return (
+        admin,
+        str(data.get('slack_user_id') or '').strip(),
+        str(data.get('slack_channel_id') or '').strip(),
+    )
 
 
-# Temporary operational pause: breach detection and dashboard updates continue,
-# but no breach messages are sent to Slack until this is switched back to False.
-BREACH_SLACK_NOTIFICATIONS_PAUSED = True
+def _admin_slack_id_for_client(client_id):
+    """(admin_name, slack_user_id) for a client, either possibly blank."""
+    admin, slack_id, _channel = _admin_slack_route_for_client(client_id)
+    return admin, slack_id
+
+
+# Ops kill switch: set BREACH_SLACK_PAUSED=1 to suppress breach Slack sends
+# without a code change. Detection and dashboard updates always continue.
+BREACH_SLACK_NOTIFICATIONS_PAUSED = (
+    str(os.environ.get('BREACH_SLACK_PAUSED', '')).strip().lower()
+    in ('1', 'true', 'yes')
+)
+
+# Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
+_BREACH_FIRM_SHORT_NAMES = (
+    ('my funded futures', 'MFFU'),
+    ('mffu', 'MFFU'),
+    ('funded next', 'Funded Next'),
+    ('fundednext', 'Funded Next'),
+    ('tradeify', 'Tradeify'),
+    ('topstep', 'Topstep'),
+    ('lucid', 'Lucid'),
+    ('alpha futures', 'Alpha Futures'),
+    ('blue guardian', 'Blue Guardian'),
+    ('ftmo', 'FTMO'),
+    ('funded futures family', 'Funded Futures Family'),
+    ('the 5%ers', 'The 5%ers'),
+)
+
+
+def _breach_firm_short_name(raw):
+    compact = str(raw or '').strip().lower()
+    for key, short in _BREACH_FIRM_SHORT_NAMES:
+        if key in compact:
+            return short
+    return str(raw or '').strip() or 'prop firm'
 
 
 def _send_admin_breach_alert(client_id, breaches):
-    """DM the client's admin that an account has breached its floor.
+    """Tell the admin's channel to purchase replacements for breached accounts.
 
-    Falls back to an @-mention on the shared webhook when no bot token is
-    configured, since an incoming webhook cannot open a DM.
+    Message: "<@admin> Purchase N <Firm> account(s)" posted to the admin's
+    alert channel; falls back to a DM, then the shared webhook, when the
+    channel (or bot token) is unavailable.
     """
     if not breaches:
         return 0
@@ -1706,30 +1744,29 @@ def _send_admin_breach_alert(client_id, breaches):
         app.logger.warning(
             f"🚨 {client_id}: suppressed {len(breaches)} breach Slack notification(s) (paused)")
         return 0
+    from collections import Counter
     from dashboard.scheduler import send_slack_message
 
-    admin, slack_id = _admin_slack_id_for_client(client_id)
+    admin, slack_id, channel_id = _admin_slack_route_for_client(client_id)
+    counts = Counter(
+        _breach_firm_short_name(breach.get('prop_firm'))
+        for breach in breaches if isinstance(breach, dict)
+    )
+    mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
     sent = 0
-    for breach in breaches:
-        if not isinstance(breach, dict):
-            continue
-        line = (
-            f":rotating_light: *Account breached* — {breach.get('prop_firm', '?')} "
-            f"`{breach.get('account', '?')}`\n"
-            f"Client: *{client_id}*  |  Phase: {breach.get('phase', '?')}\n"
-            f"Balance ${float(breach.get('balance') or 0):,.2f} is at or below "
-            f"the ${float(breach.get('floor') or 0):,.2f} floor."
-        )
-        target = _slack_dm(slack_id, line) if slack_id else False
-        if not target:
-            mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
-            send_slack_message(f"{mention}\n{line}")
+    for firm, n in counts.items():
+        line = f"{mention} Purchase {n} {firm} account{'s' if n > 1 else ''}"
+        delivered = _slack_post(channel_id, line) if channel_id else False
+        if not delivered and slack_id:
+            delivered = _slack_post(slack_id, line)
+        if not delivered:
+            send_slack_message(line)
         sent += 1
     return sent
 
 
-def _slack_dm(slack_user_id, text):
-    """Real DM via chat.postMessage. False when no bot token is configured."""
+def _slack_post(channel, text):
+    """chat.postMessage to a channel or user ID. False when unconfigured."""
     import requests
     from dashboard.database import get_setting
     token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
@@ -1738,19 +1775,23 @@ def _slack_dm(slack_user_id, text):
             token = str(get_setting('slack_bot_token') or '').strip()
         except Exception:
             token = ''
-    if not token or not slack_user_id:
+    if not token or not channel:
         return False
     try:
         resp = requests.post(
             'https://slack.com/api/chat.postMessage',
             headers={'Authorization': f'Bearer {token}'},
-            json={'channel': slack_user_id, 'text': text},
+            json={'channel': channel, 'text': text},
             timeout=15,
         )
         return bool((resp.json() or {}).get('ok'))
     except Exception as exc:
-        app.logger.warning(f"Slack DM failed: {exc}")
+        app.logger.warning(f"Slack post failed: {exc}")
         return False
+
+
+# Retained name for existing callers.
+_slack_dm = _slack_post
 
 
 def _default_tradeify_addon_on_new_dashboard_row(row):
@@ -8663,6 +8704,7 @@ def api_update_admin():
     name = request.json.get('name')
     email = request.json.get('email')
     slack_user_id = request.json.get('slack_user_id', None)
+    slack_channel_id = request.json.get('slack_channel_id', None)
     new_name = request.json.get('new_name', '').strip()
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
     
@@ -8674,7 +8716,8 @@ def api_update_admin():
         log_action('RENAME_ADMIN', 'admin', f'{name} -> {new_name}', get_remote_address())
         return jsonify({"status": "success"})
     
-    if update_admin_details(name, email, slack_user_id=slack_user_id):
+    if update_admin_details(name, email, slack_user_id=slack_user_id,
+                            slack_channel_id=slack_channel_id):
         update_user_email(name, 'admin', email)
         log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
         return jsonify({"status": "success"})
