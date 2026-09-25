@@ -6493,6 +6493,8 @@ class TradeOpssAIApp:
                 pass
         key_idx = min(day_idx, len(trade_keys) - 1)
         resolved_key = trade_keys[key_idx]
+        resolved_key = self._pending_phase_key_from_state_machine(
+            ev, firm_code, effective_phase, day_idx, trade_keys, resolved_key)
         _acct = self._primary_trade_account(ev)
         if self._outcome_gate_blocks(ev, firm_code, resolved_key):
             return None, day_idx, day_name
@@ -6500,6 +6502,64 @@ class TradeOpssAIApp:
                        f"{_acct}: day cell {day_idx + 1} ({day_name}) in "
                        f"'{effective_phase}' [{firm_code}] → blueprint {resolved_key}")
         return resolved_key, day_idx, day_name
+
+    def _pending_phase_key_from_state_machine(self, ev, firm_code, phase_display,
+                                              day_idx, trade_keys, positional_key):
+        """Pending leg from outcome state machine, not only Hedge Result index.
+
+        After challenge_trade1_loss, MFFU Builder must use challenge_recovery
+        (401t), even when the weekday placeholder is still in Hedge Result 1.
+        """
+        mgr = self.prop_firm_mgr
+        if not mgr or not getattr(mgr, "has_state_machine", None):
+            return positional_key
+        if not mgr.has_state_machine(firm_code) or not trade_keys:
+            return positional_key
+
+        fields = self._get_phase_fields(phase_display) or []
+        if not fields:
+            return positional_key
+
+        last_traded_idx = None
+        for i, field in enumerate(fields):
+            val = self._cell(ev.get(field))
+            if not val or val in ("—", "-"):
+                break
+            if self._parse_day_token(val) is not None:
+                break
+            last_traded_idx = i
+
+        account = self._primary_trade_account(ev)
+        outcome = None
+        try:
+            _date, outcome = self._latest_resolved_outcome(account)
+        except Exception:
+            pass
+        if outcome not in ("win", "loss"):
+            try:
+                outcome = self._resolve_trade_outcome(account)
+            except Exception:
+                outcome = None
+        if outcome not in ("win", "loss"):
+            return positional_key
+
+        if last_traded_idx is None:
+            current_key = trade_keys[0]
+        else:
+            current_key = trade_keys[min(last_traded_idx, len(trade_keys) - 1)]
+
+        next_key = mgr.resolve_next_phase_key(firm_code, current_key, outcome)
+        if not next_key or mgr.is_terminal_phase_key(next_key):
+            return positional_key
+        if next_key == positional_key:
+            return positional_key
+        if self._outcome_gate_blocks(ev, firm_code, next_key):
+            return positional_key
+
+        self.log(
+            f"📐 {account}: state machine pending leg {next_key} "
+            f"(cell index suggested {positional_key} after {current_key} {outcome})")
+        return next_key
 
     # Day-name abbreviations that traders use as placeholders
     _DAY_ABBREVS = {

@@ -82,7 +82,9 @@ dist/
 
 # Large release binaries
 *.zip
+TradeopssAI_v1.5.8/
 TradeopssAI_v1.7.1/
+TradeopssAI_v1.11.15/
 
 # Local companion build executables
 *.exe
