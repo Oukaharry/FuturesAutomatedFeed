@@ -1753,6 +1753,20 @@ def _slack_dm(slack_user_id, text):
         return False
 
 
+def _default_tradeify_addon_on_new_dashboard_row(row):
+    """New eval rows from + Add: prefer Tradeify (50% Add-On) over plain Tradeify."""
+    if not isinstance(row, dict):
+        return
+    pf = str(row.get('Prop Firm') or '').strip()
+    acct = str(row.get('Account #') or row.get('Account #.1') or '').strip().upper()
+    tradeify_acct = acct.startswith('TDFY') or acct.startswith('FTDF')
+    if pf in ('Tradeify', 'Tradeify Select'):
+        row['Prop Firm'] = 'Tradeify (50% Add-On)'
+        return
+    if tradeify_acct and pf in ('', 'My Funded Futures', 'Tradeify', 'Tradeify Select'):
+        row['Prop Firm'] = 'Tradeify (50% Add-On)'
+
+
 def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
     """Detect evaluation rows the dashboard is trying to add (CREATE).
 
@@ -13900,6 +13914,7 @@ def update_data():
                                 if not str(_r.get('Date Purchased') or '').strip():
                                     _r['Date Purchased'] = _kenya_today_str()
                                 _seed_new_row_day_placeholder(_r)
+                                _default_tradeify_addon_on_new_dashboard_row(_r)
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
