@@ -6190,6 +6190,47 @@ def _companion_version_denied(data=None):
     return None
 
 
+# Every request here comes from the companion; no other caller is allowed.
+_COMPANION_ONLY_PATHS = (
+    '/api/companion/',
+    '/api/client/push',            # also covers /api/client/push_hedging_review
+    '/api/client/data',
+    '/api/client/migrate_sheet',
+    '/api/client/import_csv_companion',
+    '/api/client/ml_insights',
+)
+# Shared with the web UI; gate only requests that identify as companion.
+_COMPANION_SHARED_PATHS = ('/api/update_data', '/api/data')
+
+
+@app.before_request
+def _enforce_companion_version_live():
+    """Live version gate on every companion request.
+
+    A companion that stays open across a release dies on its very next
+    call \u2014 not just at auth \u2014 because the check runs on all companion-only
+    paths and on shared paths whenever the request identifies as companion
+    (version header, or API-key auth without a browser session).
+    """
+    path = request.path or ''
+    if any(path.startswith(p) for p in _COMPANION_ONLY_PATHS):
+        pass
+    elif path in _COMPANION_SHARED_PATHS:
+        is_companion = bool(request.headers.get('X-Companion-Version')) or (
+            bool(request.headers.get('X-API-Key'))
+            and not request.cookies.get('session_token'))
+        if not is_companion:
+            return None
+    else:
+        return None
+    denied = _companion_version_denied()
+    if denied:
+        app.logger.warning(
+            "Version gate: blocked %s %s from companion v%s",
+            request.method, path, _extract_companion_version() or '?')
+    return denied
+
+
 def _perform_client_email_auth(email: str, *, actor: str = 'client'):
     """Shared email→hierarchy lookup for companion auth."""
     try:

@@ -932,7 +932,8 @@ class MT5DataPusher:
         
         headers = {
             "Content-Type": "application/json",
-            "X-API-Key": self.api_key
+            "X-API-Key": self.api_key,
+            "X-Companion-Version": APP_VERSION,
         }
         
         try:
@@ -2597,6 +2598,7 @@ class TradeOpssAIApp:
                                 try:
                                     r2 = requests.get(
                                         f"{url}/api/data?client_id={cl}",
+                                        headers={"X-Companion-Version": APP_VERSION},
                                         timeout=15
                                     )
                                     if r2.status_code == 200:
@@ -4109,6 +4111,7 @@ class TradeOpssAIApp:
             response = requests.get(
                 f"{dashboard_url}/api/data?client_id={client_name}",
                 cookies=self.session_cookies if hasattr(self, 'session_cookies') else {},
+                headers={"X-Companion-Version": APP_VERSION},
                 timeout=60
             )
             
