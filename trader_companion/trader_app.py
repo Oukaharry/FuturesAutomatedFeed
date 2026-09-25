@@ -1738,6 +1738,9 @@ class TradeOpssAIApp:
         self._farming_close_poll_active = False
         self._pending_breach_alerts = []   # Breaches the dashboard has not announced yet.
         self._breach_alerts_sent = set()
+        # Challenge breaches wait here (per firm family) until every challenge
+        # account of that firm has closed, so admins get one "Purchase N" ping.
+        self._held_challenge_breaches = {}
         self._dashboard_vanish_registry = {}  # acct_lower -> {ev_snapshot, tier, ...}
 
         self._show_login_screen()
@@ -5281,6 +5284,7 @@ class TradeOpssAIApp:
             force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
             force_fields.extend(self._apply_tradovate_vanish_breaches(evaluations))
             force_fields.extend(self._backfill_missing_end_dates(evaluations))
+            self._release_held_breach_alerts(evaluations)
 
             breaches = list(self._pending_breach_alerts)
             if not force_fields and not breaches:
@@ -6381,7 +6385,17 @@ class TradeOpssAIApp:
         }
         if reason_code:
             payload["reason_code"] = reason_code
-        self._pending_breach_alerts.append(payload)
+        if str(phase) == "Challenge":
+            # One ping per firm once every challenge account has closed — not
+            # one per breach as they land.
+            if not hasattr(self, "_held_challenge_breaches"):
+                self._held_challenge_breaches = {}
+            family = self._breach_hold_family(payload["prop_firm"])
+            self._held_challenge_breaches.setdefault(family, []).append(payload)
+            self.log(f"\U0001f6a8 {account}: challenge breach held \u2014 waiting for all "
+                     f"{payload['prop_firm']} challenge accounts to close", "WARN")
+        else:
+            self._pending_breach_alerts.append(payload)
         if reason_code == "dashboard_vanish":
             self.log(f"🚨 {account}: {phase} breach — account removed from "
                      f"dashboard after trading", "ERROR")
@@ -6391,6 +6405,82 @@ class TradeOpssAIApp:
         else:
             self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
                      f"below floor {float(floor):,.2f}", "ERROR")
+
+    def _breach_hold_family(self, firm_name):
+        """Grouping key for held challenge breaches (login family when known)."""
+        try:
+            family = self._broker_login_family(firm_name)
+            if family:
+                return family
+        except Exception:
+            pass
+        return re.sub(r"[^a-z0-9]", "", str(firm_name or "").lower()) or "unknown"
+
+    def _release_held_breach_alerts(self, evaluations):
+        """Queue held challenge breaches once their firm's accounts all closed.
+
+        After 20:00 EAT the session is over, so anything still held flushes
+        regardless — an alert must never survive to the next day unsent.
+        """
+        held = getattr(self, "_held_challenge_breaches", None)
+        if not held:
+            return
+        session_over = kenya_now().hour >= TRADING_SESSION_END_HOUR
+        for family in list(held.keys()):
+            alerts = held.get(family) or []
+            if not alerts:
+                held.pop(family, None)
+                continue
+            if not session_over and self._challenge_accounts_still_pending(evaluations, family):
+                continue
+            self._pending_breach_alerts.extend(alerts)
+            held.pop(family, None)
+            firm = alerts[0].get("prop_firm", family)
+            self.log(f"🚨 Releasing {len(alerts)} held {firm} challenge breach "
+                     f"alert(s) — all challenge accounts closed", "WARN")
+
+    def _challenge_accounts_still_pending(self, evaluations, family):
+        """True while any live challenge account of this firm has not closed.
+
+        Not closed = an open broker position, a traded cell whose outcome has
+        not resolved yet, or an untraded placeholder still queued for today.
+        """
+        today_wd = kenya_today().weekday()
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            if self._breach_hold_family(self._cell(ev.get("Prop Firm"))) != family:
+                continue
+            if self._on_funded_leg(ev):
+                continue
+            status = self._cell(ev.get("Status P1")).lower()
+            if any(kw in status for kw in self._INACTIVE_KEYWORDS) or "pass" in status:
+                continue
+            traded_zero = False
+            for i in range(1, 6):
+                val = self._cell(ev.get(f"Hedge Result {i}"))
+                if not val or val in ("—", "-"):
+                    continue
+                if self._parse_day_token(val) == today_wd:
+                    return True  # queued to trade today, not traded yet
+                try:
+                    if float(val.replace("$", "").replace(",", "")) == 0:
+                        traded_zero = True
+                except ValueError:
+                    continue
+            try:
+                if self._account_has_open_position(ev):
+                    return True
+            except Exception:
+                pass
+            if traded_zero:
+                account = self._cell_account(ev.get("Account #"))
+                try:
+                    if account and self._resolve_trade_outcome(account) is None:
+                        return True  # trade taken, outcome not settled yet
+                except Exception:
+                    return True
+        return False
 
     def _outcome_gate_blocks(self, ev, firm_code, phase_key):
         """True when a phase needs a prior outcome the account did not have.
