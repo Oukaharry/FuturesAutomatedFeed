@@ -2559,7 +2559,7 @@
                     <thead>
                         <tr>
                             <th style="text-align: left; padding-left: 20px;">Date</th>
-                            <th style="text-align: left; padding-left: 20px;">Net After Profit Splits</th>
+                            <th style="text-align: left; padding-left: 20px;">Net at period end</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.12); color: #60a5fa;">Split %</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
                         </tr>
@@ -6210,7 +6210,7 @@
             }
 
             // Update Profit Split tab cards — temporary values until profit share table loads
-            // Actual net = net in progress − sum of all profit splits (including current period)
+            // Top card matches Stats net in progress (same as latest period-end gross in table)
             try {
                 const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
@@ -9239,13 +9239,12 @@
             return total;
         }
 
-        /** Table display: period-end gross net minus splits paid through that period (matches header on latest row). */
+        /** Legacy helper — table rows use period-end gross net (`low`) from the server. */
         function _netAfterSplitsDisplay(rows, idx) {
-            const gross = parseFloat(String((rows[idx].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-            return gross - _cumulativeProfitSplitsFromRow(rows, idx);
+            return parseFloat(String((rows[idx].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
         }
 
-        /** Header = Stats net in progress minus all profit splits in the history table (incl. current period row). */
+        /** Top card = live Stats net; table rows use period-end gross net from the server. */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
@@ -9266,10 +9265,9 @@
                 : ((rows && rows.length)
                     ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
                     : 0);
-            const actualNet = inProgress - totalSplitsPaid;
             if (elNet) {
-                elNet.textContent = formatMoney(actualNet);
-                elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
+                elNet.textContent = formatMoney(inProgress);
+                elNet.style.color = inProgress >= 0 ? '#4ade80' : '#f87171';
             }
         }
 
