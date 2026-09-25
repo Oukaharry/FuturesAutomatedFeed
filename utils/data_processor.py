@@ -294,7 +294,7 @@ def field_change_affects_discrepancy(field, old_val, new_val):
     if field.startswith('Prop Day') or field.startswith('Prop Progress'):
         return False
     if field in (
-        'Prop Firm', 'Account #', 'Account #.1', 'Status', 'Status P1',
+        'Prop Firm', 'Account #', 'Account #.1', 'Status', 'Status P1', 'Status P',
         'Date Started', 'Date Ended', 'Date Purchased',
     ):
         return False
@@ -979,7 +979,7 @@ def fetch_evaluations(sheet_url):
                     'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
                     'Date Started', 'Date Ended', 'Status P1', 'Account #',
                     'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
-                    'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status', 'Status Funded',
+                    'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status', 'Status Funded', 'Status P',
                     'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
                     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
