@@ -2650,7 +2650,7 @@
                             <!-- Scrolling Group Headers -->
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
-                            <th colspan="30" class="group-header group-header-orange">FUNDED PHASE</th>
+                            <th colspan="29" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="180" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
@@ -2678,7 +2678,6 @@
                             <th class="sub-header-orange">Date Started</th>
                             <th class="sub-header-orange">Date Ended</th>
                             <th class="sub-header-orange">Status</th>
-                            <th class="sub-header-orange" title="FundedNext Rapid Daily only — funded leg">Status P</th>
                             <th class="sub-header-orange">Hedge Result 1</th>
                             <th class="sub-header-orange">Hedge Result 2</th>
                             <th class="sub-header-orange">Hedge Result 3</th>
@@ -4452,41 +4451,6 @@
             return s1.includes('delete');
         }
 
-        function isFundedNextRapidDailyFirm(ev) {
-            const pf = String((ev && ev['Prop Firm']) || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-            return pf === 'fundednextrapiddaily' || pf.includes('fundednextrapid');
-        }
-
-        /** Mirror companion funded-leg detection — Status P is funded-phase only. */
-        function evaluationOnFundedLeg(ev) {
-            if (!ev) return false;
-            const p1 = String(ev['Status P1'] || '').trim().toLowerCase();
-            if (p1 === 'pass' || p1 === 'live' || isHitTpSlStatus(p1)) return true;
-            const fu = String(ev['Account #.1'] || '').trim();
-            const ch = String(ev['Account #'] || '').trim();
-            if (fu && !ch) return true;
-            if (String(ev['Date Started.1'] || '').trim() || String(ev['Date Ended.1'] || '').trim()) return true;
-            for (let n = 1; n <= 8; n++) {
-                if (String(ev[`Date ${n}`] || '').trim()) return true;
-                const pay = String(ev[`Payout ${n}`] || '').replace(/[$,]/g, '').trim();
-                if (pay && !isNaN(parseFloat(pay)) && parseFloat(pay) > 0) return true;
-            }
-            const st = String(ev['Status'] || ev['Status Funded'] || '').trim().toLowerCase();
-            return !!(st && st !== '-' && st !== 'not started');
-        }
-
-        function showFundedNextRapidDailyStatusP(ev) {
-            return isFundedNextRapidDailyFirm(ev) && evaluationOnFundedLeg(ev);
-        }
-
-        function getStatusPCellHtml(ev, index) {
-            if (!showFundedNextRapidDailyStatusP(ev)) {
-                return '<span style="color:#475569;">—</span>';
-            }
-            const val = (ev && ev['Status P']) || '';
-            return getDropdownHtml(val, 'Status P', index, 'Status P', evalFieldReadOnly('Status P'));
-        }
-
         /** Whether the Active-only filter should hide this row (same rules as Fail / ended). */
         function hidesFromActiveFilter(ev) {
             if (ev && ev._deleted) return true;
@@ -4555,7 +4519,7 @@
 
             if (!CLIENT_ID) {
                 const evalBody = document.getElementById('evaluations-body');
-                if (evalBody) evalBody.innerHTML = `<tr><td colspan="133" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
+                if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
                 return;
             }
 
@@ -4587,7 +4551,7 @@
                     if (data.status === 'error') {
                         if (!silent) {
                             const evalBody = document.getElementById('evaluations-body');
-                            if (evalBody) evalBody.innerHTML = `<tr><td colspan="133" style="text-align:center;padding:30px;color:#f87171;">
+                            if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                                 Error loading data: ${data.message || 'Unknown error'}.<br>
                                 <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
                             </td></tr>`;
@@ -4664,7 +4628,7 @@
                     try { renderEvaluationsTable(resetPage); } catch(e) {
                         console.error('renderEvaluationsTable error:', e);
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="133" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                             Render error: ${e.message}. Check console for details.
                         </td></tr>`;
                     }
@@ -4772,7 +4736,7 @@
                     // Only show fetch error if data hasn't loaded yet (don't overwrite rendered table)
                     if (!dataLoaded) {
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="133" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                             Failed to load data: ${error.message}.<br>
                             <small style="color:#94a3b8;">Check your connection or try refreshing.</small>
                         </td></tr>`;
@@ -4782,7 +4746,7 @@
         }
 
         function evalSpinnerHTML() {
-            return `<tr class="eval-spinner-row"><td colspan="133"><div class="spinner-inner">
+            return `<tr class="eval-spinner-row"><td colspan="132"><div class="spinner-inner">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                 Loading evaluations&hellip;
             </div></td></tr>`;
@@ -5030,7 +4994,6 @@
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1', evalFieldReadOnly('Date Started.1')), 'Date Started.1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1', evalFieldReadOnly('Date Ended.1')), 'Date Ended.1')}
                         ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', evalFieldReadOnly('Status')), 'Status')}
-                        ${cell(getStatusPCellHtml(ev, index), 'Status P')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', evalFieldReadOnly('Hedge Result 1.1')), 'Hedge Result 1.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', evalFieldReadOnly('Hedge Result 2.1')), 'Hedge Result 2.1')}
@@ -7719,8 +7682,7 @@
             'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
-            'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed'],
-            'Status P': ['Funded trade 1', 'Funded trade 2', 'Funded trade 3', 'Funded trade 4']
+            'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
         };
 
         function getDropdownHtml(value, type, index, key, readOnly = false) {
@@ -7775,10 +7737,9 @@
                 return base + "background-color: #334155; color: white;";
             };
 
-            if (type === 'Status' || type === 'Status P1' || type === 'Status P') {
+            if (type === 'Status' || type === 'Status P1') {
                 const v = (value || '').toLowerCase();
-                if (type === 'Status P' && v.includes('funded trade')) colorStyle = "color: #f472b6; font-weight: 600;";
-                else if (isLiveStatus(v)) colorStyle = "color: #14b8a6; font-weight: 700;"; // Teal — real money
+                if (isLiveStatus(v)) colorStyle = "color: #14b8a6; font-weight: 700;"; // Teal — real money
                 else if (v.includes('active') || v.includes('pass') || v.includes('funded')) colorStyle = "color: #27ae60;"; // Greenish
                 else if (isTerminalEvalStatus(v)) colorStyle = "color: #c0392b;"; // Red
                 else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) colorStyle = "color: #f39c12;"; // Orange
@@ -7807,12 +7768,10 @@
                         // Inherit the pill style directly
                         itemStyle = pillStyle + " box-shadow: 0 1px 3px rgba(0,0,0,0.2);";
                     }
-                } else if (type === 'Status' || type === 'Status P1' || type === 'Status P') {
+                } else if (type === 'Status' || type === 'Status P1') {
                     // Apply color coding to Status dropdown items
                     const v = (opt || '').toLowerCase();
-                    if (type === 'Status P' && v.includes('funded trade')) {
-                        itemStyle = "color: #f472b6; font-weight: 600;";
-                    } else if (isLiveStatus(v)) {
+                    if (isLiveStatus(v)) {
                         itemStyle = "color: #14b8a6; font-weight: 700;"; // Teal — real money
                     } else if (v.includes('active') || v.includes('pass') || v.includes('funded')) {
                         itemStyle = "color: #27ae60; font-weight: 500;"; // Greenish
@@ -8201,6 +8160,22 @@
             return !!(cid && _pendingNewRowIds.has(String(cid)));
         }
 
+        /** New dashboard rows (+ Add): still Not Started and tagged with _row_added_at (survives CREATE save). */
+        function shouldDefaultTradeifyToAddon(ev) {
+            if (isPendingNewEvaluationRow(ev)) return true;
+            if (!ev || typeof ev !== 'object' || !ev._row_added_at) return false;
+            const p1 = String(ev['Status P1'] || '').trim().toLowerCase();
+            if (p1 !== 'not started') return false;
+            const pf = String(ev['Prop Firm'] || '').trim();
+            if (pf === 'Tradeify (50% Add-On)') return false;
+            return (
+                !pf
+                || pf === 'My Funded Futures'
+                || pf === 'Tradeify'
+                || pf === 'Tradeify Select'
+            );
+        }
+
         /** Default Tradeify-family picks to 50% Add-On on new rows only (existing rows unchanged). */
         function normalizeTradeifyPropFirmDefault(firm) {
             const raw = String(firm || '').trim();
@@ -8264,7 +8239,7 @@
             
             const oldValue = currentData.evaluations[index][key];
             const row = currentData.evaluations[index];
-            if (key === 'Prop Firm' && isPendingNewEvaluationRow(row)) {
+            if (key === 'Prop Firm' && shouldDefaultTradeifyToAddon(row)) {
                 value = normalizeTradeifyPropFirmDefault(value);
             }
             currentData.evaluations[index][key] = value;
@@ -8280,7 +8255,7 @@
                     // user already selected Funded Next Flex, keep it.
                     if (!(detected === 'FundedNext' && currentKey === 'fundednextflex')) {
                         let firm = detected;
-                        if (firm === 'Tradeify' && isPendingNewEvaluationRow(row)) {
+                        if (firm === 'Tradeify' && shouldDefaultTradeifyToAddon(row)) {
                             firm = 'Tradeify (50% Add-On)';
                         }
                         currentData.evaluations[index]['Prop Firm'] = firm;
