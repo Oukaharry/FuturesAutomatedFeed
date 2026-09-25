@@ -4487,21 +4487,11 @@
             return getDropdownHtml(val, 'Status P', index, 'Status P', evalFieldReadOnly('Status P'));
         }
 
-        /** True when a funded/farming hedge cell is awaiting payout (server uses same rule). */
-        function evalHasPayoutPending(ev) {
-            if (!ev || typeof ev !== 'object') return false;
-            for (const [key, val] of Object.entries(ev)) {
-                if (key.startsWith('_')) continue;
-                if (!(key.startsWith('Hedge Result') || key.startsWith('Hedge Day'))) continue;
-                if (String(val || '').trim().toUpperCase() === 'PAYOUT') return true;
-            }
-            return false;
-        }
-
         /** Whether the Active-only filter should hide this row (same rules as Fail / ended). */
         function hidesFromActiveFilter(ev) {
             if (ev && ev._deleted) return true;
-            if (evalHasPayoutPending(ev)) return true;
+            // PAYOUT in hedge cells does not hide rows here — dashboard stays fully visible.
+            // Companion scan uses server _is_active on /api/client/data only.
             const statusP1 = String(ev['Status P1'] || '').toLowerCase();
             const statusFunded = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
             if (isTerminalEvalStatus(statusP1)) return true;
