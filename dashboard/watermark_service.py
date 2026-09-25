@@ -628,6 +628,16 @@ def _last_paid_split_net_from_periods(periods):
     return last
 
 
+def _format_profit_split_cell(amount):
+    """Dashboard profit-split column; keep cents when override is not a whole dollar."""
+    val = float(amount or 0)
+    if val <= 0:
+        return '$0'
+    if abs(val - round(val)) < 0.005:
+        return f"${val:,.0f}"
+    return f"${val:,.2f}"
+
+
 def _apply_profit_split_overrides_to_periods(periods, ps_overrides):
     if not ps_overrides:
         return
@@ -635,7 +645,7 @@ def _apply_profit_split_overrides_to_periods(periods, ps_overrides):
         key = period.get('from_date')
         if key in ps_overrides:
             val = ps_overrides[key]
-            period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
+            period['profit_split'] = _format_profit_split_cell(val)
             period['profit_split_override'] = True
 
 
@@ -670,7 +680,7 @@ def _reconcile_profit_share_splits(periods, ps_overrides, today=None):
             continue
         if p.get('profit_split_override') or (key in ps_overrides):
             ps = float(ps_overrides[key]) if key in ps_overrides else _parse_money_cell(p.get('profit_split'))
-            p['profit_split'] = f"${ps:,.0f}" if ps > 0 else '$0'
+            p['profit_split'] = _format_profit_split_cell(ps)
         else:
             ps = _monthly_profit_split_amount(net, last_net_at_split, pct)
             p['profit_split'] = f"${ps:,.0f}" if ps > 0 else '$0'
