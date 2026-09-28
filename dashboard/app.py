@@ -1735,9 +1735,9 @@ def _breach_firm_short_name(raw):
 def _send_admin_breach_alert(client_id, breaches):
     """Tell the admin's channel to purchase replacements for breached accounts.
 
-    Message: "<@admin> Purchase N <Firm> account(s)" posted to the admin's
-    alert channel; falls back to a DM, then the shared webhook, when the
-    channel (or bot token) is unavailable.
+    Message: "<@admin> Purchase N <Firm> account(s) for <Client>" posted to
+    the admin's alert channel; falls back to a DM, then the shared webhook,
+    when the channel (or bot token) is unavailable.
     """
     if not breaches:
         return 0
@@ -1754,9 +1754,11 @@ def _send_admin_breach_alert(client_id, breaches):
         for breach in breaches if isinstance(breach, dict)
     )
     mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
+    client_label = str(client_id or '').strip()
     sent = 0
     for firm, n in counts.items():
-        line = f"{mention} Purchase {n} {firm} account{'s' if n > 1 else ''}"
+        purchase = f"Purchase {n} {firm} account{'s' if n > 1 else ''}"
+        line = f"{mention} {purchase} for {client_label}" if client_label else f"{mention} {purchase}"
         delivered = False
         if channel_id:
             delivered = _slack_post(channel_id, line)
