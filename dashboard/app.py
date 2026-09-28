@@ -1699,12 +1699,14 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: set BREACH_SLACK_PAUSED=1 to suppress purchase-alert Slack sends.
+# Ops kill switch: set BREACH_SLACK_PAUSED=1 to suppress breach Slack sends
+# without a code change. Detection and dashboard updates always continue.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
     str(os.environ.get('BREACH_SLACK_PAUSED', '')).strip().lower()
     in ('1', 'true', 'yes')
 )
 
+# Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
 _BREACH_FIRM_SHORT_NAMES = (
     ('my funded futures', 'MFFU'),
     ('mffu', 'MFFU'),
@@ -1730,7 +1732,12 @@ def _breach_firm_short_name(raw):
 
 
 def _send_admin_breach_alert(client_id, breaches):
-    """Tell the admin's channel to purchase replacements for breached accounts."""
+    """Tell the admin's channel to purchase replacements for breached accounts.
+
+    Message: "<@admin> Purchase N <Firm> account(s)" posted to the admin's
+    alert channel; falls back to a DM, then the shared webhook, when the
+    channel (or bot token) is unavailable.
+    """
     if not breaches:
         return 0
     if BREACH_SLACK_NOTIFICATIONS_PAUSED:
@@ -1806,6 +1813,7 @@ def _slack_post(channel, text):
         return False
 
 
+# Retained name for existing callers.
 _slack_dm = _slack_post
 
 
@@ -6205,6 +6213,47 @@ def _companion_version_denied(data=None):
     return None
 
 
+# Every request here comes from the companion; no other caller is allowed.
+_COMPANION_ONLY_PATHS = (
+    '/api/companion/',
+    '/api/client/push',            # also covers /api/client/push_hedging_review
+    '/api/client/data',
+    '/api/client/migrate_sheet',
+    '/api/client/import_csv_companion',
+    '/api/client/ml_insights',
+)
+# Shared with the web UI; gate only requests that identify as companion.
+_COMPANION_SHARED_PATHS = ('/api/update_data', '/api/data')
+
+
+@app.before_request
+def _enforce_companion_version_live():
+    """Live version gate on every companion request.
+
+    A companion that stays open across a release dies on its very next
+    call \u2014 not just at auth \u2014 because the check runs on all companion-only
+    paths and on shared paths whenever the request identifies as companion
+    (version header, or API-key auth without a browser session).
+    """
+    path = request.path or ''
+    if any(path.startswith(p) for p in _COMPANION_ONLY_PATHS):
+        pass
+    elif path in _COMPANION_SHARED_PATHS:
+        is_companion = bool(request.headers.get('X-Companion-Version')) or (
+            bool(request.headers.get('X-API-Key'))
+            and not request.cookies.get('session_token'))
+        if not is_companion:
+            return None
+    else:
+        return None
+    denied = _companion_version_denied()
+    if denied:
+        app.logger.warning(
+            "Version gate: blocked %s %s from companion v%s",
+            request.method, path, _extract_companion_version() or '?')
+    return denied
+
+
 def _perform_client_email_auth(email: str, *, actor: str = 'client'):
     """Shared email→hierarchy lookup for companion auth."""
     try:
@@ -8731,11 +8780,8 @@ def api_update_admin():
         log_action('RENAME_ADMIN', 'admin', f'{name} -> {new_name}', get_remote_address())
         return jsonify({"status": "success"})
     
-    if update_admin_details(
-        name, email,
-        slack_user_id=slack_user_id,
-        slack_channel_id=slack_channel_id,
-    ):
+    if update_admin_details(name, email, slack_user_id=slack_user_id,
+                            slack_channel_id=slack_channel_id):
         update_user_email(name, 'admin', email)
         log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
         return jsonify({"status": "success"})
@@ -13337,7 +13383,7 @@ def api_get_slack_bot_token():
 @app.route('/api/settings/slack_bot_token', methods=['POST'])
 @require_role('super_admin')
 def api_set_slack_bot_token():
-    """Set the Slack bot token used for purchase-alert channel posts."""
+    """Set the Slack bot token used for channel/DM alerts. Super admin only."""
     import requests as _requests
     from dashboard.database import set_setting
     data = request.get_json(force=True)
