@@ -2029,6 +2029,7 @@ def merge_dashboard_update_evaluations(
 
         if _row_should_clear_day_placeholders(merged):
             _clear_system_day_placeholders(merged)
+        _clear_stale_zero_trade_markers(merged)
 
         out[idx] = merged
 
@@ -2097,12 +2098,14 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
             if _row_should_clear_day_placeholders(merged):
                 _clear_system_day_placeholders(merged)
+            _clear_stale_zero_trade_markers(merged)
             out[idx] = merged
         else:
             merged = dict(ev_in)
             _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
             if _row_should_clear_day_placeholders(merged):
                 _clear_system_day_placeholders(merged)
+            _clear_stale_zero_trade_markers(merged)
             appended.append(merged)
 
     out.extend(appended)
@@ -2130,26 +2133,39 @@ def recalculate_hedge_nets(evaluations):
         if not isinstance(ev, dict):
             continue
         _clear_farming_payout_date_collisions(ev)
+        _clear_stale_zero_trade_markers(ev)
+
+        def _settled_hedge_num(val):
+            if _is_zero_trade_marker(val):
+                return 0.0
+            return _num(val)
+
+        def _hr1_effectively_blank():
+            hr1 = ev.get('Hedge Result 1')
+            if _is_blank(hr1):
+                return True
+            return _is_zero_trade_marker(hr1)
+
         # --- Hedge Net (Phase 1) ---
         # =IF(OR(ISBLANK(HR1), Status P1<>"Fail"), "", -Fee + HR1+HR2+HR3+HR4+HR5)
         status_p1 = str(ev.get('Status P1', '')).strip()
-        if _is_blank(ev.get('Hedge Result 1')) or status_p1 != 'Fail':
+        if _hr1_effectively_blank() or status_p1 != 'Fail':
             ev['Hedge Net'] = ''
         else:
             fee = _num(ev.get('Fee'))
-            hr_sum = sum(_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
+            hr_sum = sum(_settled_hedge_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
             ev['Hedge Net'] = -fee + hr_sum
 
         # --- Hedge Net.1 (Funded) ---
         status = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
-        sum_phase1 = sum(_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
-        sum_funded = sum(_num(ev.get(c)) for c in FUNDED_HEDGE_COLS)
+        sum_phase1 = sum(_settled_hedge_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
+        sum_funded = sum(_settled_hedge_num(ev.get(c)) for c in FUNDED_HEDGE_COLS)
         fee = _num(ev.get('Fee'))
         activation_fee = _num(ev.get('Activation Fee'))
 
         if status == 'Completed':
             sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 9))
-            sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 61))
+            sum_days = sum(_settled_hedge_num(ev.get(f'Hedge Day {i}')) for i in range(1, 61))
             ev['Hedge Net.1'] = sum_payouts + sum_funded + sum_phase1 - fee - activation_fee + sum_days
         elif status == 'Fail':
             ev['Hedge Net.1'] = sum_funded + sum_phase1 - fee - activation_fee
@@ -10289,6 +10305,114 @@ def _clear_system_day_placeholders(ev):
         if _weekday_abbrs_in_text(val) or _is_weekday_or_empty_label(val):
             ev[key] = ''
             cleared.append(key)
+    return cleared
+
+
+def _is_zero_trade_marker(raw):
+    """True for companion fill markers ($0.00) — not settled hedge P/L."""
+    if not _hedge_cell_currency_only(raw):
+        return False
+    try:
+        s = str(raw).replace('$', '').replace(',', '').strip()
+        return abs(float(s)) < 1e-9
+    except (ValueError, TypeError):
+        return False
+
+
+def _hedge_cell_shows_progression(raw):
+    """Weekday queued, payout pending, or settled non-zero P/L."""
+    if not raw or str(raw).strip() in ('', '-', '—', '–'):
+        return False
+    if _cell_is_payout_marker(raw):
+        return True
+    if _weekday_abbrs_in_text(raw):
+        return True
+    if _hedge_cell_currency_only(raw) and not _is_zero_trade_marker(raw):
+        return True
+    return False
+
+
+def _row_has_settled_hedge_pl(ev):
+    """Any hedge/prop day cell with non-zero settled currency."""
+    if not isinstance(ev, dict):
+        return False
+    for key, val in ev.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if not (
+            key.startswith('Hedge Result')
+            or key.startswith('Hedge Day')
+            or key.startswith('Prop Day')
+        ):
+            continue
+        if _hedge_cell_currency_only(val) and not _is_zero_trade_marker(val):
+            return True
+    return False
+
+
+def _clear_stale_zero_trade_markers(ev):
+    """Clear companion $0.00 fill markers once the trade has closed or row moved on.
+
+    The companion writes $0.00 when a weekday placeholder is consumed at fill
+    time. If that marker survives after the trade closes, Hedge Net treats the
+    cell as populated and can show a false negative (e.g. -Fee with no real P/L).
+    """
+    from dashboard.eval_status import is_eval_phase_failed, is_funded_phase_ended
+    if not isinstance(ev, dict):
+        return []
+
+    cleared = []
+    row_terminal = (
+        is_eval_phase_failed(ev.get('Status P1'))
+        or is_eval_phase_failed(ev.get('Status'))
+        or is_funded_phase_ended(str(ev.get('Status') or ev.get('Status Funded') or ''))
+    )
+    has_settled = _row_has_settled_hedge_pl(ev)
+
+    def _clear_key(key):
+        if not _is_zero_trade_marker(ev.get(key)):
+            return
+        ev[key] = ''
+        cleared.append(key)
+
+    challenge_keys = [f'Hedge Result {i}' for i in range(1, 6)]
+    for idx, key in enumerate(challenge_keys):
+        if not _is_zero_trade_marker(ev.get(key)):
+            continue
+        later_progress = any(
+            _hedge_cell_shows_progression(ev.get(later))
+            for later in challenge_keys[idx + 1:]
+        )
+        if later_progress or (row_terminal and not has_settled):
+            _clear_key(key)
+
+    funded_keys = list(_FUNDED_HEDGE_FIELDS)
+    for idx, key in enumerate(funded_keys):
+        if not _is_zero_trade_marker(ev.get(key)):
+            continue
+        later_progress = any(
+            _hedge_cell_shows_progression(ev.get(later))
+            for later in funded_keys[idx + 1:]
+        )
+        if later_progress or (row_terminal and not has_settled):
+            _clear_key(key)
+
+    for slot in range(1, 61):
+        key = f'Hedge Day {slot}'
+        if not _is_zero_trade_marker(ev.get(key)):
+            continue
+        prop_val = ev.get(f'Prop Day {slot}')
+        prop_settled = (
+            _hedge_cell_currency_only(prop_val)
+            and not _is_zero_trade_marker(prop_val)
+        )
+        later_progress = any(
+            _hedge_cell_shows_progression(ev.get(f'Hedge Day {later}'))
+            for later in range(slot + 1, 61)
+        )
+        if prop_settled or later_progress or (row_terminal and not has_settled):
+            _clear_key(key)
+
     return cleared
 
 
