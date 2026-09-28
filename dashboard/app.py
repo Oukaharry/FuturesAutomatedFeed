@@ -1681,55 +1681,101 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             merged[key] = existing_val
 
 
-def _admin_slack_id_for_client(client_id):
-    """(admin_name, slack_user_id) for a client, either possibly blank."""
+def _admin_slack_route_for_client(client_id):
+    """(admin_name, slack_user_id, slack_channel_id) for a client's admin."""
     profile = get_client_profile(client_id) or {}
     admin = profile.get('admin') or ''
     data = SYSTEM_HIERARCHY.get('admins', {}).get(admin, {}) or {}
-    return admin, str(data.get('slack_user_id') or '').strip()
+    return (
+        admin,
+        str(data.get('slack_user_id') or '').strip(),
+        str(data.get('slack_channel_id') or '').strip(),
+    )
 
 
-# Temporary operational pause: breach detection and dashboard updates continue,
-# but no breach messages are sent to Slack until this is switched back to False.
-BREACH_SLACK_NOTIFICATIONS_PAUSED = True
+def _admin_slack_id_for_client(client_id):
+    """(admin_name, slack_user_id) for a client, either possibly blank."""
+    admin, slack_id, _channel = _admin_slack_route_for_client(client_id)
+    return admin, slack_id
+
+
+# Ops kill switch: set BREACH_SLACK_PAUSED=1 to suppress purchase-alert Slack sends.
+BREACH_SLACK_NOTIFICATIONS_PAUSED = (
+    str(os.environ.get('BREACH_SLACK_PAUSED', '')).strip().lower()
+    in ('1', 'true', 'yes')
+)
+
+_BREACH_FIRM_SHORT_NAMES = (
+    ('my funded futures', 'MFFU'),
+    ('mffu', 'MFFU'),
+    ('funded next', 'Funded Next'),
+    ('fundednext', 'Funded Next'),
+    ('tradeify', 'Tradeify'),
+    ('topstep', 'Topstep'),
+    ('lucid', 'Lucid'),
+    ('alpha futures', 'Alpha Futures'),
+    ('blue guardian', 'Blue Guardian'),
+    ('ftmo', 'FTMO'),
+    ('funded futures family', 'Funded Futures Family'),
+    ('the 5%ers', 'The 5%ers'),
+)
+
+
+def _breach_firm_short_name(raw):
+    compact = str(raw or '').strip().lower()
+    for key, short in _BREACH_FIRM_SHORT_NAMES:
+        if key in compact:
+            return short
+    return str(raw or '').strip() or 'prop firm'
 
 
 def _send_admin_breach_alert(client_id, breaches):
-    """DM the client's admin that an account has breached its floor.
-
-    Falls back to an @-mention on the shared webhook when no bot token is
-    configured, since an incoming webhook cannot open a DM.
-    """
+    """Tell the admin's channel to purchase replacements for breached accounts."""
     if not breaches:
         return 0
     if BREACH_SLACK_NOTIFICATIONS_PAUSED:
         app.logger.warning(
             f"🚨 {client_id}: suppressed {len(breaches)} breach Slack notification(s) (paused)")
         return 0
+    from collections import Counter
     from dashboard.scheduler import send_slack_message
 
-    admin, slack_id = _admin_slack_id_for_client(client_id)
+    admin, slack_id, channel_id = _admin_slack_route_for_client(client_id)
+    counts = Counter(
+        _breach_firm_short_name(breach.get('prop_firm'))
+        for breach in breaches if isinstance(breach, dict)
+    )
+    mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
     sent = 0
-    for breach in breaches:
-        if not isinstance(breach, dict):
-            continue
-        line = (
-            f":rotating_light: *Account breached* — {breach.get('prop_firm', '?')} "
-            f"`{breach.get('account', '?')}`\n"
-            f"Client: *{client_id}*  |  Phase: {breach.get('phase', '?')}\n"
-            f"Balance ${float(breach.get('balance') or 0):,.2f} is at or below "
-            f"the ${float(breach.get('floor') or 0):,.2f} floor."
-        )
-        target = _slack_dm(slack_id, line) if slack_id else False
-        if not target:
-            mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
-            send_slack_message(f"{mention}\n{line}")
+    for firm, n in counts.items():
+        line = f"{mention} Purchase {n} {firm} account{'s' if n > 1 else ''}"
+        delivered = False
+        if channel_id:
+            delivered = _slack_post(channel_id, line)
+            if not delivered:
+                app.logger.warning(
+                    "Purchase alert: bot could not post to %s channel for admin %s (%s)",
+                    channel_id, admin, client_id,
+                )
+        if not delivered and slack_id:
+            delivered = _slack_post(slack_id, line)
+            if not delivered:
+                app.logger.warning(
+                    "Purchase alert: bot could not DM %s for admin %s (%s)",
+                    slack_id, admin, client_id,
+                )
+        if not delivered:
+            app.logger.warning(
+                "Purchase alert: falling back to shared webhook for admin %s (%s)",
+                admin, client_id,
+            )
+            send_slack_message(line)
         sent += 1
     return sent
 
 
-def _slack_dm(slack_user_id, text):
-    """Real DM via chat.postMessage. False when no bot token is configured."""
+def _slack_post(channel, text):
+    """chat.postMessage to a channel or user ID. False when unconfigured."""
     import requests
     from dashboard.database import get_setting
     token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
@@ -1738,19 +1784,29 @@ def _slack_dm(slack_user_id, text):
             token = str(get_setting('slack_bot_token') or '').strip()
         except Exception:
             token = ''
-    if not token or not slack_user_id:
+    if not token or not channel:
         return False
     try:
         resp = requests.post(
             'https://slack.com/api/chat.postMessage',
             headers={'Authorization': f'Bearer {token}'},
-            json={'channel': slack_user_id, 'text': text},
+            json={'channel': channel, 'text': text},
             timeout=15,
         )
-        return bool((resp.json() or {}).get('ok'))
+        body = resp.json() if resp.content else {}
+        if not body.get('ok'):
+            app.logger.warning(
+                "Slack chat.postMessage failed channel=%s error=%s",
+                channel, body.get('error'),
+            )
+            return False
+        return True
     except Exception as exc:
-        app.logger.warning(f"Slack DM failed: {exc}")
+        app.logger.warning(f"Slack post failed: {exc}")
         return False
+
+
+_slack_dm = _slack_post
 
 
 def _default_tradeify_addon_on_new_dashboard_row(row):
@@ -8663,6 +8719,7 @@ def api_update_admin():
     name = request.json.get('name')
     email = request.json.get('email')
     slack_user_id = request.json.get('slack_user_id', None)
+    slack_channel_id = request.json.get('slack_channel_id', None)
     new_name = request.json.get('new_name', '').strip()
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
     
@@ -8674,7 +8731,11 @@ def api_update_admin():
         log_action('RENAME_ADMIN', 'admin', f'{name} -> {new_name}', get_remote_address())
         return jsonify({"status": "success"})
     
-    if update_admin_details(name, email, slack_user_id=slack_user_id):
+    if update_admin_details(
+        name, email,
+        slack_user_id=slack_user_id,
+        slack_channel_id=slack_channel_id,
+    ):
         update_user_email(name, 'admin', email)
         log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
         return jsonify({"status": "success"})
@@ -13254,6 +13315,58 @@ def api_set_slack_webhook():
     action = 'configured' if url else 'removed'
     log_action('SLACK_WEBHOOK', 'super_admin', user, get_remote_address(), f'Slack webhook {action}')
     return jsonify({'status': 'success', 'message': f'Slack webhook {action} successfully.'})
+
+
+@app.route('/api/settings/slack_bot_token', methods=['GET'])
+@require_role('super_admin')
+def api_get_slack_bot_token():
+    """Get the Slack bot token state (masked). Super admin only."""
+    from dashboard.database import get_setting
+    token = (os.environ.get('SLACK_BOT_TOKEN') or '').strip()
+    source = 'env' if token else ''
+    if not token:
+        token = str(get_setting('slack_bot_token') or '').strip()
+        source = 'setting' if token else ''
+    if token:
+        masked = token[:10] + '...' + token[-4:] if len(token) > 20 else '***'
+        return jsonify({'status': 'success', 'configured': True,
+                        'source': source, 'masked_token': masked})
+    return jsonify({'status': 'success', 'configured': False, 'masked_token': ''})
+
+
+@app.route('/api/settings/slack_bot_token', methods=['POST'])
+@require_role('super_admin')
+def api_set_slack_bot_token():
+    """Set the Slack bot token used for purchase-alert channel posts."""
+    import requests as _requests
+    from dashboard.database import set_setting
+    data = request.get_json(force=True)
+    token = (data.get('token') or '').strip()
+    user = request.session_user.get('user_identifier', '')
+    bot = ''
+
+    if token:
+        if not token.startswith('xoxb-'):
+            return jsonify({'status': 'error',
+                            'message': 'Invalid bot token. Must start with xoxb-'}), 400
+        try:
+            check = _requests.post(
+                'https://slack.com/api/auth.test',
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=15,
+            ).json()
+        except Exception as exc:
+            return jsonify({'status': 'error',
+                            'message': f'Could not verify token with Slack: {exc}'}), 502
+        if not check.get('ok'):
+            return jsonify({'status': 'error',
+                            'message': f"Slack rejected the token: {check.get('error')}"}), 400
+        bot = f"{check.get('user')} ({check.get('team')})"
+
+    set_setting('slack_bot_token', token, updated_by=user)
+    action = f'configured — bot {bot}' if token else 'removed'
+    log_action('SLACK_BOT_TOKEN', 'super_admin', user, get_remote_address(), f'Slack bot token {action}')
+    return jsonify({'status': 'success', 'message': f'Slack bot token {action}.'})
 
 
 # Only a companion with MT5 attached can run the direction ensemble, so it

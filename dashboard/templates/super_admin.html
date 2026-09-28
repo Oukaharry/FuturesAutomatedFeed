@@ -890,7 +890,12 @@
                         <i class="fab fa-slack" style="margin-right:5px; color:#4A154B;"></i>Slack Member ID
                     </label>
                     <input type="text" id="editAdminSlackUserId" placeholder="e.g. U0123ABCDEF" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; box-sizing:border-box;" onfocus="this.style.borderColor='#4A154B'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
-                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Find it in Slack: click the admin's profile &rarr; <em>More</em> &rarr; <em>Copy member ID</em>. Used for @tagging in daily report messages.</div>
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Member ID (<code>U…</code>) for @mentions in daily reports and purchase alerts.</div>
+                    <label style="color: #7baef0; display: block; margin: 14px 0 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">
+                        <i class="fab fa-slack" style="margin-right:5px; color:#4A154B;"></i>Slack Alert Channel ID
+                    </label>
+                    <input type="text" id="editAdminSlackChannelId" placeholder="e.g. C0123ABCDEF" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; box-sizing:border-box;" onfocus="this.style.borderColor='#4A154B'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Channel ID (<code>C…</code>) for purchase alerts — e.g. <em>#marion-purchases</em>. Open the channel in Slack &rarr; channel details &rarr; copy channel ID. The bot must be invited to that channel.</div>
                 </div>
 
                 <!-- Hidden fields -->
@@ -1041,7 +1046,7 @@
                     if (type === 'admin') {
                         if(hierarchyData.admins) {
                             Object.entries(hierarchyData.admins).forEach(([name, data]) => {
-                                rows.push({ name, email: data.email, slack_user_id: data.slack_user_id || '', parent: null, url: '#', type: 'admin' });
+                                rows.push({ name, email: data.email, slack_user_id: data.slack_user_id || '', slack_channel_id: data.slack_channel_id || '', parent: null, url: '#', type: 'admin' });
                             });
                         }
                     } else if (type === 'trader') {
@@ -1154,7 +1159,7 @@
                          } else {
                              if (isSuperAdmin) {
                                  btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
-                                 btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'  )" style="${editStyle}">Edit</button>`;
+                                 btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}', null, '${(r.slack_channel_id||'').replace(/'/g, "\\'")}')" style="${editStyle}">Edit</button>`;
                              }
                          }
                          if (isSuperAdmin) {
@@ -1193,7 +1198,7 @@
                             ? `'client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}'` 
                             : (type==='trader') 
                                 ? `'trader', '${safeName}', '${safeEmail}', '${r.admin}'` 
-                                : `'admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'`;
+                                : `'admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}', null, '${(r.slack_channel_id||'').replace(/'/g, "\\'")}'`;
 
                          html += `
                             <tr style="border-bottom: 1px solid #334155;">
@@ -1252,7 +1257,7 @@
 
         // --- Edit / Delete User Logic ---
         
-        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId, splitPct) {
+        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId, splitPct, slackChannelId) {
              if(event) event.stopPropagation();
              
              // Clean up escaped values
@@ -1264,6 +1269,7 @@
              const cleanActiveRaw = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? String(activeStatus).toLowerCase() : 'active';
              const cleanActive = (cleanActiveRaw === 'inactive') ? 'inactive' : 'active';
              const cleanSlack = (slackUserId && slackUserId !== 'undefined' && slackUserId !== 'null') ? slackUserId : '';
+             const cleanSlackChannel = (slackChannelId && slackChannelId !== 'undefined' && slackChannelId !== 'null') ? slackChannelId : '';
              
              // Populate modal fields
              document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
@@ -1293,6 +1299,7 @@
                  splitPctGroup.style.display = 'none';
                  slackGroup.style.display = 'block';
                  document.getElementById('editAdminSlackUserId').value = cleanSlack;
+                 document.getElementById('editAdminSlackChannelId').value = cleanSlackChannel;
              } else {
                  catGroup.style.display = 'none';
                  statusGroup.style.display = 'none';
@@ -1338,6 +1345,7 @@
             if (type !== 'admin') payload.admin = admin;
             if (type === 'admin') {
                 payload.slack_user_id = document.getElementById('editAdminSlackUserId').value.trim();
+                payload.slack_channel_id = document.getElementById('editAdminSlackChannelId').value.trim();
             }
             if (type === 'client') {
                 payload.trader = trader;
@@ -2102,6 +2110,7 @@
                 const sAdmin = escJsAttr(adminName);
                 const sAdminEmail = escJsAttr(adminData?.email || '');
                 const sAdminSlack = escJsAttr(adminData?.slack_user_id || '');
+                const sAdminSlackChannel = escJsAttr(adminData?.slack_channel_id || '');
 
                 const tradersMap = buildTraderMapForAdmin(adminData || {});
                 const traders = Object.entries(tradersMap)
@@ -2170,7 +2179,7 @@
                             <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:rgba(148,163,184,0.7); text-decoration:none; padding:4px; border-radius:6px; transition:color 0.2s;" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='rgba(148,163,184,0.7)'" title="View Dashboard">
                                 <i class="fas fa-arrow-up-right-from-square" style="font-size:0.8rem;"></i>
                             </a>
-                            <button type="button" onclick="event.stopPropagation(); openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}')" class="action-btn" title="Edit Admin" style="font-size:0.8rem;">
+                            <button type="button" onclick="event.stopPropagation(); openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}', null, '${sAdminSlackChannel}')" class="action-btn" title="Edit Admin" style="font-size:0.8rem;">
                                 <i class="fas fa-pen-to-square"></i>
                             </button>
                             <button type="button" onclick="event.stopPropagation(); deleteUser('admin', '${sAdmin}')" class="action-btn danger" title="Delete Admin" style="font-size:0.8rem;">
