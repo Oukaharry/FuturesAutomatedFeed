@@ -1796,6 +1796,7 @@ def _eval_row_terminal_for_breach_batch(ev):
 
 
 def _eval_row_has_active_trade(ev):
+    """Challenge/funded trades hold alert batches; farming days never do."""
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
     for i in range(1, 6):
@@ -1803,9 +1804,6 @@ def _eval_row_has_active_trade(ev):
             return True
     for col in FUNDED_HEDGE_COLS:
         if _hedge_cell_indicates_active_trade(ev.get(col)):
-            return True
-    for i in range(1, 61):
-        if _hedge_cell_indicates_active_trade(ev.get(f'Hedge Day {i}')):
             return True
     return False
 

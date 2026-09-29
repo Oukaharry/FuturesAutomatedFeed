@@ -21,7 +21,7 @@ def test_breach_alert_posts_purchase_message_to_admin_channel():
             {'prop_firm': 'My Funded Futures', 'account': 'A3'},
         ])
     assert sent == 1
-    assert posts == [('C0C4K0X2APK', '<@U0ACANGNF6H> Purchase 3 MFFU accounts')]
+    assert posts == [('C0C4K0X2APK', '<@U0ACANGNF6H> Purchase 3 MFFU accounts for Harry')]
 
 
 def test_breach_alert_groups_by_firm_and_singular_account():
@@ -36,8 +36,8 @@ def test_breach_alert_groups_by_firm_and_singular_account():
         ])
     assert sent == 2
     texts = {txt for _ch, txt in posts}
-    assert '<@U0ACANGNF6H> Purchase 1 Tradeify account' in texts
-    assert '<@U0ACANGNF6H> Purchase 2 Funded Next accounts' in texts
+    assert '<@U0ACANGNF6H> Purchase 1 Tradeify account for Harry' in texts
+    assert '<@U0ACANGNF6H> Purchase 2 Funded Next accounts for Harry' in texts
 
 
 def test_breach_alert_falls_back_to_dm_then_webhook():
@@ -58,7 +58,7 @@ def test_breach_alert_falls_back_to_dm_then_webhook():
          patch.object(dapp, 'BREACH_SLACK_NOTIFICATIONS_PAUSED', False), \
          patch('dashboard.scheduler.send_slack_message', side_effect=lambda t: webhook.append(t)):
         dapp._send_admin_breach_alert('Harry', [{'prop_firm': 'Topstep'}])
-    assert webhook == ['@Kellen Njeri Purchase 1 Topstep account']
+    assert webhook == ['@Kellen Njeri Purchase 1 Topstep account for Harry']
 
 
 def test_breach_alert_respects_pause():
@@ -68,8 +68,9 @@ def test_breach_alert_respects_pause():
         assert dapp._send_admin_breach_alert('Harry', [{'prop_firm': 'Topstep'}]) == 0
 
 
-def test_alerts_are_unpaused_by_default():
-    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is False
+def test_alerts_are_paused_by_default_until_ops_enables():
+    # BREACH_SLACK_PAUSED defaults to '1'; ops sets it to 0 to go live.
+    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is True
 
 
 def test_firm_short_names():
@@ -80,3 +81,29 @@ def test_firm_short_names():
     assert f('Funded Next Flex') == 'Funded Next'
     assert f('Blue Guardian Reserve') == 'Blue Guardian'
     assert f('') == 'prop firm'
+
+
+def test_active_trade_hold_ignores_farming_days():
+    farming_only = {
+        'Prop Firm': 'Tradeify',
+        'Status': 'In Progress',
+        'Hedge Day 3': '$0.00',      # farming fill marker
+        'Hedge Day 4': 'MONDAY',     # queued farming day
+    }
+    assert dapp._eval_row_has_active_trade(farming_only) is False
+
+    challenge_active = {'Prop Firm': 'Tradeify', 'Hedge Result 2': '$0.00'}
+    assert dapp._eval_row_has_active_trade(challenge_active) is True
+
+    funded_active = {'Prop Firm': 'Tradeify', 'Hedge Result 1.1': 'TUESDAY'}
+    assert dapp._eval_row_has_active_trade(funded_active) is True
+
+
+def test_firm_with_only_farming_activity_does_not_hold_batches():
+    evaluations = [{
+        'Prop Firm': 'Tradeify',
+        'Status P1': 'Pass',
+        'Status': 'In Progress',
+        'Hedge Day 5': '$0.00',
+    }]
+    assert dapp._firm_has_active_trades(evaluations, dapp._breach_firm_family('Tradeify')) is False

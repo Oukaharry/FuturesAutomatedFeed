@@ -11535,15 +11535,16 @@ class TradeOpssAIApp:
                             sig = self._get_signal_direction(mt5_sym)
                             req = firm_locks.get(family_key)
                             if req and sig in ("buy", "sell") and sig != req:
+                                # Active trades own the direction — never hedge
+                                # a firm against itself over a fresh signal.
+                                sig = req
                                 self._ai_trace(
-                                    "WARN",
-                                    f"{firm_name}: signal {sig.upper()} ≠ locked {req.upper()} — skipped")
-                                self.root.after(0, lambda fn=firm_name, s=sig, r=req: self.log(
-                                    f"⛔ {fn}: signal {s.upper()} but firm locked "
-                                    f"{r.upper()} — batch skipped for this firm", "WARN"))
-                                with total_success:
-                                    counters["skipped"] += len(firm_rows) - row_idx
-                                break
+                                    "SIGNAL",
+                                    f"{firm_name}: signal disagreed — following active "
+                                    f"{req.upper()} trades")
+                                self.root.after(0, lambda fn=firm_name, r=req: self.log(
+                                    f"🔒 {fn}: firm has active {r.upper()} trades — "
+                                    f"following them (signal overridden)"))
                             if sig in ("buy", "sell"):
                                 with firm_sides_lock:
                                     # First writer wins — a sibling firm in the
