@@ -1732,6 +1732,175 @@ def _breach_firm_short_name(raw):
     return str(raw or '').strip() or 'prop firm'
 
 
+def _breach_firm_family(raw):
+    """Grouping key for batching alerts per prop firm on one client."""
+    short = _breach_firm_short_name(raw)
+    return re.sub(r'[^a-z0-9]', '', short.lower()) or 'unknown'
+
+
+def _breach_alert_item_key(breach):
+    if not isinstance(breach, dict):
+        return ''
+    account = str(breach.get('account') or '').strip()
+    phase = str(breach.get('phase') or '').strip()
+    reason = str(breach.get('reason_code') or 'balance').strip()
+    return f'{account}|{phase}|{reason}'
+
+
+def _breach_batch_key(client_id, firm_family, breaches):
+    parts = sorted(
+        k for k in (_breach_alert_item_key(b) for b in breaches if isinstance(b, dict)) if k
+    )
+    return f'{client_id}|{firm_family}|' + '|'.join(parts)
+
+
+_BREACH_ROW_INACTIVE_KEYWORDS = ('fail', 'breach', 'delete', 'closed', 'ended', 'lost', 'complete')
+_TRADING_SESSION_END_HOUR = 20
+
+
+def _trading_session_over_eat():
+    return _kenya_now().hour >= _TRADING_SESSION_END_HOUR
+
+
+def _hedge_cell_indicates_active_trade(raw):
+    """Unsettled companion markers: weekday queued or $0.00 fill marker."""
+    if not raw or str(raw).strip() in ('', '-', '—', '–'):
+        return False
+    if _cell_is_payout_marker(raw):
+        return False
+    if _weekday_abbrs_in_text(raw):
+        return True
+    if _hedge_cell_currency_only(raw):
+        try:
+            s = str(raw).replace('$', '').replace(',', '').strip()
+            return abs(float(s)) < 1e-9
+        except (ValueError, TypeError):
+            return False
+    return False
+
+
+def _eval_row_terminal_for_breach_batch(ev):
+    p1 = str(ev.get('Status P1') or '').lower()
+    funded = str(ev.get('Status') or ev.get('Status Funded') or '').lower()
+    p1_done = (
+        'pass' in p1
+        or is_eval_phase_failed(p1)
+        or any(kw in p1 for kw in _BREACH_ROW_INACTIVE_KEYWORDS)
+    )
+    funded_done = (
+        not funded
+        or is_funded_phase_ended(funded)
+        or any(kw in funded for kw in _BREACH_ROW_INACTIVE_KEYWORDS)
+    )
+    return p1_done and funded_done
+
+
+def _eval_row_has_active_trade(ev):
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    for i in range(1, 6):
+        if _hedge_cell_indicates_active_trade(ev.get(f'Hedge Result {i}')):
+            return True
+    for col in FUNDED_HEDGE_COLS:
+        if _hedge_cell_indicates_active_trade(ev.get(col)):
+            return True
+    for i in range(1, 61):
+        if _hedge_cell_indicates_active_trade(ev.get(f'Hedge Day {i}')):
+            return True
+    return False
+
+
+def _firm_has_active_trades(evaluations, firm_family):
+    """True while any live row for this firm still has open/unsettled trades."""
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        if _breach_firm_family(ev.get('Prop Firm')) != firm_family:
+            continue
+        if _eval_row_terminal_for_breach_batch(ev):
+            continue
+        if _eval_row_has_active_trade(ev):
+            return True
+    return False
+
+
+def _queue_breach_alerts(client_id, breaches):
+    """Persist incoming breach payloads until their firm batch can be sent."""
+    from dashboard.database import get_breach_alert_pending, set_breach_alert_pending
+    pending = get_breach_alert_pending(client_id)
+    seen = {_breach_alert_item_key(b) for b in pending}
+    added = 0
+    for breach in breaches or []:
+        if not isinstance(breach, dict):
+            continue
+        key = _breach_alert_item_key(breach)
+        if not key or key in seen:
+            continue
+        pending.append(breach)
+        seen.add(key)
+        added += 1
+    if added:
+        set_breach_alert_pending(client_id, pending)
+        app.logger.warning(
+            f"🚨 {client_id}: queued {added} breach alert(s) ({len(pending)} pending total)")
+    return added
+
+
+def _flush_batched_breach_alerts(client_id, evaluations):
+    """Send queued firm batches once all trades for that firm have closed."""
+    from collections import defaultdict
+    from dashboard.database import (
+        get_breach_alert_pending,
+        get_breach_alert_sent_batches,
+        mark_breach_alert_batch_sent,
+        set_breach_alert_pending,
+    )
+
+    pending = get_breach_alert_pending(client_id)
+    if not pending:
+        return 0
+
+    sent_batches = get_breach_alert_sent_batches(client_id)
+    session_over = _trading_session_over_eat()
+    by_firm = defaultdict(list)
+    for breach in pending:
+        by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
+
+    still_pending = []
+    announced = 0
+    for firm_key, firm_breaches in by_firm.items():
+        if _firm_has_active_trades(evaluations, firm_key) and not session_over:
+            still_pending.extend(firm_breaches)
+            app.logger.info(
+                f"🚨 {client_id}: holding {len(firm_breaches)} {firm_key} breach alert(s) — "
+                f"active trades still open")
+            continue
+
+        batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
+        if batch_key in sent_batches:
+            app.logger.info(
+                f"🚨 {client_id}: skipping duplicate {firm_key} breach batch ({batch_key})")
+            continue
+
+        count = _send_admin_breach_alert(client_id, firm_breaches)
+        if count <= 0 and BREACH_SLACK_NOTIFICATIONS_PAUSED:
+            still_pending.extend(firm_breaches)
+            continue
+        if count <= 0:
+            still_pending.extend(firm_breaches)
+            app.logger.warning(
+                f"🚨 {client_id}: breach batch send failed for {firm_key} — will retry")
+            continue
+
+        mark_breach_alert_batch_sent(client_id, batch_key)
+        announced += count
+        app.logger.warning(
+            f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(firm_breaches)} account(s))")
+
+    set_breach_alert_pending(client_id, still_pending)
+    return announced
+
+
 def _send_admin_breach_alert(client_id, breaches):
     """Tell the admin's channel to purchase replacements for breached accounts.
 
@@ -6666,12 +6835,10 @@ def api_client_push():
     breach_alerts = data.get('breach_alerts') or []
     if breach_alerts:
         try:
-            announced = _send_admin_breach_alert(client_id, breach_alerts)
-            app.logger.warning(
-                f"🚨 {client_id}: announced {announced} account breach(es) to the admin")
+            _queue_breach_alerts(client_id, breach_alerts)
         except Exception as exc:
-            app.logger.error(f"Breach alert failed for {client_id}: {exc}")
-    
+            app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
+
     # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
     prefer_client_aggregation = bool(data.get("prefer_client_aggregation"))
@@ -6999,17 +7166,25 @@ def api_client_push():
         app.logger.info(f"   - aggregated_by_comment: {len(aggregated_by_comment)} groups")
     
     app.logger.info(f"💾 Saving to database...")
-    
+
+    try:
+        announced = _flush_batched_breach_alerts(client_id, evaluations)
+        if announced:
+            app.logger.warning(
+                f"🚨 {client_id}: announced {announced} batched breach alert(s) to the admin")
+    except Exception as exc:
+        app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
+
     # Determine change source for history tracking
     change_source = 'trader_app'
     if aggregated_by_comment:
         change_source = 'mt5_push_with_comments'
     elif mt5_account or mt5_deals:
         change_source = 'mt5_push'
-    
+
     # Save to database WITH history tracking
     success, version = save_client_data_with_history(
-        client_id, 
+        client_id,
         client_data,
         action='DATA_PUSH',
         changed_by=email,
@@ -14336,6 +14511,10 @@ def update_data():
                 # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
+                try:
+                    _flush_batched_breach_alerts(client_id, evaluations)
+                except Exception as exc:
+                    app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
 
                 # Recalculate statistics so they reflect latest evaluation changes
                 from utils.data_processor import (

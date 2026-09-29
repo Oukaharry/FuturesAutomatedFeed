@@ -2042,6 +2042,59 @@ def set_setting(key: str, value: str, updated_by: str = ''):
         conn.commit()
 
 
+def _breach_alert_setting_key(kind: str, client_id: str) -> str:
+    norm = _normalize_identifier(client_id)
+    return f'breach_alerts_{kind}:{norm}'
+
+
+def get_breach_alert_pending(client_id: str) -> list:
+    """Queued breach payloads awaiting batched Slack send for one client."""
+    raw = get_setting(_breach_alert_setting_key('pending', client_id))
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+def set_breach_alert_pending(client_id: str, pending: list):
+    set_setting(
+        _breach_alert_setting_key('pending', client_id),
+        json.dumps(pending or []),
+        updated_by='system',
+    )
+
+
+def get_breach_alert_sent_batches(client_id: str) -> set:
+    """Batch keys already announced to Slack for one client."""
+    raw = get_setting(_breach_alert_setting_key('sent', client_id))
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return {str(x) for x in data if x}
+        if isinstance(data, dict):
+            return {str(k) for k in data.keys()}
+    except (TypeError, ValueError):
+        pass
+    return set()
+
+
+def mark_breach_alert_batch_sent(client_id: str, batch_key: str):
+    sent = get_breach_alert_sent_batches(client_id)
+    if batch_key in sent:
+        return
+    sent.add(batch_key)
+    set_setting(
+        _breach_alert_setting_key('sent', client_id),
+        json.dumps(sorted(sent)),
+        updated_by='system',
+    )
+
+
 def get_daily_checklists(date: str, user_identifier: str = None) -> list:
     """Get checklists for a date, optionally filtered by user."""
     with get_connection() as conn:
