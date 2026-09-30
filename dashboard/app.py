@@ -1899,6 +1899,257 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     return announced
 
 
+_BREACH_VANISH_REASON_CODES = frozenset({'tradovate_vanish', 'dashboard_vanish'})
+_BREACH_DEFAULT_CHALLENGE_FLOOR = 48000.0
+_BREACH_DEFAULT_FUNDED_FT1_FLOOR = 48000.0
+_BREACH_DEFAULT_FUNDED_FT2_CEILING = 50100.0
+_VANISH_DERIVED_MARKERS = (
+    'no longer exists on tradovate',
+    'no longer on dashboard',
+    'prop firm removed',
+    'account no longer',
+)
+
+
+def _eval_broker_account_numbers(ev):
+    nums = []
+    if not isinstance(ev, dict):
+        return nums
+    for field in ('Account #', 'Account #.1'):
+        raw = str(ev.get(field) or '').strip()
+        if raw and raw not in ('-', '—', '–'):
+            nums.append(raw)
+    return nums
+
+
+def _eval_on_funded_leg(ev):
+    if not isinstance(ev, dict):
+        return False
+    raw = str(ev.get('Account #.1') or '').strip()
+    return bool(raw and raw not in ('-', '—', '–'))
+
+
+def _hedge_cell_has_trade_result(raw):
+    if not raw or str(raw).strip() in ('', '-', '—', '–'):
+        return False
+    if _cell_is_payout_marker(raw):
+        return True
+    if _weekday_abbrs_in_text(raw):
+        return True
+    if _hedge_cell_currency_only(raw):
+        try:
+            cleaned = str(raw).replace('$', '').replace(',', '').strip()
+            return cleaned != '' and float(cleaned) == 0.0
+        except (ValueError, TypeError):
+            return False
+    return True
+
+
+def _eval_after_funded_trade2(ev):
+    if not isinstance(ev, dict):
+        return False
+    return _hedge_cell_has_trade_result(ev.get('Hedge Result 2.1'))
+
+
+def _default_breach_floor(phase, after_ft2, after_ft1, on_funded):
+    phase_key = str(phase or '').strip().lower()
+    if not on_funded and not phase_key.startswith('fund'):
+        return _BREACH_DEFAULT_CHALLENGE_FLOOR
+    if after_ft2:
+        return _BREACH_DEFAULT_FUNDED_FT2_CEILING
+    if after_ft1:
+        return _BREACH_DEFAULT_FUNDED_FT1_FLOOR
+    return _BREACH_DEFAULT_FUNDED_FT1_FLOOR
+
+
+def _resolve_breach_floor(breach, ev, existing_ev):
+    try:
+        floor = breach.get('floor')
+        if floor is not None:
+            return float(floor)
+    except (TypeError, ValueError):
+        pass
+    phase = str((breach or {}).get('phase') or '').strip()
+    after_ft2 = _eval_after_funded_trade2(ev) or _eval_after_funded_trade2(existing_ev)
+    after_ft1 = (
+        _hedge_cell_has_trade_result((ev or {}).get('Hedge Result 1.1'))
+        or _hedge_cell_has_trade_result((existing_ev or {}).get('Hedge Result 1.1'))
+    )
+    on_funded = (
+        phase.lower().startswith('fund') if phase
+        else (_eval_on_funded_leg(ev) or _eval_on_funded_leg(existing_ev))
+    )
+    if not phase:
+        phase = 'Funded' if on_funded else 'Challenge'
+    return _default_breach_floor(phase, after_ft2, after_ft1, on_funded)
+
+
+def _resolve_last_known_balance(breach, ev, existing_ev):
+    """Best broker balance for breach confirmation (never treat missing as zero)."""
+    candidates = []
+    for src in (breach, ev, existing_ev):
+        if not isinstance(src, dict):
+            continue
+        for key in ('balance', '_last_broker_balance'):
+            try:
+                val = src.get(key)
+                if val is None or str(val).strip() == '':
+                    continue
+                num = float(val)
+                if num > 0:
+                    candidates.append(num)
+            except (TypeError, ValueError):
+                continue
+    return max(candidates) if candidates else None
+
+
+def _balance_confirms_breach(balance, floor, phase, after_ft2):
+    if balance is None or floor is None:
+        return False
+    try:
+        bal = float(balance)
+        fl = float(floor)
+    except (TypeError, ValueError):
+        return False
+    if bal <= 0:
+        return False
+    on_funded = str(phase or '').strip().lower().startswith('fund')
+    if on_funded and after_ft2:
+        return bal <= fl
+    return bal < fl
+
+
+def _derived_reason_implies_vanish(ev, status_field):
+    note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
+    return any(marker in note for marker in _VANISH_DERIVED_MARKERS)
+
+
+def _incoming_fail_fields(ev):
+    fails = []
+    if not isinstance(ev, dict):
+        return fails
+    for field in ('Status P1', 'Status'):
+        if str(ev.get(field) or '').strip().lower() == 'fail':
+            fails.append(field)
+    return fails
+
+
+def _breaches_for_accounts(breach_alerts, account_numbers):
+    acct_set = {str(a or '').strip().lower() for a in account_numbers if a}
+    matched = []
+    for breach in breach_alerts or []:
+        if not isinstance(breach, dict):
+            continue
+        acct = str(breach.get('account') or '').strip().lower()
+        if acct and acct in acct_set:
+            matched.append(breach)
+    return matched
+
+
+def _breach_confirmed_for_eval(ev, existing_ev, breach_alerts):
+    """True only when last known balance proves the account is at/below floor."""
+    matched = _breaches_for_accounts(breach_alerts, _eval_broker_account_numbers(ev))
+    if not matched:
+        return False
+
+    for breach in matched:
+        balance = _resolve_last_known_balance(breach, ev, existing_ev)
+        floor = _resolve_breach_floor(breach, ev, existing_ev)
+        phase = breach.get('phase') or ('Funded' if _eval_on_funded_leg(ev) else 'Challenge')
+        after_ft2 = _eval_after_funded_trade2(ev) or _eval_after_funded_trade2(existing_ev)
+        if _balance_confirms_breach(balance, floor, phase, after_ft2):
+            return True
+    return False
+
+
+def _revert_unconfirmed_fail_row(incoming, existing):
+    """Restore pre-fail dashboard fields when companion breach is not confirmed."""
+    out = dict(incoming)
+    for field in _incoming_fail_fields(incoming):
+        prior = (existing or {}).get(field)
+        if prior and str(prior).strip().lower() != 'fail':
+            out[field] = prior
+        elif _derived_reason_implies_vanish(incoming, field) or _resolve_last_known_balance({}, incoming, existing):
+            out[field] = 'In Progress'
+        else:
+            out.pop(field, None)
+        out.pop(f'_derived_{field}', None)
+        ended = 'Date Ended.1' if field == 'Status' else 'Date Ended'
+        if str((existing or {}).get(ended) or '').strip():
+            out[ended] = existing.get(ended)
+        else:
+            out.pop(ended, None)
+    return out
+
+
+def _index_existing_evaluations(existing_evals):
+    keyed = {}
+    for i, ex in enumerate(existing_evals or []):
+        if not isinstance(ex, dict):
+            continue
+        mk = _evaluation_row_merge_key(ex)
+        if mk and mk not in keyed:
+            keyed[mk] = ex
+    return keyed
+
+
+def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_evals, client_id=None):
+    """Reject companion Fail/breach payloads unless balance confirms the floor."""
+    incoming_evals = list(incoming_evals or [])
+    breach_alerts = list(breach_alerts or [])
+    existing_by_key = _index_existing_evaluations(existing_evals)
+
+    confirmed_alerts = []
+    for breach in breach_alerts:
+        if not isinstance(breach, dict):
+            continue
+        acct = str(breach.get('account') or '').strip().lower()
+        existing_ev = None
+        for ex in existing_evals or []:
+            if acct and acct in {a.lower() for a in _eval_broker_account_numbers(ex)}:
+                existing_ev = ex
+                break
+        probe = {'Account #': breach.get('account'), 'Prop Firm': breach.get('prop_firm')}
+        if _breach_confirmed_for_eval(probe, existing_ev, [breach]):
+            confirmed_alerts.append(breach)
+            try:
+                bal = _resolve_last_known_balance(breach, probe, existing_ev)
+                if bal and existing_ev is not None:
+                    existing_ev['_last_broker_balance'] = round(float(bal), 2)
+            except (TypeError, ValueError):
+                pass
+        else:
+            reason = breach.get('reason_code') or 'balance'
+            app.logger.warning(
+                f"🛡️ {client_id or '?'}: suppressed unconfirmed breach for "
+                f"{breach.get('account')} ({reason}) — balance did not confirm floor")
+
+    sanitized_evals = []
+    for ev_in in incoming_evals:
+        if not isinstance(ev_in, dict):
+            sanitized_evals.append(ev_in)
+            continue
+        mk = _evaluation_row_merge_key(ev_in)
+        existing_ev = existing_by_key.get(mk) if mk else None
+        if not _incoming_fail_fields(ev_in):
+            sanitized_evals.append(dict(ev_in))
+            continue
+        if _breach_confirmed_for_eval(ev_in, existing_ev, confirmed_alerts):
+            ev_out = dict(ev_in)
+            matched = _breaches_for_accounts(confirmed_alerts, _eval_broker_account_numbers(ev_in))
+            bal = _resolve_last_known_balance(matched[0] if matched else {}, ev_in, existing_ev)
+            if bal:
+                ev_out['_last_broker_balance'] = round(float(bal), 2)
+            sanitized_evals.append(ev_out)
+            continue
+        acct = _eval_broker_account_numbers(ev_in)
+        app.logger.warning(
+            f"🛡️ {client_id or '?'}: rejected companion Fail for {acct or '?'} — "
+            f"last known balance did not confirm breach floor")
+        sanitized_evals.append(_revert_unconfirmed_fail_row(ev_in, existing_ev))
+    return sanitized_evals, confirmed_alerts
+
+
 def _send_admin_breach_alert(client_id, breaches):
     """Tell the admin's channel to purchase replacements for breached accounts.
 
@@ -6817,9 +7068,13 @@ def api_client_push():
     
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data
+    breach_alerts_sanitized = data.get('breach_alerts') or []
     if "evaluations" in data and data["evaluations"]:
         incoming_evals = data["evaluations"]
         existing_evals_push = existing_data.get('evaluations', [])
+        breach_alerts_raw = data.get('breach_alerts') or []
+        incoming_evals, breach_alerts_sanitized = _sanitize_companion_breach_push(
+            incoming_evals, breach_alerts_raw, existing_evals_push, client_id)
         force_fields = set(data.get('force_fields', []))
         evaluations = merge_evaluation_push_with_existing(
             existing_evals_push, incoming_evals, force_fields)
@@ -6830,7 +7085,7 @@ def api_client_push():
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
 
-    breach_alerts = data.get('breach_alerts') or []
+    breach_alerts = breach_alerts_sanitized if "evaluations" in data and data["evaluations"] else (data.get('breach_alerts') or [])
     if breach_alerts:
         try:
             _queue_breach_alerts(client_id, breach_alerts)
