@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Attribution - VPF Futures</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #01030a; color: #e2e8f0; font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, sans-serif; min-height: 100vh; padding: 0 16px 60px; }
+
+        .modern-nav { background: #07091a; border: 1px solid #162040; border-top: 1px solid #1e3060; border-radius: 14px; padding: 0 24px; height: 64px; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; box-shadow: 0 8px 28px rgba(1,3,10,0.8); position: sticky; top: 0; z-index: 1000; }
+        .nav-links { display: flex; gap: 4px; align-items: center; }
+        .tab-btn { color: #7898be; text-decoration: none; font-weight: 600; font-size: 0.78rem; font-family: 'Plus Jakarta Sans', sans-serif; transition: color 0.15s, background 0.15s; display: flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 7px; border-bottom: 2px solid transparent; }
+        .tab-btn i { font-size: 0.82rem; opacity: 0.7; }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn.active { color: #a78bfa; border-bottom: 2px solid #a78bfa; font-weight: 600; }
+        .tab-btn.active i { opacity: 1; color: #a78bfa; }
+        .nav-btn-key, .nav-btn-logout { display: flex; align-items: center; justify-content: center; padding: 8px 11px; border-radius: 8px; text-decoration: none; transition: all 0.18s; }
+        .nav-btn-key { border: 1px solid rgba(251,191,36,0.28); background: rgba(251,191,36,0.07); }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-logout { border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.07); }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+
+        .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 22px; }
+        .summary-card { background: #090f1e; border: 1px solid #162040; border-top: 1px solid #1e3060; border-radius: 12px; padding: 18px 20px; box-shadow: 0 4px 16px rgba(1,3,10,0.5); }
+        .summary-card .label { font-size: 0.76rem; color: #7898be; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: 600; }
+        .summary-card .value { font-size: 1.85rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+        .summary-card .sub { font-size: 0.76rem; color: #4a6080; margin-top: 4px; }
+        .green { color: #4ade80; } .yellow { color: #fbbf24; } .red { color: #f87171; } .blue { color: #60a5fa; } .purple { color: #a78bfa; }
+
+        .filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; background: #090f1e; padding: 12px 18px; border-radius: 12px; border: 1px solid #162040; }
+        .filter-btn { background: #090f1e; border: 1px solid #1a2848; color: #7098b8; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; }
+        .filter-btn:hover { background: rgba(30,48,96,0.3); color: #a8c8f0; }
+        .filter-btn.active { background: linear-gradient(135deg,#4c1d95 0%,#312e81 100%); border-color: #6d28d9; color: #ede9fe; }
+
+        .flags-box { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; padding: 16px 20px; margin-bottom: 22px; }
+        .flags-box .flag-line { font-size: 0.86rem; color: #fca5a5; padding: 4px 0; font-family: 'IBM Plex Mono', monospace; }
+
+        .section-title { font-size: 1.02rem; font-weight: 700; color: #e8eeff; margin: 26px 0 12px; display: flex; align-items: center; gap: 8px; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+        .bd-card { background: #090f1e; border: 1px solid #162040; border-top: 1px solid #1e3060; border-radius: 12px; overflow: hidden; }
+        .bd-card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; padding: 12px 16px; background: linear-gradient(90deg,#172554 0%,#0f172a 100%); border-bottom: 1px solid #162040; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .bd-card table { width: 100%; border-collapse: collapse; }
+        .bd-card td, .bd-card th { padding: 7px 14px; font-size: 0.8rem; text-align: right; border-top: 1px solid #10182e; font-family: 'IBM Plex Mono', monospace; }
+        .bd-card td:first-child, .bd-card th:first-child { text-align: left; font-family: 'Inter', sans-serif; color: #c8d8ee; }
+        .bd-card th { color: #4a6080; font-size: 0.68rem; text-transform: uppercase; border-top: none; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .bd-card tr.dim td { opacity: 0.42; }
+        .wr-bar { display: inline-block; width: 46px; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 8px; }
+        .wr-fill { display: block; height: 100%; border-radius: 3px; }
+
+        .recent-table-wrap { background: #090f1e; border: 1px solid #162040; border-radius: 12px; overflow: auto; max-height: 520px; }
+        .recent-table { width: 100%; border-collapse: collapse; min-width: 980px; }
+        .recent-table th { background: linear-gradient(90deg,#172554 0%,#0f172a 100%); padding: 9px 12px; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; text-align: left; position: sticky; top: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .recent-table td { padding: 7px 12px; font-size: 0.78rem; border-top: 1px solid #10182e; color: #c8d8ee; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+        .recent-table tr:hover td { background: rgba(30,58,138,0.1); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .badge-tp { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .badge-sl { background: rgba(239,68,68,0.15); color: #f87171; }
+        .badge-breach { background: rgba(239,68,68,0.3); color: #fca5a5; }
+        .badge-open { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .empty-state { text-align: center; padding: 70px 20px; color: #64748b; }
+        .empty-state i { font-size: 3rem; margin-bottom: 12px; opacity: 0.3; display: block; }
+
+        @media (max-width: 768px) {
+            .modern-nav { height: auto !important; flex-wrap: wrap; padding: 10px 12px; gap: 6px; }
+            .nav-links { flex-wrap: wrap; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="modern-nav">
+        <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%);">
+            <a href="/super_admin" style="display:block;line-height:0;"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;"></a>
+        </div>
+        <div class="nav-links">
+            <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+            <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+            <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+            <a href="/quality_dashboard" class="tab-btn"><i class="fas fa-clipboard-check"></i> Data Quality</a>
+            <a href="/trade_attribution" class="tab-btn active"><i class="fas fa-brain"></i> Trade AI</a>
+        </div>
+        <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px;">
+            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
+        </div>
+    </nav>
+
+    <div class="filter-bar">
+        <span style="font-size:0.88rem; font-weight:700; margin-right:6px;"><i class="fas fa-calendar-alt" style="margin-right:5px; color:#a78bfa;"></i> Window:</span>
+        <button class="filter-btn" data-days="7" onclick="setDays(7)">7 days</button>
+        <button class="filter-btn active" data-days="30" onclick="setDays(30)">30 days</button>
+        <button class="filter-btn" data-days="60" onclick="setDays(60)">60 days</button>
+        <button class="filter-btn" data-days="90" onclick="setDays(90)">90 days</button>
+        <span id="loading" style="font-size:0.8rem; color:#4a6080; margin-left:auto;"></span>
+    </div>
+
+    <div id="content">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i>Loading attribution data…</div>
+    </div>
+
+    <script>
+        let currentDays = 30;
+
+        function setDays(days) {
+            currentDays = days;
+            document.querySelectorAll('.filter-btn').forEach(b =>
+                b.classList.toggle('active', +b.dataset.days === days));
+            load();
+        }
+
+        const fmt$ = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString(undefined, {maximumFractionDigits: 0});
+        const pct = v => (v * 100).toFixed(0) + '%';
+        const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+        function wrColor(wr) { return wr >= 0.55 ? '#4ade80' : wr >= 0.45 ? '#fbbf24' : '#f87171'; }
+
+        function statCells(e) {
+            const wr = e.n ? e.win_rate : 0;
+            return `<td>${e.n}</td>
+                <td><span class="green">${e.wins}W</span>/<span class="red">${e.losses}L</span></td>
+                <td>${e.n ? pct(wr) : '—'}<span class="wr-bar"><span class="wr-fill" style="width:${wr*100}%;background:${wrColor(wr)}"></span></span></td>
+                <td class="${e.net >= 0 ? 'green' : 'red'}">${fmt$(e.net)}</td>`;
+        }
+
+        const SECTION_TITLES = {
+            prop_firm: ['fa-building-columns', 'By Prop Firm'],
+            phase: ['fa-layer-group', 'By Phase'],
+            entry_hour: ['fa-clock', 'By Entry Hour (EAT)'],
+            weekday: ['fa-calendar-day', 'By Weekday'],
+            signal_source: ['fa-satellite-dish', 'By Signal Source'],
+            signal_model: ['fa-microchip', 'By Model'],
+        };
+        const WEEKDAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+        function render(d) {
+            const o = d.overall, y = d.yesterday;
+            let html = `<div class="summary-row">
+                <div class="summary-card"><div class="label">Trades Recorded</div>
+                    <div class="value blue">${d.total_rows}</div><div class="sub">last ${d.days} days</div></div>
+                <div class="summary-card"><div class="label">Win Rate (resolved)</div>
+                    <div class="value" style="color:${wrColor(o.win_rate)}">${o.n ? pct(o.win_rate) : '—'}</div>
+                    <div class="sub">${o.wins}W / ${o.losses}L · ${o.pending} pending</div></div>
+                <div class="summary-card"><div class="label">Net P/L</div>
+                    <div class="value ${o.net >= 0 ? 'green' : 'red'}">${fmt$(o.net)}</div>
+                    <div class="sub">expectancy ${o.n ? fmt$(o.net / o.n) : '—'}/trade</div></div>
+                <div class="summary-card"><div class="label">Yesterday (${y.date})</div>
+                    <div class="value purple">${y.n + y.pending}</div>
+                    <div class="sub">${y.wins}W / ${y.losses}L · net ${fmt$(y.net)}</div></div>
+            </div>`;
+
+            if (d.flags.length) {
+                html += `<div class="flags-box">
+                    <div style="font-weight:700; color:#f87171; margin-bottom:6px; font-family:'Plus Jakarta Sans',sans-serif;">
+                        <i class="fas fa-flag"></i> Systematic Losers (n≥${d.min_flag_n}, win rate ≤${pct(d.flag_win_rate)})</div>` +
+                    d.flags.map(f => `<div class="flag-line">🚩 ${esc(SECTION_TITLES[f.section][1])} — ${esc(f.label)}: ${f.wins}W/${f.losses}L (${pct(f.win_rate)}) net ${fmt$(f.net)}</div>`).join('') +
+                    `</div>`;
+            }
+
+            html += `<div class="section-title"><i class="fas fa-chart-pie" style="color:#a78bfa;"></i> Breakdowns
+                <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">rows under n=${d.min_breakdown_n} resolved trades are dimmed — not enough sample to trust</span></div>
+                <div class="breakdown-grid">`;
+            for (const [section, [icon, title]] of Object.entries(SECTION_TITLES)) {
+                let entries = d.breakdowns[section] || [];
+                if (!entries.length) continue;
+                if (section === 'weekday') entries = [...entries].sort((a, b) => WEEKDAY_ORDER.indexOf(a.label) - WEEKDAY_ORDER.indexOf(b.label));
+                if (section === 'entry_hour') entries = [...entries].sort((a, b) => a.label.localeCompare(b.label));
+                html += `<div class="bd-card"><h3><i class="fas ${icon}"></i> ${title}</h3>
+                    <table><tr><th>Group</th><th>N</th><th>W/L</th><th>Win%</th><th>Net</th></tr>` +
+                    entries.map(e => `<tr class="${e.n < d.min_breakdown_n ? 'dim' : ''}"><td>${esc(e.label)}</td>${statCells(e)}</tr>`).join('') +
+                    `</table></div>`;
+            }
+            html += `</div>`;
+
+            html += `<div class="section-title"><i class="fas fa-list" style="color:#60a5fa;"></i> Recent Trades
+                <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">latest ${d.recent.length}</span></div>`;
+            if (d.recent.length) {
+                html += `<div class="recent-table-wrap"><table class="recent-table">
+                    <tr><th>Date</th><th>Client</th><th>Account</th><th>Firm</th><th>Phase</th><th>Side</th><th>Signal</th><th>Conf</th><th>Model</th><th>Source</th><th>Outcome</th><th>Net P/L</th></tr>` +
+                    d.recent.map(r => {
+                        const oc = (r.outcome || '').toLowerCase();
+                        const badge = oc === 'tp' ? 'badge-tp' : oc === 'sl' ? 'badge-sl' : oc === 'breach' ? 'badge-breach' : 'badge-open';
+                        const pnl = r.net_pnl == null ? '—' : `<span class="${r.net_pnl >= 0 ? 'green' : 'red'}">${fmt$(+r.net_pnl)}</span>`;
+                        return `<tr><td>${esc(r.entry_date)}</td><td>${esc(r.client_id)}</td><td>${esc(r.account)}</td>
+                            <td>${esc(r.prop_firm)}</td><td>${esc(r.phase_key)}</td>
+                            <td class="${r.side === 'buy' ? 'green' : 'red'}">${esc(r.side || '—')}</td>
+                            <td>${esc(r.signal_direction || '—')}</td>
+                            <td>${r.signal_confidence != null ? (+r.signal_confidence).toFixed(2) : '—'}</td>
+                            <td>${esc(r.signal_model || '—')}</td><td>${esc(r.signal_source || '—')}</td>
+                            <td><span class="badge ${badge}">${esc(r.outcome || 'open')}</span></td><td>${pnl}</td></tr>`;
+                    }).join('') + `</table></div>`;
+            }
+            document.getElementById('content').innerHTML = html;
+        }
+
+        async function load() {
+            document.getElementById('loading').textContent = 'Loading…';
+            try {
+                const res = await fetch(`/api/trade_attribution?days=${currentDays}`);
+                const body = await res.json();
+                if (body.status !== 'success') throw new Error(body.message || 'Failed');
+                if (!body.data.total_rows) {
+                    document.getElementById('content').innerHTML =
+                        `<div class="empty-state"><i class="fas fa-book"></i>No ledger trades recorded in the last ${currentDays} days yet.<br>
+                        <span style="font-size:0.8rem;">Rows appear here as companions on v1.12.5+ execute and report trades.</span></div>`;
+                } else {
+                    render(body.data);
+                }
+            } catch (e) {
+                document.getElementById('content').innerHTML =
+                    `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i>${esc(e.message)}</div>`;
+            }
+            document.getElementById('loading').textContent = '';
+        }
+
+        load();
+    </script>
+</body>
+</html>

@@ -4926,6 +4926,33 @@ def quality_dashboard():
     return render_template('quality_dashboard.html')
 
 
+@app.route('/trade_attribution')
+@require_session
+def trade_attribution_page():
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    return render_template('trade_attribution.html')
+
+
+@app.route('/api/trade_attribution')
+@require_role('super_admin')
+def api_trade_attribution():
+    """Trade ledger attribution data for the super-admin page."""
+    try:
+        days = min(max(int(request.args.get('days', 30)), 1), 365)
+    except (TypeError, ValueError):
+        days = 30
+    try:
+        from dashboard.database import get_trade_ledger_rows
+        from dashboard.trade_attribution import build_attribution_data
+        rows = get_trade_ledger_rows(days=days)
+        data = build_attribution_data(rows)
+        data['days'] = days
+        return jsonify({'status': 'success', 'data': data})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 
 @app.route('/admin/<admin_name>')
 @require_session

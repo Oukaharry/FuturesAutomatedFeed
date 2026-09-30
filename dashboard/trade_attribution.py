@@ -99,7 +99,6 @@ def build_attribution_report(rows, today=None):
         return None
     today = today or datetime.now().date()
     yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
-
     n, wins, win_rate, net, pending = _stats(rows)
     lines = [
         f"📒 *Trade Attribution — last 30 days* ({len(rows)} trades recorded)",
@@ -141,6 +140,68 @@ def build_attribution_report(rows, today=None):
         lines += ["*Flags (n≥%d, win rate ≤%d%%)*" % (MIN_FLAG_N, FLAG_WIN_RATE * 100)] + flags
 
     return "\n".join(lines).strip()
+
+
+def _stats_dict(rows):
+    n, wins, win_rate, net, pending = _stats(rows)
+    return {
+        'n': n, 'wins': wins, 'losses': n - wins,
+        'win_rate': round(win_rate, 4), 'net': round(net, 2), 'pending': pending,
+    }
+
+
+_BREAKDOWN_SECTIONS = (
+    ('prop_firm', lambda r: str(r.get('prop_firm') or '').strip() or None),
+    ('phase', _phase_bucket),
+    ('entry_hour', _entry_hour),
+    ('weekday', _entry_weekday),
+    ('signal_source', lambda r: str(r.get('signal_source') or '').strip() or None),
+    ('signal_model', lambda r: str(r.get('signal_model') or '').strip() or None),
+)
+
+_RECENT_FIELDS = (
+    'entry_date', 'entry_time', 'client_id', 'account', 'prop_firm', 'phase_key',
+    'platform', 'symbol', 'side', 'signal_direction', 'signal_confidence',
+    'signal_model', 'signal_source', 'outcome', 'net_pnl',
+)
+
+
+def build_attribution_data(rows, today=None, recent_limit=100):
+    """Structured attribution payload for the super-admin page."""
+    rows = [r for r in rows or [] if isinstance(r, dict)]
+    today = today or datetime.now().date()
+    yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+
+    breakdowns = {}
+    for section, key_fn in _BREAKDOWN_SECTIONS:
+        groups = _group(rows, key_fn)
+        entries = [dict(label=label, **_stats_dict(g)) for label, g in groups.items()]
+        entries.sort(key=lambda e: (-e['n'], e['label']))
+        breakdowns[section] = entries
+
+    flags = []
+    for section in ('prop_firm', 'entry_hour', 'weekday', 'signal_model'):
+        for entry in breakdowns[section]:
+            if entry['n'] >= MIN_FLAG_N and entry['win_rate'] <= FLAG_WIN_RATE:
+                flags.append(dict(section=section, **entry))
+
+    recent = []
+    for row in sorted(rows, key=lambda r: str(r.get('entry_time') or r.get('entry_date') or ''),
+                      reverse=True)[:recent_limit]:
+        recent.append({f: row.get(f) for f in _RECENT_FIELDS})
+
+    return {
+        'overall': _stats_dict(rows),
+        'total_rows': len(rows),
+        'yesterday': dict(date=yesterday,
+                          **_stats_dict([r for r in rows if str(r.get('entry_date')) == yesterday])),
+        'breakdowns': breakdowns,
+        'flags': flags,
+        'recent': recent,
+        'min_breakdown_n': MIN_BREAKDOWN_N,
+        'min_flag_n': MIN_FLAG_N,
+        'flag_win_rate': FLAG_WIN_RATE,
+    }
 
 
 def post_trade_attribution_report():

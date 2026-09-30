@@ -55,3 +55,28 @@ def test_flags_need_volume_and_bad_win_rate():
     small = [_row('sl', -80, firm='Lucid') for _ in range(10)]
     text2 = build_attribution_report(small, today=date(2026, 9, 30))
     assert '🚩' not in text2
+
+
+def test_build_attribution_data_structure():
+    from dashboard.trade_attribution import build_attribution_data
+    rows = [_row('tp', 150) for _ in range(12)] + [_row('sl', -75) for _ in range(6)] + [_row(None)]
+    data = build_attribution_data(rows, today=date(2026, 9, 30))
+    assert data['total_rows'] == 19
+    assert data['overall'] == {'n': 18, 'wins': 12, 'losses': 6,
+                               'win_rate': round(12 / 18, 4), 'net': 1350.0, 'pending': 1}
+    assert data['yesterday']['date'] == '2026-09-29'
+    assert data['yesterday']['n'] == 18
+    firm = data['breakdowns']['prop_firm'][0]
+    assert firm['label'] == 'Tradeify' and firm['n'] == 18
+    assert data['breakdowns']['phase'][0]['label'] == 'Challenge'
+    assert data['flags'] == []
+    assert len(data['recent']) == 19
+    assert set(data['recent'][0]) >= {'entry_date', 'account', 'outcome', 'net_pnl'}
+
+
+def test_build_attribution_data_flags_losers():
+    from dashboard.trade_attribution import build_attribution_data
+    rows = [_row('sl', -80, firm='Topstep') for _ in range(22)] + \
+           [_row('tp', 120, firm='Topstep') for _ in range(8)]
+    data = build_attribution_data(rows, today=date(2026, 9, 30))
+    assert any(f['section'] == 'prop_firm' and f['label'] == 'Topstep' for f in data['flags'])
