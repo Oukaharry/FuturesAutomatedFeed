@@ -7092,6 +7092,17 @@ def api_client_push():
         except Exception as exc:
             app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
 
+    # Trade ledger: decision/outcome events feeding the learning loop.
+    ledger_events = data.get('ledger_events') or []
+    if ledger_events:
+        try:
+            from dashboard.database import record_trade_ledger_events
+            touched = record_trade_ledger_events(client_id, ledger_events)
+            app.logger.info(
+                f"📒 {client_id}: {touched}/{len(ledger_events)} ledger event(s) recorded")
+        except Exception as exc:
+            app.logger.error(f"Trade ledger update failed for {client_id}: {exc}")
+
     # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
     prefer_client_aggregation = bool(data.get("prefer_client_aggregation"))

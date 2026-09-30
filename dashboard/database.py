@@ -3339,5 +3339,166 @@ def prune_m1_bars_older_than(client_id: str, symbol: str, cutoff_time: int) -> i
         return deleted or 0
 
 
+# ============ Trade Ledger (decision → execution → outcome) ============
+# One row per decision trade: the signal context that chose the direction,
+# the execution parameters, and the eventual outcome. This is the training
+# and attribution substrate for the learning loop.
+
+def _ensure_trade_ledger_table():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS trade_ledger (
+                id                  SERIAL PRIMARY KEY,
+                client_id           TEXT NOT NULL,
+                account             TEXT NOT NULL,
+                prop_firm           TEXT,
+                phase_key           TEXT NOT NULL DEFAULT '',
+                platform            TEXT,
+                symbol              TEXT,
+                side                TEXT,
+                entry_date          TEXT NOT NULL,
+                entry_time          TEXT,
+                tp_ticks            REAL,
+                sl_ticks            REAL,
+                signal_direction    TEXT,
+                signal_confidence   REAL,
+                signal_probability  REAL,
+                signal_model        TEXT,
+                signal_published_at TEXT,
+                signal_source       TEXT,
+                outcome             TEXT,
+                net_pnl             REAL,
+                closed_at           TEXT,
+                created_at          TEXT NOT NULL,
+                updated_at          TEXT NOT NULL,
+                UNIQUE (client_id, account, phase_key, entry_date)
+            )
+            '''
+        )
+        cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_trade_ledger_entry_date '
+            'ON trade_ledger (entry_date)'
+        )
+        conn.commit()
+
+
+def upsert_trade_ledger_entry(client_id: str, event: dict) -> bool:
+    """Record a trade decision at execution time (idempotent per trade)."""
+    if not isinstance(event, dict):
+        return False
+    account = str(event.get('account') or '').strip()
+    entry_date = str(event.get('entry_date') or '').strip()
+    if not client_id or not account or not entry_date:
+        return False
+    signal = event.get('signal') or {}
+    now = datetime.now().isoformat()
+
+    def _num(val):
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    _ensure_trade_ledger_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            INSERT INTO trade_ledger (
+                client_id, account, prop_firm, phase_key, platform, symbol,
+                side, entry_date, entry_time, tp_ticks, sl_ticks,
+                signal_direction, signal_confidence, signal_probability,
+                signal_model, signal_published_at, signal_source,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (client_id, account, phase_key, entry_date) DO UPDATE SET
+                prop_firm = EXCLUDED.prop_firm,
+                platform = EXCLUDED.platform,
+                symbol = EXCLUDED.symbol,
+                side = EXCLUDED.side,
+                entry_time = EXCLUDED.entry_time,
+                tp_ticks = EXCLUDED.tp_ticks,
+                sl_ticks = EXCLUDED.sl_ticks,
+                signal_direction = EXCLUDED.signal_direction,
+                signal_confidence = EXCLUDED.signal_confidence,
+                signal_probability = EXCLUDED.signal_probability,
+                signal_model = EXCLUDED.signal_model,
+                signal_published_at = EXCLUDED.signal_published_at,
+                signal_source = EXCLUDED.signal_source,
+                updated_at = EXCLUDED.updated_at
+            ''',
+            (
+                str(client_id).strip(), account,
+                str(event.get('prop_firm') or '').strip() or None,
+                str(event.get('phase_key') or '').strip(),
+                str(event.get('platform') or '').strip() or None,
+                str(event.get('symbol') or '').strip() or None,
+                str(event.get('side') or '').strip().lower() or None,
+                entry_date,
+                str(event.get('entry_time') or '').strip() or None,
+                _num(event.get('tp_ticks')), _num(event.get('sl_ticks')),
+                str(signal.get('direction') or '').strip().lower() or None,
+                _num(signal.get('confidence')), _num(signal.get('probability')),
+                str(signal.get('model') or '').strip() or None,
+                str(signal.get('published_at') or '').strip() or None,
+                str(event.get('signal_source') or '').strip() or None,
+                now, now,
+            ),
+        )
+        conn.commit()
+    return True
+
+
+def apply_trade_ledger_outcome(client_id: str, event: dict) -> bool:
+    """Attach the resolved outcome to its ledger row (matched by account+date)."""
+    if not isinstance(event, dict):
+        return False
+    account = str(event.get('account') or '').strip()
+    entry_date = str(event.get('entry_date') or '').strip()
+    outcome = str(event.get('outcome') or '').strip().lower()
+    if not client_id or not account or not entry_date or not outcome:
+        return False
+    try:
+        net_pnl = float(event.get('net_pnl'))
+    except (TypeError, ValueError):
+        net_pnl = None
+    _ensure_trade_ledger_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            UPDATE trade_ledger
+            SET outcome = ?, net_pnl = ?, closed_at = ?, updated_at = ?
+            WHERE client_id = ? AND account = ? AND entry_date = ?
+            ''',
+            (outcome, net_pnl,
+             str(event.get('closed_at') or '').strip() or datetime.now().isoformat(),
+             datetime.now().isoformat(),
+             str(client_id).strip(), account, entry_date),
+        )
+        updated = cursor.rowcount
+        conn.commit()
+    return bool(updated)
+
+
+def record_trade_ledger_events(client_id: str, events: list) -> int:
+    """Apply a batch of companion ledger events. Returns rows touched."""
+    touched = 0
+    for event in events or []:
+        if not isinstance(event, dict):
+            continue
+        kind = str(event.get('event') or '').strip().lower()
+        try:
+            if kind == 'entry' and upsert_trade_ledger_entry(client_id, event):
+                touched += 1
+            elif kind == 'outcome' and apply_trade_ledger_outcome(client_id, event):
+                touched += 1
+        except Exception as exc:
+            print(f"[LEDGER] event failed for {client_id}: {exc}")
+    return touched
+
+
 # Schema/connectivity checks run from app startup (background thread), not on import.
 # Import-time DB calls multiplied by uWSGI workers exhaust Postgres connection slots.

@@ -1742,6 +1742,9 @@ class TradeOpssAIApp:
         # Challenge breaches wait here (per firm family) until every challenge
         # account of that firm has closed, so admins get one "Purchase N" ping.
         self._held_challenge_breaches = {}
+        # Trade-ledger events (decision/outcome) awaiting the next push.
+        self._pending_ledger_events = []
+        self._ledger_events_lock = threading.Lock()
         self._dashboard_vanish_registry = {}  # acct_lower -> {ev_snapshot, tier, ...}
 
         self._show_login_screen()
@@ -3754,6 +3757,11 @@ class TradeOpssAIApp:
         # Omitting the key entirely means the server will never touch existing Prop Day values.
         if tradovate_farming_days:
             payload["tradovate_farming_days"] = tradovate_farming_days
+
+        ledger_events = self._drain_ledger_events()
+        if ledger_events:
+            payload["ledger_events"] = ledger_events
+            _log(f"\U0001f4d2 Sending {len(ledger_events)} trade-ledger event(s)")
         
         try:
             # Use public endpoint - no API key needed
@@ -5020,8 +5028,45 @@ class TradeOpssAIApp:
         ev[note_field] = reason
         changed = [field]
         changed.extend(self._stamp_stage_end_date(ev, field, status))
+        try:
+            self._queue_outcome_ledger_event(ev, status)
+        except Exception:
+            pass
         self.log(f"📌 {self._primary_trade_account(ev)}: {field} → {status} ({reason})")
         return changed
+
+    def _queue_outcome_ledger_event(self, ev, status):
+        """Ledger outcome for the account's latest resolved trade (deduped)."""
+        account = self._primary_trade_account(ev)
+        if not account:
+            return
+        date, outcome = self._latest_resolved_outcome(account)
+        is_fail = str(status) == "Fail"
+        if outcome not in ("win", "loss") and not is_fail:
+            return
+        if not date:
+            date = kenya_today().strftime("%Y-%m-%d")
+        if not hasattr(self, "_ledger_outcomes_sent"):
+            self._ledger_outcomes_sent = set()
+        key = (str(account).lower(), str(date), str(status))
+        if key in self._ledger_outcomes_sent:
+            return
+        self._ledger_outcomes_sent.add(key)
+        net_pnl = None
+        entry = self._trade_outcome_history().get(str(account).strip().lower())
+        for day in (entry or {}).get("daily_pnl") or []:
+            if str(day.get("date")) == str(date) and day.get("trades"):
+                try:
+                    net_pnl = float(day.get("net_pnl"))
+                except (TypeError, ValueError):
+                    net_pnl = None
+                break
+        if is_fail:
+            mapped = "breach"
+        else:
+            mapped = "tp" if outcome == "win" else "sl"
+        self._queue_ledger_event(self._build_ledger_outcome_event(
+            account=account, outcome=mapped, entry_date=date, net_pnl=net_pnl))
 
     def _stamp_stage_end_date(self, ev, status_field, status):
         """Fill the leg's Date Ended when its stage resolves. Returns changed fields."""
@@ -5290,7 +5335,8 @@ class TradeOpssAIApp:
             self._release_held_breach_alerts(evaluations)
 
             breaches = list(self._pending_breach_alerts)
-            if not force_fields and not breaches:
+            ledger_events = self._drain_ledger_events()
+            if not force_fields and not breaches and not ledger_events:
                 return
             self._pending_breach_alerts.clear()
             push_response = requests.post(
@@ -5302,6 +5348,7 @@ class TradeOpssAIApp:
                     "dropdown_options": {},
                     "force_fields": force_fields,
                     "breach_alerts": breaches,
+                    "ledger_events": ledger_events,
                 },
                 headers=_companion_request_headers(),
                 timeout=30,
@@ -11808,6 +11855,16 @@ class TradeOpssAIApp:
                     self._auto_trade_firm_sides[family_key] = side
                     self._auto_trade_side_lock_logged.add((family_key, side))
 
+                    # Trade ledger: record the decision at execution time.
+                    try:
+                        self._queue_ledger_event(self._build_ledger_entry_event(
+                            account=acct_num, prop_firm=firm_name,
+                            phase_key=phase_key, platform=platform,
+                            symbol=(config or {}).get("tradovate_symbol"),
+                            side=side, config=config))
+                    except Exception:
+                        pass
+
                     # ── Auto-status: set "In Progress" when trades go out ──
                     if not RELEASE_DISABLE_AUTO_STATUS_UPDATES:
                         _ev = row_data.get("eval")
@@ -14394,6 +14451,8 @@ class TradeOpssAIApp:
                      f"— not usable", "WARN")
         self._broadcast_direction_at = now
         self._broadcast_direction_cache = direction
+        # Full payload kept for trade-ledger signal context.
+        self._broadcast_signal_payload = signal if direction else None
         return direction
 
     def _get_firm_directions(self, firms):
@@ -16149,6 +16208,7 @@ class TradeOpssAIApp:
         if not self._ensure_mt5_for_signals():
             fallback = self._broadcast_direction()
             if fallback:
+                self._set_signal_context(fallback, source="broadcast")
                 self.log(f"📡 Using published ML signal ({fallback.upper()}) — MT5 not connected")
                 return fallback
             self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
@@ -16173,6 +16233,7 @@ class TradeOpssAIApp:
                     pass
             fallback = self._broadcast_direction()
             if fallback:
+                self._set_signal_context(fallback, source="broadcast")
                 self.log(f"📡 Local model warming — using published ML signal "
                          f"({fallback.upper()}), no wait")
                 return fallback
@@ -16180,10 +16241,91 @@ class TradeOpssAIApp:
             return None
         direction = str(result.get("direction") or "").lower()
         if direction in ("buy", "sell"):
+            self._set_signal_context(direction, source="local_ml", result=result)
             self.log(f"🧠 MT5 ML direction: {direction.upper()} "
                      f"(confidence {result.get('confidence')})")
             return direction
         return None
+
+    def _set_signal_context(self, direction, *, source, result=None):
+        """Remember the signal that produced a direction, for the trade ledger."""
+        ctx = {"direction": direction, "source": source}
+        if source == "local_ml" and result:
+            ctx.update({
+                "confidence": result.get("confidence"),
+                "probability": result.get("probability") or result.get("p_up"),
+                "model": result.get("model") or "mt5_ensemble",
+                "published_at": kenya_now().isoformat(),
+            })
+        else:
+            payload = getattr(self, "_broadcast_signal_payload", None) or {}
+            ctx.update({
+                "confidence": payload.get("confidence"),
+                "probability": payload.get("probability"),
+                "model": payload.get("model"),
+                "published_at": payload.get("published_at"),
+            })
+        self._last_signal_context = ctx
+
+    # ── Trade ledger events (decision → execution → outcome) ───────────────
+
+    def _queue_ledger_event(self, event):
+        if not isinstance(event, dict):
+            return
+        if not hasattr(self, "_ledger_events_lock"):
+            self._ledger_events_lock = threading.Lock()
+            self._pending_ledger_events = []
+        with self._ledger_events_lock:
+            self._pending_ledger_events.append(event)
+
+    def _drain_ledger_events(self):
+        if not hasattr(self, "_ledger_events_lock"):
+            return []
+        with self._ledger_events_lock:
+            events, self._pending_ledger_events = self._pending_ledger_events, []
+        return events
+
+    def _build_ledger_entry_event(self, *, account, prop_firm, phase_key,
+                                  platform, symbol, side, config=None):
+        """Ledger record for a trade decision at execution time."""
+        config = config or {}
+        ctx = dict(getattr(self, "_last_signal_context", None) or {})
+        signal_source = ctx.get("source") or "none"
+        if ctx.get("direction") and ctx["direction"] != side:
+            # The traded side came from a lock/random override, not the signal.
+            signal_source = f"override({signal_source})"
+        return {
+            "event": "entry",
+            "account": str(account or "").strip(),
+            "prop_firm": str(prop_firm or "").strip(),
+            "phase_key": str(phase_key or "").strip(),
+            "platform": str(platform or "").strip(),
+            "symbol": str(symbol or "").strip(),
+            "side": str(side or "").strip().lower(),
+            "entry_date": kenya_today().strftime("%Y-%m-%d"),
+            "entry_time": kenya_now().isoformat(),
+            "tp_ticks": config.get("tradovate_tp_ticks"),
+            "sl_ticks": config.get("tradovate_sl_ticks"),
+            "signal": {
+                "direction": ctx.get("direction"),
+                "confidence": ctx.get("confidence"),
+                "probability": ctx.get("probability"),
+                "model": ctx.get("model"),
+                "published_at": ctx.get("published_at"),
+            },
+            "signal_source": signal_source,
+        }
+
+    def _build_ledger_outcome_event(self, *, account, outcome, entry_date,
+                                    net_pnl=None):
+        return {
+            "event": "outcome",
+            "account": str(account or "").strip(),
+            "entry_date": str(entry_date or "").strip(),
+            "outcome": str(outcome or "").strip().lower(),
+            "net_pnl": net_pnl,
+            "closed_at": kenya_now().isoformat(),
+        }
 
         # Display-only input — dashboard trade-history ML (NEVER used to decide)
         insights = self._get_dashboard_ml_insights()
