@@ -224,6 +224,27 @@ class MT5MarketFeed:
     def request_refresh(self) -> None:
         self._refresh_now.set()
 
+    def inject_rates(self, symbol: str, rates, source: str = "external") -> None:
+        """Store externally sourced M1 bars (e.g. Tradovate NQ) in the cache.
+
+        Never overwrites bars the MT5 poller itself produced — a live MT5
+        terminal remains the preferred source for its own symbols.
+        """
+        sym = str(symbol or "").strip()
+        if not sym or rates is None or len(rates) == 0:
+            return
+        with self._data_lock:
+            entry = self._cache.get(sym)
+            if entry and entry.get("source", "mt5") == "mt5":
+                return
+            last = rates[-1]
+            self._cache[sym] = {
+                "rates": rates,
+                "source": source,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "last_bar": {"time": int(last["time"]), "close": float(last["close"])},
+            }
+
     def get_rates(self, symbol: str, count: int):
         """Latest cached M1 numpy rates (newest at end), or None."""
         sym = str(symbol or "").strip()
@@ -336,7 +357,8 @@ class MT5MarketFeed:
             }
             updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             with self._data_lock:
-                self._cache[sym] = {"rates": rates, "updated_at": updated_at, "last_bar": last_bar}
+                self._cache[sym] = {"rates": rates, "source": "mt5",
+                                    "updated_at": updated_at, "last_bar": last_bar}
 
             logger.info("[MT5Feed] %s M1 updated (%s bars, close=%.2f)", sym, len(rates), last_bar["close"])
             _audit_feed(

@@ -38,15 +38,16 @@ def copy_rates_from_pos_cached(symbol: str, timeframe: int, start_pos: int, coun
         try:
             from trader_companion.mt5_market_feed import get_market_feed
 
+            # The cache may hold injected bars (Tradovate NQ) even when the
+            # MT5 poll thread isn't running — always consult it.
             feed = get_market_feed()
-            if feed.is_running:
-                cached = feed.get_rates(symbol, count)
-                if cached is not None and len(cached) >= count:
-                    return cached
-                if cached is not None:
-                    logger.debug(
-                        "M1 cache too shallow for %s (%s < %s) — fetching from MT5",
-                        symbol, len(cached), count)
+            cached = feed.get_rates(symbol, count)
+            if cached is not None and len(cached) >= count:
+                return cached
+            if cached is not None:
+                logger.debug(
+                    "M1 cache too shallow for %s (%s < %s) — fetching from MT5",
+                    symbol, len(cached), count)
         except Exception as exc:
             logger.debug("M1 cache miss for %s: %s", symbol, exc)
 

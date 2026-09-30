@@ -1696,6 +1696,15 @@ class TradeOpssAIApp:
         self.client_info = None
         self._hedge_account_profile = {}
 
+        # Indicator/ML bar reads go through the M1 cache first, so injected
+        # Tradovate NQ bars serve the whole signal stack without MT5.
+        if MT5_AVAILABLE:
+            try:
+                from trader_companion.signals.price_data import copy_rates_from_pos_cached
+                mt5.copy_rates_from_pos = copy_rates_from_pos_cached
+            except Exception:
+                pass
+
         # ML direction publisher (implicit when MT5 + dashboard creds — no toggle)
         self._ml_publish_enabled = False
         self._ml_publish_thread = None
@@ -12352,6 +12361,8 @@ class TradeOpssAIApp:
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
                 if platform == "Tradovate":
+                    # NQ M1 stream for the AI — works with or without MT5
+                    self._start_tradovate_md_feed()
                     # SCAN can finish before the asynchronous login does. Once
                     # history is available, immediately reconcile all loaded
                     # closed rows, including challenge and funded accounts.
@@ -14143,17 +14154,16 @@ class TradeOpssAIApp:
         return None
 
     def _ensure_mt5_for_signals(self):
-        """Ensure MT5 is initialized so indicators can fetch price data.
-        
-        Works for both hedging and non-hedging clients:
-        - If pusher already connected MT5, it's already initialized → returns True
-        - Otherwise, tries to initialize from saved credentials
+        """Ensure price data is available for indicators/ML.
+
+        MT5 (pusher or trading API) is the first choice; the Tradovate
+        market-data feed serves the same M1 cache when MT5 is unavailable.
         
         Returns:
-            bool: True if MT5 is ready for price data queries.
+            bool: True if price data queries can be served.
         """
         if not MT5_AVAILABLE:
-            return False
+            return self._tradovate_feed_bars_ready()
         # Already connected via pusher?
         if self.pusher.connected:
             return True
@@ -14177,7 +14187,53 @@ class TradeOpssAIApp:
             except Exception:
                 pass
             return True
+        if self._tradovate_feed_bars_ready():
+            self.log("📶 Using Tradovate NQ data feed for signals (MT5 not connected)")
+            return True
+        self._start_tradovate_md_feed()  # warm it up for the next attempt
         return False
+
+    def _tradovate_md_token(self):
+        """(token, environment) from any logged-in Tradovate web session."""
+        js = ("try { var a = JSON.parse(sessionStorage.getItem("
+              "'api_authenticator_state')||'{}');"
+              " return [a.token||'', a.environment||'demo']; }"
+              " catch(e) { return ['', 'demo']; }")
+        accounts = [conn.get("account")
+                    for conn in (getattr(self, "_broker_connections", {}) or {}).values()
+                    if isinstance(conn, dict)]
+        accounts.append(getattr(self, "tradovate_account", None))
+        for account in accounts:
+            if account is None or not type(account).__name__.startswith("Tradovate"):
+                continue
+            driver = getattr(account, "driver", None)
+            if not driver:
+                continue
+            try:
+                res = driver.execute_script(js)
+                if res and res[0]:
+                    return str(res[0]), str(res[1] or "demo")
+            except Exception:
+                continue
+        return None
+
+    def _start_tradovate_md_feed(self):
+        """Start the MT5-free NQ M1 stream feeding the shared signal cache."""
+        try:
+            from trader_companion.tradovate_md_feed import start_tradovate_md_feed
+            start_tradovate_md_feed(
+                self._tradovate_md_token,
+                log_fn=lambda m: self.root.after(0, lambda msg=m: self.log(msg)))
+        except Exception as exc:
+            self.log(f"⚠ Tradovate data feed not started: {exc}", "WARN")
+
+    def _tradovate_feed_bars_ready(self, minimum=200):
+        try:
+            from trader_companion.tradovate_md_feed import get_tradovate_md_feed
+            feed = get_tradovate_md_feed()
+            return bool(feed and feed.bar_count() >= minimum)
+        except Exception:
+            return False
 
     # ============ Daily Bias Persistence ============
 
