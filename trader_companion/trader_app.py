@@ -2812,6 +2812,21 @@ class TradeOpssAIApp:
                 self._run_direction_publish_if_due()
             self.log(msg, "INFO" if success else "ERROR")
 
+    def _on_hedge_mode_changed(self, *_):
+        """Shared data-only MT5 account can never hedge — snap back to BrokerOnly."""
+        try:
+            if getattr(self, "_mt5_data_only", False) and self.hedge_mode_var.get() == "Hedging":
+                self.hedge_mode_var.set("BrokerOnly")
+                self.log("🔒 Hedging is locked off on the shared MT5 data account — "
+                         "it feeds the AI only", "WARN")
+        except Exception:
+            pass
+
+    def _hedging_active(self):
+        """True only when hedging is selected AND allowed on this MT5 account."""
+        return (self.hedge_mode_var.get() == "Hedging"
+                and not getattr(self, "_mt5_data_only", False))
+
     def _auto_connect_mt5(self):
         """Auto-connect to MT5 once credentials are present (e.g. right after the
         dashboard auto-fills them). Runs on the UI thread so MT5 + M1 feed share one thread."""
@@ -5860,6 +5875,7 @@ class TradeOpssAIApp:
 
         # Hedging is opt-in: everyone starts BrokerOnly; MT5 still connects for AI data.
         self.hedge_mode_var = tk.StringVar(value="BrokerOnly")
+        self.hedge_mode_var.trace_add('write', self._on_hedge_mode_changed)
         if TRADOVATE_ONLY_MODE:
             if CTK_AVAILABLE:
                 ctk.CTkLabel(opts_row, text="Tradovate broker trading", font=("Segoe UI", 11),
@@ -9404,7 +9420,7 @@ class TradeOpssAIApp:
         # clear it on the dashboard after the broker leg fills.
         day_field = self._find_day_field_name(ev, row_data["current_phase"])
 
-        hedging = self.hedge_mode_var.get() == "Hedging"
+        hedging = self._hedging_active()
         prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
         # Platform follows the resolved blueprint code, not a substring of the
         # free-text dashboard label (so e.g. TopStep RTP routes to TopStepX).
@@ -11223,7 +11239,7 @@ class TradeOpssAIApp:
 
         self.log("🧠 Resolving live ML direction per prop firm at entry time")
 
-        hedging = self.hedge_mode_var.get() == "Hedging"
+        hedging = self._hedging_active()
         default_platform = self.broker_var.get()
         mt5_api = self._get_mt5_trading_api() if hedging else None
         if hedging and not mt5_api:
