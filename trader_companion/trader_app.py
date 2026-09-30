@@ -5858,7 +5858,8 @@ class TradeOpssAIApp:
                    tk.Frame(parent)
         opts_row.pack(fill="x", padx=10, pady=(2, 2))
 
-        self.hedge_mode_var = tk.StringVar(value="BrokerOnly" if TRADOVATE_ONLY_MODE else "Hedging")
+        # Hedging is opt-in: everyone starts BrokerOnly; MT5 still connects for AI data.
+        self.hedge_mode_var = tk.StringVar(value="BrokerOnly")
         if TRADOVATE_ONLY_MODE:
             if CTK_AVAILABLE:
                 ctk.CTkLabel(opts_row, text="Tradovate broker trading", font=("Segoe UI", 11),
@@ -8865,12 +8866,14 @@ class TradeOpssAIApp:
                     mt5_pass = self._cell(chosen_hedge.get("password"))
                     mt5_server = self._cell(chosen_hedge.get("server"))
                     self._hedge_account_profile = dict(chosen_hedge)
+                    self._mt5_data_only = False
                 else:
                     self._hedge_account_profile = {}
                     mt5_creds = data.get("mt5_credentials") or {}
                     mt5_login = self._cell(mt5_creds.get("login"))
                     mt5_pass = self._cell(mt5_creds.get("password"))
                     mt5_server = self._cell(mt5_creds.get("server"))
+                    self._mt5_data_only = bool(mt5_creds.get("data_only"))
 
                 if not TRADOVATE_ONLY_MODE and mt5_login and mt5_pass and mt5_server:
                     def _fill_mt5(login=mt5_login, pwd=mt5_pass, srv=mt5_server):
@@ -8884,7 +8887,13 @@ class TradeOpssAIApp:
                         if not self.mt5_server.get().strip():
                             self.mt5_server.delete(0, tk.END)
                             self.mt5_server.insert(0, srv)
-                        self.log("🔗 MT5 credentials auto-filled from TradeOps dashboard")
+                        if getattr(self, "_mt5_data_only", False):
+                            # Shared account: never hedge on it — data feed only
+                            self.hedge_mode_var.set("BrokerOnly")
+                            self.log("🔗 Shared MT5 data account auto-filled — "
+                                     "AI data feed only, hedging stays off")
+                        else:
+                            self.log("🔗 MT5 credentials auto-filled from TradeOps dashboard")
                         # Now that creds are loaded, connect automatically so the
                         # button shows "Disconnect MT5" without a manual click.
                         self._auto_connect_mt5()
@@ -16484,8 +16493,8 @@ class TradeOpssAIApp:
                         self.phase_var.set(config['phase'])
                     if config.get('account_size'):
                         self.acct_size_var.set(config['account_size'])
-                    if config.get('hedge_mode') and not TRADOVATE_ONLY_MODE:
-                        self.hedge_mode_var.set(config['hedge_mode'])
+                    # hedge_mode is intentionally not restored: hedging is a
+                    # deliberate per-session switch, every launch starts BrokerOnly
                     if config.get('direction'):
                         self.direction_var.set(config['direction'])
                     if config.get('signal_mode'):

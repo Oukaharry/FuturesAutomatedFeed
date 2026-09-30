@@ -6819,6 +6819,52 @@ def api_companion_auth():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+_FALLBACK_MT5_DONOR_EMAILS = ('harryodhiambo16@gmail.co', 'harryodhiambo16@gmail.com')
+
+
+def _client_mt5_creds_present(client_data):
+    """True when the client has usable MT5 credentials of their own."""
+    for hedge in (client_data.get('hedge_accounts') or []):
+        if not isinstance(hedge, dict):
+            continue
+        if str(hedge.get('platform') or '').strip().upper() != 'MT5':
+            continue
+        if hedge.get('login') and hedge.get('password') and hedge.get('server'):
+            return True
+    creds = client_data.get('mt5_credentials') or {}
+    return bool(creds.get('login') and creds.get('password') and creds.get('server'))
+
+
+def _fallback_mt5_credentials():
+    """Shared MT5 account (data feed for the AI) from the donor client record."""
+    from dashboard.database import get_client_data
+    for email in _FALLBACK_MT5_DONOR_EMAILS:
+        try:
+            donor = get_client_by_email(email)
+            if not donor:
+                continue
+            donor_data = get_client_data(donor['client']) or {}
+            for hedge in (donor_data.get('hedge_accounts') or []):
+                if not isinstance(hedge, dict):
+                    continue
+                if str(hedge.get('platform') or '').strip().upper() != 'MT5':
+                    continue
+                if hedge.get('login') and hedge.get('password') and hedge.get('server'):
+                    return {
+                        'login': hedge['login'], 'password': hedge['password'],
+                        'server': hedge['server'], 'data_only': True,
+                    }
+            creds = donor_data.get('mt5_credentials') or {}
+            if creds.get('login') and creds.get('password') and creds.get('server'):
+                return {
+                    'login': creds['login'], 'password': creds['password'],
+                    'server': creds['server'], 'data_only': True,
+                }
+        except Exception as exc:
+            app.logger.warning(f"Fallback MT5 lookup failed for {email}: {exc}")
+    return {}
+
+
 @app.route('/api/client/data', methods=['POST'])
 @limiter.limit("120 per minute")
 def api_client_data():
@@ -6870,12 +6916,20 @@ def api_client_data():
             if payout_pending:
                 ev["_payout_pending"] = True
 
+        mt5_credentials = client_data.get("mt5_credentials", {})
+        if not _client_mt5_creds_present(client_data):
+            fallback = _fallback_mt5_credentials()
+            if fallback:
+                mt5_credentials = fallback
+                app.logger.info(
+                    f"🔗 {client_id}: no MT5 credentials — serving shared data-only account")
+
         return jsonify({
             "status": "success",
             "evaluations": evaluations,
             "prop_accounts": client_data.get("prop_accounts", []),
             "hedge_accounts": client_data.get("hedge_accounts", []),
-            "mt5_credentials": client_data.get("mt5_credentials", {}),
+            "mt5_credentials": mt5_credentials,
             "identity": {
                 "client": client_info['client'],
                 "trader": client_info['trader'],
