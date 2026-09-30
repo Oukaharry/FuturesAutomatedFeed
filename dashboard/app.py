@@ -1699,11 +1699,11 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: purchase/breach Slack alerts are paused by default until
-# routing is verified. Set BREACH_SLACK_PAUSED=0 in .env to re-enable.
+# Ops kill switch: purchase/breach Slack alerts run by default.
+# Set BREACH_SLACK_PAUSED=1 in .env to pause them without a deploy.
 # Detection and dashboard updates always continue.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
-    str(os.environ.get('BREACH_SLACK_PAUSED', '1')).strip().lower()
+    str(os.environ.get('BREACH_SLACK_PAUSED', '0')).strip().lower()
     in ('1', 'true', 'yes')
 )
 
