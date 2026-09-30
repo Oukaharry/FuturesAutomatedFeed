@@ -79,6 +79,17 @@ def run_scheduler():
                 _mark_ran('db_cleanup', today)
                 time.sleep(60)
 
+            # 23:45 UTC (02:45 EAT) — Trade ledger attribution report
+            if now.hour == 23 and now.minute == 45 and ran.get('trade_attribution') != today:
+                logging.info("Posting trade attribution report to Slack (02:45 EAT)...")
+                try:
+                    from dashboard.trade_attribution import post_trade_attribution_report
+                    post_trade_attribution_report()
+                except Exception as exc:
+                    logging.error(f"Trade attribution job failed: {exc}")
+                _mark_ran('trade_attribution', today)
+                time.sleep(60)
+
             time.sleep(30)  # Check every 30s
 
         except Exception as e:

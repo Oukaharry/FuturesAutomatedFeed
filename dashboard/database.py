@@ -3500,5 +3500,25 @@ def record_trade_ledger_events(client_id: str, events: list) -> int:
     return touched
 
 
+def get_trade_ledger_rows(days: int = 30) -> list:
+    """Ledger rows with entry_date within the last `days`, newest last."""
+    cutoff = (datetime.now() - timedelta(days=int(days))).strftime('%Y-%m-%d')
+    _ensure_trade_ledger_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT * FROM trade_ledger WHERE entry_date >= ? ORDER BY entry_date',
+            (cutoff,),
+        )
+        columns = [d[0] for d in cursor.description]
+        out = []
+        for row in cursor.fetchall():
+            if isinstance(row, dict):
+                out.append(dict(row))
+            else:
+                out.append(dict(zip(columns, row)))
+        return out
+
+
 # Schema/connectivity checks run from app startup (background thread), not on import.
 # Import-time DB calls multiplied by uWSGI workers exhaust Postgres connection slots.
