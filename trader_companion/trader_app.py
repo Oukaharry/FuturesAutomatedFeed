@@ -5385,8 +5385,9 @@ class TradeOpssAIApp:
         self._last_outcome_correction = now
         threading.Thread(target=self._apply_outcome_corrections, daemon=True).start()
 
-    # One M5 bar — republishing faster cannot say anything new.
-    _DIRECTION_PUBLISH_INTERVAL_SEC = 300
+    # Publish faster than the 300s staleness window so consumers always find
+    # a valid signal — entries never wait for a fresh broadcast.
+    _DIRECTION_PUBLISH_INTERVAL_SEC = 240
 
     def _dashboard_credentials_ready(self):
         try:
@@ -11528,10 +11529,8 @@ class TradeOpssAIApp:
                                 config_tmp = self._strategy_config_for_row(
                                     firm_code, phase_key, acct_size, auto_ev)
                             mt5_sym = self._resolve_mt5_hedge_symbol(config_tmp or {})
-                            if not getattr(self, "_auto_trade_enter_now", False):
-                                self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
-                                if self._auto_trade_stop.is_set():
-                                    break
+                            # Signals are always on — entries fire the moment the
+                            # stagger elapses using the freshest signal available.
                             sig = self._get_signal_direction(mt5_sym)
                             req = firm_locks.get(family_key)
                             if req and sig in ("buy", "sell") and sig != req:
@@ -16142,29 +16141,42 @@ class TradeOpssAIApp:
         return self._direct_mt5_ml_direction(mt5_symbol)
 
     def _direct_mt5_ml_direction(self, mt5_symbol):
-        """Return the live MT5 ensemble direction, waiting for a cold model."""
+        """Live MT5 ensemble direction, falling back to the published signal.
+
+        Never blocks the entry: a cold local model kicks off async training
+        and the last server-published signal (≤5 min old) is used instead.
+        """
         if not self._ensure_mt5_for_signals():
+            fallback = self._broadcast_direction()
+            if fallback:
+                self.log(f"📡 Using published ML signal ({fallback.upper()}) — MT5 not connected")
+                return fallback
             self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
             return None
         try:
             from trader_companion.signals.ml_direction import (
-                ensure_trained_async, get_ml_direction, wait_for_model,
+                ensure_trained_async, get_ml_direction,
             )
             ml_ctx = self._ml_broker_mt5_kwargs()
             if mt5_symbol:
                 ml_ctx["mt5_symbol"] = mt5_symbol
-            mt5_ticker = ml_ctx.get("mt5_symbol") or "ustech"
             result = get_ml_direction(symbol="ustech", **ml_ctx)
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
-            return None
+            ml_ctx = None
+            result = {}
         if not result.get("ready"):
-            ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
-            self.log(f"🧠 Waiting for MT5 ML model ({mt5_ticker}) before trade entry")
-            wait_for_model("ustech", timeout_sec=120)
-            result = get_ml_direction(symbol="ustech", auto_train=False, **ml_ctx)
-        if not result.get("ready"):
-            self.log("⛔ MT5 ML model was not ready after 2 minutes — trade skipped", "WARN")
+            if ml_ctx is not None:
+                try:
+                    ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
+                except Exception:
+                    pass
+            fallback = self._broadcast_direction()
+            if fallback:
+                self.log(f"📡 Local model warming — using published ML signal "
+                         f"({fallback.upper()}), no wait")
+                return fallback
+            self.log("⛔ No ML direction available (local cold, no fresh broadcast)", "WARN")
             return None
         direction = str(result.get("direction") or "").lower()
         if direction in ("buy", "sell"):
