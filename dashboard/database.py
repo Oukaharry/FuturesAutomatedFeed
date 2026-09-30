@@ -290,6 +290,10 @@ class _PgCursorWrapper:
         return self._cursor.rowcount
 
     @property
+    def description(self):
+        return self._cursor.description
+
+    @property
     def lastrowid(self):
         return getattr(self._cursor, 'lastrowid', None)
 
@@ -3522,14 +3526,8 @@ def get_trade_ledger_rows(days: int = 30) -> list:
             'SELECT * FROM trade_ledger WHERE entry_date >= ? ORDER BY entry_date',
             (cutoff,),
         )
-        columns = [d[0] for d in cursor.description]
-        out = []
-        for row in cursor.fetchall():
-            if isinstance(row, dict):
-                out.append(dict(row))
-            else:
-                out.append(dict(zip(columns, row)))
-        return out
+        # RealDictCursor rows and sqlite3.Row both convert cleanly
+        return [dict(row) for row in cursor.fetchall()]
 
 
 # Schema/connectivity checks run from app startup (background thread), not on import.
