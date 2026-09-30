@@ -4934,6 +4934,20 @@ def trade_attribution_page():
     return render_template('trade_attribution.html')
 
 
+@app.route('/api/breach_alerts/clear_pending', methods=['POST'])
+@require_role('super_admin')
+def api_clear_pending_breach_alerts():
+    """One-off clean start: drop all queued (unsent) purchase alerts."""
+    try:
+        from dashboard.database import clear_all_breach_alert_pending
+        cleared = clear_all_breach_alert_pending()
+        app.logger.warning(
+            f"🚨 Pending breach alert queues cleared by super_admin ({cleared} client queue(s))")
+        return jsonify({'status': 'success', 'cleared_queues': cleared})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/trade_attribution')
 @require_role('super_admin')
 def api_trade_attribution():

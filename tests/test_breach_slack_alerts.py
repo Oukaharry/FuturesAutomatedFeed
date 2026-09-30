@@ -107,3 +107,18 @@ def test_firm_with_only_farming_activity_does_not_hold_batches():
         'Hedge Day 5': '$0.00',
     }]
     assert dapp._firm_has_active_trades(evaluations, dapp._breach_firm_family('Tradeify')) is False
+
+
+def test_clear_pending_endpoint_requires_super_admin():
+    client = dapp.app.test_client()
+    assert client.post('/api/breach_alerts/clear_pending').status_code == 401
+
+
+def test_clear_pending_endpoint_clears_queues():
+    handler = getattr(dapp.api_clear_pending_breach_alerts, '__wrapped__',
+                      dapp.api_clear_pending_breach_alerts)
+    with patch('dashboard.database.clear_all_breach_alert_pending', return_value=3) as clear:
+        with dapp.app.test_request_context():
+            resp = handler()
+        assert resp.get_json() == {'status': 'success', 'cleared_queues': 3}
+        clear.assert_called_once()

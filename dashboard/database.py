@@ -2095,6 +2095,18 @@ def mark_breach_alert_batch_sent(client_id: str, batch_key: str):
     )
 
 
+def clear_all_breach_alert_pending() -> int:
+    """Drop every queued (unsent) breach alert. Sent-batch dedupe is kept."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM system_settings WHERE key LIKE 'breach_alerts_pending:%'"
+        )
+        cleared = cursor.rowcount or 0
+        conn.commit()
+        return cleared
+
+
 def get_daily_checklists(date: str, user_identifier: str = None) -> list:
     """Get checklists for a date, optionally filtered by user."""
     with get_connection() as conn:
