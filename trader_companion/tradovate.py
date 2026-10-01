@@ -998,9 +998,15 @@ class TradovateAccount:
                         self.driver.execute_script("arguments[0].click();", login_button)
                         logging.info("Login button clicked successfully")
 
-                        # SPEED OPTIMIZATION: Wait for trading mode selection with optimized timeout
-                        WebDriverWait(self.driver, 25).until(  # Reduced from 45 to 25
-                            EC.visibility_of_element_located((By.XPATH, "//h1[contains(text(), 'Select a Trading Mode')]"))
+                        # Proceed the moment ANY mode-page element (or a restored
+                        # trader session) renders — not just the exact h1 text.
+                        WebDriverWait(self.driver, 25).until(
+                            EC.any_of(
+                                EC.visibility_of_element_located((By.XPATH, "//h1[contains(text(), 'Select a Trading Mode')]")),
+                                EC.visibility_of_element_located((By.CSS_SELECTOR, "button[data-testid='simulation-button']")),
+                                EC.visibility_of_element_located((By.CSS_SELECTOR, "button[data-testid='live-trading-button']")),
+                                EC.visibility_of_element_located((By.XPATH, self._ORDER_TICKET_TAB_XPATH)),
+                            )
                         )
                         logging.info("Successfully reached 'Select a Trading Mode' page")
                         
@@ -1292,52 +1298,51 @@ class TradovateAccount:
             self.logged_in = False
             raise Exception(f"Login verification failed: {str(e)}")
 
+    def _find_mode_button_fast(self, data_testid, texts, poll_seconds=8.0):
+        """Find the mode-selection button in ONE JS round trip, polled briefly.
+
+        Replaces 15+ sequential XPath queries (each a driver round trip) plus
+        fixed sleeps — typical hit is the first 200ms poll.
+        """
+        js = """
+        const testid = arguments[0], texts = arguments[1];
+        const vis = b => b && !b.disabled && b.offsetParent !== null;
+        const byId = document.querySelector(`button[data-testid='${testid}']`);
+        if (vis(byId)) return byId;
+        const btns = Array.from(document.querySelectorAll('button')).filter(vis);
+        for (const t of texts) {
+            const hit = btns.find(b => (b.innerText || '').trim().toLowerCase().includes(t));
+            if (hit) return hit;
+        }
+        return null;
+        """
+        deadline = time.time() + poll_seconds
+        while time.time() < deadline:
+            try:
+                button = self.driver.execute_script(js, data_testid, texts)
+                if button is not None:
+                    return button
+            except Exception:
+                pass
+            time.sleep(0.2)
+        return None
+
     def _launch_live_trading_tab(self):
         """Launch the LIVE TRADING tab after successful authentication"""
         try:
             logging.info("Looking for LIVE TRADING button on 'Select a Trading Mode' page...")
 
-            self._wait_for_no_overlay(timeout=2)
-            time.sleep(1)
-
-            # --- Selectors for LIVE TRADING button ---
-            live_selectors = [
-                # Primary selector provided by user
-                "//button[@data-testid='live-trading-button']",
-                
-                # Fallbacks
-                "//button[contains(., 'Start Trading')]",
-                "//button[.//span[text()='Start Trading']]",
-                "//button[contains(text(), 'Start Trading')]",
-                "//button[contains(@class, 'MuiButton-contained') and contains(., 'Start Trading')]"
-            ]
-
-            # Try each selector
-            live_button = None
-            for selector in live_selectors:
-                try:
-                    buttons = self.driver.find_elements(By.XPATH, selector)
-                    for button in buttons:
-                        if button.is_displayed() and button.is_enabled():
-                            live_button = button
-                            logging.info(f"Found LIVE TRADING button with selector: {selector}")
-                            break
-                    if live_button:
-                        break
-                except Exception as e:
-                    logging.debug(f"Selector failed: {selector} ({e})")
-                    continue
-
-            if not live_button:
+            live_button = self._find_mode_button_fast(
+                "live-trading-button", ["start trading"])
+            if live_button is None:
                 raise Exception("Could not find LIVE TRADING button")
 
             # Click the button
             logging.info("Clicking LIVE TRADING button...")
             self.driver.execute_script("arguments[0].click();", live_button)
-            
+
             # Dismiss any interstitial pages (e.g. 'Welcome to Tradovate Prop')
-            time.sleep(1)
-            self._dismiss_interstitial_pages(timeout=5)
+            self._dismiss_interstitial_pages(timeout=3)
 
             # Wait for interface to load - use all known trading UI selectors
             logging.info("Waiting for LIVE TRADING interface to load...")
@@ -1348,9 +1353,8 @@ class TradovateAccount:
                 ])
             )
             logging.info("✓ LIVE TRADING interface loaded successfully")
-            time.sleep(1)
             self._wait_for_no_overlay(timeout=10)
-                
+
         except Exception as e:
             logging.error(f"Failed to launch LIVE TRADING tab: {e}")
             raise
@@ -1360,59 +1364,10 @@ class TradovateAccount:
         try:
             logging.info("Looking for simulation access button on 'Select a Trading Mode' page...")
 
-            self._wait_for_no_overlay(timeout=2)  # Reduced from 5 to 2
-            
-            # Wait for the page to be fully loaded
-            time.sleep(1)  # Reduced from 2 to 1
-
-            # --- More comprehensive selectors for simulation button (FASTER ORDER) ---
-            simulation_selectors = [
-                # NEW: Primary selector provided by user
-                "//button[@data-testid='simulation-button']",
-
-                # NEW: Handle 'Start Simulated Trading' button (primary)
-                "//button[contains(@class, 'MuiButton-contained') and contains(., 'Start Simulated Trading')]",
-                "//button[.//span[text()='Start Simulated Trading']]",
-                "//button[contains(text(), 'Start Simulated Trading')]",
-                
-                # Handle the 'Launch' button text (most common)
-                "//button[contains(@class, 'MuiButton-contained') and .//span[text()='Launch']]",
-                "//button[contains(@class, 'fat-button') and .//span[text()='Launch']]",
-                "//button[.//span[text()='Launch']]",
-                "//button[contains(text(), 'Launch')]",
-                
-                # Handle the different broker scenario (Access Simulation)
-                "//button[contains(@class, 'MuiButton-contained') and .//span[text()='Access Simulation']]",
-                "//button[contains(@class, 'fat-button') and .//span[text()='Access Simulation']]",
-                
-                # Original selectors (keep for compatibility)
-                "//button[contains(@class, 'MuiButton-root') and .//span[text()='Access Simulation']]",
-                "//button[.//span[text()='Access Simulation']]",
-                "//button[contains(text(), 'Access Simulation')]",
-                
-                # Broader selectors (last resort)
-                "//button[.//span[contains(text(), 'Access Simulation')]]",
-                "//button[contains(@class, 'MuiButton-root') and .//span[contains(text(), 'Simulation')]]",
-                "//button[.//span[contains(text(), 'Simulated Trading')]]",
-                "//button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'simulation')]",
-                "//button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'launch')]"
-            ]
-
-            # Try each selector (FASTER - reduced timeout)
-            simulation_button = None
-            for selector in simulation_selectors:
-                try:
-                    buttons = self.driver.find_elements(By.XPATH, selector)
-                    for button in buttons:
-                        if button.is_displayed() and button.is_enabled():
-                            simulation_button = button
-                            logging.info(f"Found simulation button with selector: {selector}")
-                            break
-                    if simulation_button:
-                        break
-                except Exception as e:
-                    logging.debug(f"Selector failed: {selector} ({e})")
-                    continue
+            simulation_button = self._find_mode_button_fast(
+                "simulation-button",
+                ["start simulated trading", "launch", "access simulation",
+                 "simulated trading", "simulation"])
 
             if not simulation_button:
                 # Try fallbacks faster - skip debugging for speed
@@ -1455,8 +1410,7 @@ class TradovateAccount:
                 return
 
             # Dismiss any interstitial pages (e.g. 'Welcome to Tradovate Prop')
-            time.sleep(1)
-            self._dismiss_interstitial_pages(timeout=5)
+            self._dismiss_interstitial_pages(timeout=3)
 
             # Wait for simulation interface to load - use all known trading UI selectors
             logging.info("Waiting for simulation interface to load (up to 60 seconds)...")
@@ -1468,7 +1422,6 @@ class TradovateAccount:
                     ])
                 )
                 logging.info("✓ Simulation trading interface loaded successfully")
-                time.sleep(1)
                 self._wait_for_no_overlay(timeout=10)
             except Exception as e:
                 logging.warning(f"Trading interface loading verification timed out after 60 seconds: {e}")
