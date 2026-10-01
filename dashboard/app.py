@@ -1850,6 +1850,74 @@ def _queue_breach_alerts(client_id, breaches):
     return added
 
 
+# Slot caps shared with the admin max-out check. A purchase alert refills
+# open slots; it never asks for more accounts than the firm allows.
+ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
+    'mffu': 3,
+    'tradeday': 3,
+    'alphafutures': 3,
+    'apex': 10,
+}
+ADMIN_PROP_MAX_ACTIVE_DEFAULT = 5
+_MAX_OUT_INACTIVE_P1 = ('fail', 'breach', 'closed', 'sl', 'delete')
+_MAX_OUT_INACTIVE_FUNDED = ('fail', 'breach', 'closed', 'sl', 'delete', 'complete', 'completed')
+
+
+def _firm_max_out(firm_family):
+    return ADMIN_PROP_MAX_ACTIVE_ACCOUNTS.get(firm_family, ADMIN_PROP_MAX_ACTIVE_DEFAULT)
+
+
+def _eval_row_occupies_max_out_slot(ev):
+    """True when this row is one of the firm's live accounts (a filled slot)."""
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    sp1 = str(ev.get('Status P1') or '').strip().lower()
+    funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
+    if any(tok in sp1 for tok in _MAX_OUT_INACTIVE_P1):
+        return False
+    if any(tok in funded for tok in _MAX_OUT_INACTIVE_FUNDED):
+        return False
+    return True
+
+
+def _unique_breach_accounts(breaches):
+    """One alert per broker account. A second phase or reason is not a second purchase."""
+    kept = []
+    seen = set()
+    for breach in breaches or []:
+        if not isinstance(breach, dict):
+            continue
+        acct = str(breach.get('account') or '').strip().lower()
+        if not acct or acct in seen:
+            continue
+        seen.add(acct)
+        kept.append(breach)
+    return kept
+
+
+def _breaches_within_firm_max_out(firm_family, breaches, evaluations):
+    """Breaches to announce, capped at the slots still open under max-out.
+
+    Accounts in this batch are being replaced, so they do not occupy a slot
+    even if the row has not flipped to Fail yet. Everything else still live
+    for the firm does, and the purchase is only the room left up to the cap.
+    """
+    unique = _unique_breach_accounts(breaches)
+    replacing = {str(b.get('account') or '').strip().lower() for b in unique}
+    occupied = 0
+    for ev in evaluations or []:
+        if not _eval_row_occupies_max_out_slot(ev):
+            continue
+        if _breach_firm_family(ev.get('Prop Firm')) != firm_family:
+            continue
+        ids = {a.lower() for a in _eval_broker_account_numbers(ev)}
+        if ids & replacing:
+            continue
+        occupied += 1
+    room = max(0, _firm_max_out(firm_family) - occupied)
+    return unique[:room]
+
+
 def _flush_batched_breach_alerts(client_id, evaluations):
     """Send queued firm batches once all trades for that firm have closed."""
     from collections import defaultdict
@@ -1886,7 +1954,18 @@ def _flush_batched_breach_alerts(client_id, evaluations):
                 f"🚨 {client_id}: skipping duplicate {firm_key} breach batch ({batch_key})")
             continue
 
-        count = _send_admin_breach_alert(client_id, firm_breaches)
+        to_announce = _breaches_within_firm_max_out(firm_key, firm_breaches, evaluations)
+        if len(to_announce) < len(firm_breaches):
+            app.logger.warning(
+                f"🚨 {client_id}: {firm_key} purchase capped at {len(to_announce)} "
+                f"(max-out {_firm_max_out(firm_key)}, {len(firm_breaches)} breach alert(s))")
+        if not to_announce:
+            # Already at the firm's slot cap, so these breaches are excess.
+            # Mark the batch sent or the next push asks for them again.
+            mark_breach_alert_batch_sent(client_id, batch_key)
+            continue
+
+        count = _send_admin_breach_alert(client_id, to_announce)
         if count <= 0 and BREACH_SLACK_NOTIFICATIONS_PAUSED:
             still_pending.extend(firm_breaches)
             continue
@@ -1899,7 +1978,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         mark_breach_alert_batch_sent(client_id, batch_key)
         announced += count
         app.logger.warning(
-            f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(firm_breaches)} account(s))")
+            f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(to_announce)} account(s))")
 
     set_breach_alert_pending(client_id, still_pending)
     return announced
