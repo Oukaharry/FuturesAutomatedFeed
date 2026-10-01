@@ -1,14 +1,13 @@
 """Local ML + deep-learning direction engine for the companion AI.
 
-Trains two estimators on MT5 OHLCV bars fetched on the trader's machine:
+Trains two estimators on Tradovate NQ OHLCV bars (the exact traded contract):
 
   * ML:  HistGradientBoostingClassifier (gradient-boosted trees, NaN-native)
   * DL:  MLPClassifier — feed-forward deep neural network (2 hidden layers)
 
-They are soft-vote ensembled and confidence-gated: a buy/sell is emitted only
-when the ensemble probability clears ``CONFIDENCE_THRESHOLD``; otherwise the
-caller falls back to its next intelligence layer (dashboard insights or the
-classic indicator vote).
+They are soft-vote ensembled; the ensemble lean (p_up vs 0.5) IS the signal —
+there is no neutral and no confidence gate on direction. Confidence and the
+analytics threshold travel in the payload for attribution only.
 
 Validation is expanding-window walk-forward — the reported accuracy is
 strictly out-of-sample, so the caller can judge how much to trust the model.
@@ -1009,7 +1008,9 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
             mom = float(tick_feats.get("momentum_pts") or 0.0)
             if abs(mom) >= 0.5:
                 threshold = max(0.50, threshold - 0.02)
-    direction = lean if conf >= threshold else "neutral"
+    # No neutral, ever: the ensemble's lean is the signal. Confidence and
+    # threshold stay in the payload for analytics only.
+    direction = lean
 
     # Journal this prediction so it can be verified against the actual
     # market move + TP/SL simulation (deduped per closed bar).
