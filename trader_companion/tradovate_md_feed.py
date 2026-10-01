@@ -40,6 +40,7 @@ MT5_RATES_DTYPE = np.dtype([
 ])
 
 DEFAULT_BAR_COUNT = 2880          # 2 days of M1, same depth as the MT5 feed
+TRAIN_M5_BAR_COUNT = 21000        # ~73 days of M5 — ML training depth
 CACHE_ALIASES = ("USTECH", "NQ")  # indicators ask for USTECH; NQ for clarity
 _QUARTER_MONTHS = (3, 6, 9, 12)
 _MONTH_CODES = {3: "H", 6: "M", 9: "U", 12: "Z"}
@@ -78,15 +79,16 @@ def front_quarter_symbol(root: str = "NQ", now: Optional[datetime] = None) -> st
     return f"{root}Z{year % 10}"  # unreachable in practice
 
 
-def parse_chart_bars(event: dict) -> List[dict]:
-    """Normalized bars from one 'chart' event: [{time, open, high, low, close, volume}].
+def parse_chart_bars_grouped(event: dict) -> Dict[int, List[dict]]:
+    """Normalized bars per chart id from one 'chart' event.
 
     Tradovate sends {"charts": [{"id":.., "bars":[{"timestamp": ISO8601,
     "open":..,"high":..,"low":..,"close":..,"upVolume":..,"downVolume":..}]}]}.
     End-of-history packets carry "eoh": true and no bars.
     """
-    out: List[dict] = []
+    out: Dict[int, List[dict]] = {}
     for chart in (event or {}).get("charts") or []:
+        chart_id = chart.get("id")
         for bar in chart.get("bars") or []:
             ts = bar.get("timestamp")
             if ts is None or bar.get("close") is None:
@@ -97,7 +99,7 @@ def parse_chart_bars(event: dict) -> List[dict]:
             except (ValueError, TypeError):
                 continue
             epoch -= epoch % 60  # bar open time, minute-aligned
-            out.append({
+            out.setdefault(chart_id, []).append({
                 "time": epoch,
                 "open": float(bar.get("open", bar["close"])),
                 "high": float(bar.get("high", bar["close"])),
@@ -105,6 +107,14 @@ def parse_chart_bars(event: dict) -> List[dict]:
                 "close": float(bar["close"]),
                 "volume": int((bar.get("upVolume") or 0) + (bar.get("downVolume") or 0)),
             })
+    return out
+
+
+def parse_chart_bars(event: dict) -> List[dict]:
+    """Flat bar list from one 'chart' event (all charts merged)."""
+    out: List[dict] = []
+    for bars in parse_chart_bars_grouped(event).values():
+        out.extend(bars)
     return out
 
 
@@ -130,7 +140,10 @@ class TradovateMDFeed:
         self._symbol = symbol  # None → front quarter resolved at (re)connect
         self._bar_count = int(bar_count)
         self._log_fn = log_fn
-        self._bars: Dict[int, dict] = {}
+        # {timeframe_minutes: {bar_open_epoch: bar}}
+        self._bars_by_tf: Dict[int, Dict[int, dict]] = {1: {}, 5: {}}
+        self._tf_limits = {1: self._bar_count, 5: TRAIN_M5_BAR_COUNT}
+        self._chart_tf: Dict[int, int] = {}  # server chart id → timeframe
         self._bars_lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._running = False
@@ -145,9 +158,17 @@ class TradovateMDFeed:
     def is_running(self) -> bool:
         return self._running
 
-    def bar_count(self) -> int:
+    def bar_count(self, timeframe_minutes: int = 1) -> int:
         with self._bars_lock:
-            return len(self._bars)
+            return len(self._bars_by_tf.get(int(timeframe_minutes)) or {})
+
+    def get_rates_minutes(self, timeframe_minutes: int, count: int):
+        """MT5-dtype rates for one of the streamed timeframes, or None."""
+        with self._bars_lock:
+            bars = dict(self._bars_by_tf.get(int(timeframe_minutes)) or {})
+        if not bars:
+            return None
+        return bars_to_mt5_rates(bars, max(1, int(count)))
 
     def start(self) -> bool:
         if self._running:
@@ -247,10 +268,25 @@ class TradovateMDFeed:
                 self.connected = False
 
     def _session(self, token: str, symbol: str) -> None:
-        """One authorized WS session: subscribe, then pump events until drop."""
+        """One authorized WS session: subscribe M1 + M5, pump events until drop."""
         authorized = False
         auth_id = None
+        chart_req_tf: Dict[int, int] = {}  # request id → timeframe
         last_heartbeat = time.time()
+        self._chart_tf = {}
+
+        def _subscribe(tf: int, elements: int) -> None:
+            rid = self._send("md/getchart", body={
+                "symbol": symbol,
+                "chartDescription": {
+                    "underlyingType": "MinuteBar",
+                    "elementSize": tf,
+                    "elementSizeUnit": "UnderlyingUnits",
+                    "withHistogram": False,
+                },
+                "timeRange": {"asMuchAsElements": elements},
+            })
+            chart_req_tf[rid] = tf
 
         while self._running:
             raw = self._ws.recv()
@@ -278,21 +314,22 @@ class TradovateMDFeed:
                         if msg.get("s") == 200:
                             authorized = True
                             self.connected = True
-                            self._log(f"📶 Tradovate data feed authorized — streaming {symbol} M1")
-                            self._send("md/getchart", body={
-                                "symbol": symbol,
-                                "chartDescription": {
-                                    "underlyingType": "MinuteBar",
-                                    "elementSize": 1,
-                                    "elementSizeUnit": "UnderlyingUnits",
-                                    "withHistogram": False,
-                                },
-                                "timeRange": {"asMuchAsElements": self._bar_count},
-                            })
+                            self._log(f"📶 Tradovate data feed authorized — "
+                                      f"streaming {symbol} M1 + M5")
+                            _subscribe(1, self._bar_count)
+                            _subscribe(5, TRAIN_M5_BAR_COUNT)
                         else:
                             raise RuntimeError(f"authorize rejected (status {msg.get('s')})")
+                    elif msg.get("i") in chart_req_tf:
+                        tf = chart_req_tf[msg["i"]]
+                        d = msg.get("d") or {}
+                        for key in ("historicalId", "realtimeId"):
+                            if d.get(key) is not None:
+                                self._chart_tf[d[key]] = tf
                     elif msg.get("e") == "chart":
-                        self._ingest(parse_chart_bars(msg.get("d") or {}))
+                        for chart_id, bars in parse_chart_bars_grouped(
+                                msg.get("d") or {}).items():
+                            self._ingest(self._chart_tf.get(chart_id, 1), bars)
                     elif msg.get("e") == "shutdown":
                         raise RuntimeError(f"server shutdown: {msg.get('d')}")
 
@@ -304,16 +341,22 @@ class TradovateMDFeed:
                     pass
                 last_heartbeat = time.time()
 
-    def _ingest(self, bars: List[dict]) -> None:
+    def _ingest(self, timeframe_minutes: int, bars: List[dict]) -> None:
         if not bars:
             return
+        tf = int(timeframe_minutes)
+        limit = self._tf_limits.get(tf, self._bar_count)
         with self._bars_lock:
+            store = self._bars_by_tf.setdefault(tf, {})
             for bar in bars:
-                self._bars[bar["time"]] = bar
-            if len(self._bars) > self._bar_count * 2:
-                for t in sorted(self._bars)[:-self._bar_count]:
-                    del self._bars[t]
-            rates = bars_to_mt5_rates(self._bars, self._bar_count)
+                store[bar["time"]] = bar
+            if len(store) > limit * 1.2:
+                for t in sorted(store)[:-limit]:
+                    del store[t]
+            m1 = dict(self._bars_by_tf.get(1) or {}) if tf == 1 else None
+        if m1 is None:
+            return
+        rates = bars_to_mt5_rates(m1, self._bar_count)
         if rates is None or len(rates) == 0:
             return
         try:

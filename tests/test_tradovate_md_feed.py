@@ -63,11 +63,35 @@ def test_inject_rates_serves_cache_without_poller():
     assert float(got[-1]["close"]) == 3.0
 
 
-def test_inject_never_overwrites_mt5_sourced_bars():
+def test_tradovate_bars_own_the_signal_alias():
+    # Tradovate is the signal authority: injection overwrites MT5 bars
     feed = MT5MarketFeed()
     mt5_rates = bars_to_mt5_rates({60: {"open": 9, "high": 9, "low": 9, "close": 9, "volume": 9}})
     with feed._data_lock:
         feed._cache["USTECH"] = {"rates": mt5_rates, "source": "mt5"}
     injected = bars_to_mt5_rates({60: {"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}})
     feed.inject_rates("USTECH", injected, source="tradovate")
-    assert float(feed.get_rates("USTECH", 1)[-1]["close"]) == 9.0
+    assert float(feed.get_rates("USTECH", 1)[-1]["close"]) == 1.0
+
+
+def test_feed_serves_m1_and_m5_and_ml_fetch_uses_it():
+    import trader_companion.tradovate_md_feed as md
+    from trader_companion.signals import ml_direction
+
+    feed = md.TradovateMDFeed(lambda: None)
+    feed._ingest(1, [{"time": 60, "open": 1, "high": 1, "low": 1, "close": 2, "volume": 3}])
+    feed._ingest(5, [{"time": 300 * i, "open": 1, "high": 1, "low": 1, "close": 5, "volume": 3}
+                     for i in range(1, 8)])
+    assert feed.bar_count(1) == 1 and feed.bar_count(5) == 7
+    m5 = feed.get_rates_minutes(5, 5)
+    assert len(m5) == 5 and float(m5[-1]["close"]) == 5.0
+
+    old = md._md_feed_singleton
+    md._md_feed_singleton = feed
+    try:
+        rates = ml_direction._fetch_rates("ustech", 5, 5)
+        assert rates is not None and len(rates) == 5
+        assert ml_direction._fetch_rates("ustech", 1, 10) is not None
+        assert ml_direction.fetch_recent_ticks("ustech") is None  # MT5 ticks disabled
+    finally:
+        md._md_feed_singleton = old

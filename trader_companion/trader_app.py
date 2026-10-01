@@ -2327,7 +2327,7 @@ class TradeOpssAIApp:
     def _build_ml_publisher_ui(self, parent):
         """Status chip: implicit ML publisher when MT5 is connected (server picks one)."""
         if not getattr(self, "_ml_status_var", None):
-            self._ml_status_var = tk.StringVar(value="ML: connect MT5 to publish")
+            self._ml_status_var = tk.StringVar(value="ML: waiting for Tradovate data feed")
 
         if not CTK_AVAILABLE:
             row = tk.Frame(parent, bg="#161B22")
@@ -2347,8 +2347,8 @@ class TradeOpssAIApp:
             if not self._dashboard_credentials_ready():
                 self._ml_status_var.set("ML: need email + dashboard URL")
                 return
-            if not self._mt5_connected_for_ml():
-                self._ml_status_var.set("ML: connect MT5 to publish")
+            if not self._tradovate_feed_bars_ready():
+                self._ml_status_var.set("ML: waiting for Tradovate data feed")
                 return
             if getattr(self, "_ml_holds_publisher_lease", False):
                 self._ml_status_var.set("ML: broadcasting (server lease)")
@@ -5479,8 +5479,8 @@ class TradeOpssAIApp:
         return False
 
     def _should_run_ml_publisher(self):
-        """Implicit publisher: dashboard creds + live MT5 (server lease picks one)."""
-        return self._dashboard_credentials_ready() and self._mt5_connected_for_ml()
+        """Implicit publisher: dashboard creds + Tradovate data (server lease picks one)."""
+        return self._dashboard_credentials_ready() and self._tradovate_feed_bars_ready()
 
     def _on_mt5_disconnected(self):
         """Stop renewing the server lease so another MT5 companion can take over."""
@@ -5588,25 +5588,25 @@ class TradeOpssAIApp:
             self.log("⚠ ML broadcast skipped — need client email and dashboard URL", "WARN")
             return
         try:
-            if not self._ensure_mt5_for_signals():
+            if not self._tradovate_feed_bars_ready():
+                self._start_tradovate_md_feed()
                 self._log_ml_publish_throttled(
-                    "mt5_wait",
-                    "⏳ ML broadcast waiting for MT5 (connect login or wait for auto-connect)…")
+                    "feed_wait",
+                    "⏳ ML broadcast waiting for the Tradovate data feed…")
                 return
         except Exception as exc:
-            self.log(f"⚠ ML broadcast: MT5 check failed: {exc}", "WARN")
+            self.log(f"⚠ ML broadcast: data feed check failed: {exc}", "WARN")
             return
 
-        ml_ctx = self._ml_broker_mt5_kwargs()
-        mt5_ticker = ml_ctx.get("mt5_symbol") or "ustech"
+        mt5_ticker = "NQ"
         try:
-            result = get_ml_direction(symbol="ustech", **ml_ctx)
+            result = get_ml_direction(symbol="ustech")
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
             return
         if not result.get("ready"):
             try:
-                ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
+                ensure_trained_async("ustech", log_fn=self.log)
             except Exception:
                 pass
             reason = result.get("reason") or result.get("message") or "model warming up"
@@ -14224,6 +14224,8 @@ class TradeOpssAIApp:
             start_tradovate_md_feed(
                 self._tradovate_md_token,
                 log_fn=lambda m: self.root.after(0, lambda msg=m: self.log(msg)))
+            # Publisher runs off this feed now — nudge it once bars arrive
+            self.root.after(5000, self._ensure_ml_direction_publisher_running)
         except Exception as exc:
             self.log(f"⚠ Tradovate data feed not started: {exc}", "WARN")
 
@@ -14571,12 +14573,12 @@ class TradeOpssAIApp:
                 if direction not in ("buy", "sell"):
                     return
 
-                def _apply():
-                    for row_data in list(getattr(self, "_active_trade_rows", []) or []):
-                        firm = (row_data.get("eval") or {}).get("Prop Firm", "")
-                        if self._broker_login_family(firm) in families:
-                            self._style_direction_buttons(row_data, direction)
-                    self.log(f"🧠 Current MT5 ML bias: {direction.upper()}")
+                    def _apply():
+                        for row_data in list(getattr(self, "_active_trade_rows", []) or []):
+                            firm = (row_data.get("eval") or {}).get("Prop Firm", "")
+                            if self._broker_login_family(firm) in families:
+                                self._style_direction_buttons(row_data, direction)
+                        self.log(f"🧠 Current ML bias (Tradovate NQ): {direction.upper()}")
 
                 self.root.after(0, _apply)
             finally:
@@ -16281,49 +16283,35 @@ class TradeOpssAIApp:
         return self._direct_mt5_ml_direction(mt5_symbol)
 
     def _direct_mt5_ml_direction(self, mt5_symbol):
-        """Live MT5 ensemble direction, falling back to the published signal.
+        """Live ML direction from Tradovate NQ bars — the only signal source.
 
-        Never blocks the entry: a cold local model kicks off async training
-        and the last server-published signal (≤5 min old) is used instead.
+        No MT5 data, no published-signal fallback: if the feed or model is
+        not ready, there is no signal and no entry this cycle.
         """
-        if not self._ensure_mt5_for_signals():
-            fallback = self._broadcast_direction()
-            if fallback:
-                self._set_signal_context(fallback, source="broadcast")
-                self.log(f"📡 Using published ML signal ({fallback.upper()}) — MT5 not connected")
-                return fallback
-            self.log("⛔ ML direction unavailable — connect MT5 before trade entry", "WARN")
+        if not self._tradovate_feed_bars_ready():
+            self._start_tradovate_md_feed()
+            self.log("⛔ Tradovate data feed warming — no signal, entry skipped", "WARN")
             return None
         try:
             from trader_companion.signals.ml_direction import (
                 ensure_trained_async, get_ml_direction,
             )
-            ml_ctx = self._ml_broker_mt5_kwargs()
-            if mt5_symbol:
-                ml_ctx["mt5_symbol"] = mt5_symbol
-            result = get_ml_direction(symbol="ustech", **ml_ctx)
+            result = get_ml_direction(symbol="ustech")
         except Exception as exc:
             self.log(f"⚠ ML direction scoring failed: {exc}", "WARN")
-            ml_ctx = None
-            result = {}
+            return None
         if not result.get("ready"):
-            if ml_ctx is not None:
-                try:
-                    ensure_trained_async("ustech", log_fn=self.log, **ml_ctx)
-                except Exception:
-                    pass
-            fallback = self._broadcast_direction()
-            if fallback:
-                self._set_signal_context(fallback, source="broadcast")
-                self.log(f"📡 Local model warming — using published ML signal "
-                         f"({fallback.upper()}), no wait")
-                return fallback
-            self.log("⛔ No ML direction available (local cold, no fresh broadcast)", "WARN")
+            try:
+                ensure_trained_async("ustech", log_fn=self.log)
+            except Exception:
+                pass
+            reason = result.get("reason") or "model warming"
+            self.log(f"⛔ ML not ready on Tradovate data ({reason}) — no signal yet", "WARN")
             return None
         direction = str(result.get("direction") or "").lower()
         if direction in ("buy", "sell"):
             self._set_signal_context(direction, source="local_ml", result=result)
-            self.log(f"🧠 MT5 ML direction: {direction.upper()} "
+            self.log(f"🧠 Tradovate ML direction: {direction.upper()} "
                      f"(confidence {result.get('confidence')})")
             return direction
         return None

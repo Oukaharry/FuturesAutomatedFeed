@@ -688,15 +688,20 @@ def _fetch_rates(
     mt5_server: Optional[str] = None,
     mt5_broker: Optional[str] = None,
 ):
-    if not MT5_AVAILABLE:
+    """Bars come exclusively from the Tradovate NQ feed — the single signal source.
+
+    MT5 is never consulted: the model trains and scores on the exact contract
+    the system trades. Returns None until the feed has streamed bars.
+    """
+    try:
+        from trader_companion.tradovate_md_feed import get_tradovate_md_feed
+        feed = get_tradovate_md_feed()
+    except Exception:
         return None
-    sym = _resolve_symbol(
-        symbol,
-        mt5_symbol=mt5_symbol,
-        mt5_server=mt5_server,
-        mt5_broker=mt5_broker,
-    )
-    return mt5.copy_rates_from_pos(sym, _mt5_timeframe(timeframe_minutes), 0, count)
+    if feed is None:
+        return None
+    tf = int(timeframe_minutes) if int(timeframe_minutes) in (1, 5) else 5
+    return feed.get_rates_minutes(tf, count)
 
 
 def fetch_recent_ticks(
@@ -707,23 +712,7 @@ def fetch_recent_ticks(
     mt5_server: Optional[str] = None,
     mt5_broker: Optional[str] = None,
 ):
-    """Live tick tape from MT5 — used to augment each 60s prediction."""
-    if not MT5_AVAILABLE:
-        return None
-    sym = _resolve_symbol(
-        symbol,
-        mt5_symbol=mt5_symbol,
-        mt5_server=mt5_server,
-        mt5_broker=mt5_broker,
-    )
-    utc_from = datetime.fromtimestamp(time.time() - lookback_sec, tz=timezone.utc)
-    try:
-        for flag in (mt5.COPY_TICKS_ALL, mt5.COPY_TICKS_INFO):
-            ticks = mt5.copy_ticks_from(sym, utc_from, MAX_TICK_SAMPLE, flag)
-            if ticks is not None and len(ticks) >= 20:
-                return ticks
-    except Exception:
-        pass
+    """Disabled: MT5 ticks would mix a CFD tape into an NQ-trained model."""
     return None
 
 

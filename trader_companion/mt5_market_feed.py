@@ -227,16 +227,13 @@ class MT5MarketFeed:
     def inject_rates(self, symbol: str, rates, source: str = "external") -> None:
         """Store externally sourced M1 bars (e.g. Tradovate NQ) in the cache.
 
-        Never overwrites bars the MT5 poller itself produced — a live MT5
-        terminal remains the preferred source for its own symbols.
+        Tradovate is the signal authority for its aliases — injected bars
+        overwrite MT5 ones, and the MT5 poller leaves them alone.
         """
         sym = str(symbol or "").strip()
         if not sym or rates is None or len(rates) == 0:
             return
         with self._data_lock:
-            entry = self._cache.get(sym)
-            if entry and entry.get("source", "mt5") == "mt5":
-                return
             last = rates[-1]
             self._cache[sym] = {
                 "rates": rates,
@@ -357,6 +354,9 @@ class MT5MarketFeed:
             }
             updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             with self._data_lock:
+                existing = self._cache.get(sym)
+                if existing and existing.get("source") == "tradovate":
+                    continue  # signal symbols belong to the Tradovate feed
                 self._cache[sym] = {"rates": rates, "source": "mt5",
                                     "updated_at": updated_at, "last_bar": last_bar}
 
