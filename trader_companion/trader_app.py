@@ -14318,6 +14318,7 @@ class TradeOpssAIApp:
                 self._update_direction_mode_banner()
             self.root.after(0, _waiting)
             return
+        self._log_last_candle()
         try:
             from trader_companion.signals.ml_direction import (
                 ensure_trained_async, get_ml_direction,
@@ -14345,6 +14346,35 @@ class TradeOpssAIApp:
                 ct = f" [changed from {p.upper()}]" if p else ""
                 self.log(f"{emoji} Tradovate ML Signal: {d.upper()} (conf={conf}){ct}")
         self.root.after(0, _apply)
+
+    def _log_last_candle(self):
+        """Proof of life: newest Tradovate M1 (every 60s) and M5 (every 300s) bars."""
+        try:
+            from trader_companion.tradovate_md_feed import get_tradovate_md_feed
+            feed = get_tradovate_md_feed()
+            if not feed:
+                return
+            logged = getattr(self, "_last_candle_logged", None)
+            if logged is None:
+                logged = self._last_candle_logged = {}
+            for tf in (1, 5):
+                rates = feed.get_rates_minutes(tf, 1)
+                if rates is None or len(rates) == 0:
+                    continue
+                bar = rates[-1]
+                t = int(bar["time"])
+                if logged.get(tf) == t:
+                    continue  # no new bar closed on this timeframe yet
+                logged[tf] = t
+                stamp = (datetime.fromtimestamp(t, tz=timezone.utc)
+                         + timedelta(hours=3)).strftime("%H:%M EAT")
+                o, c = float(bar["open"]), float(bar["close"])
+                arrow = "▲" if c >= o else "▼"
+                self.root.after(0, lambda m=(
+                    f"🕯 NQ M{tf} {stamp}  O {o:,.2f} → C {c:,.2f} {arrow}"):
+                    self.log(m))
+        except Exception:
+            pass
 
     # The signal is live, so refetch often; the publisher scores every 5 min.
     _DIRECTION_FETCH_TTL_SEC = 30
