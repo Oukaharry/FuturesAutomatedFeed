@@ -187,10 +187,27 @@ class TradovateMDFeed:
     def _send(self, endpoint: str, body=None, query: str = "") -> int:
         rid = self._next_id()
         frame = f"{endpoint}\n{rid}\n{query}\n"
-        if body is not None:
+        if isinstance(body, str):
+            frame += body  # raw body (authorize token)
+        elif body is not None:
             frame += json.dumps(body)
         self._ws.send(frame)
         return rid
+
+    def _md_access_token(self, token: str, env: str) -> str:
+        """The md host rejects web-session tokens; renew returns the md one."""
+        try:
+            import requests
+            host = "live" if env == "live" else "demo"
+            r = requests.get(
+                f"https://{host}.tradovateapi.com/v1/auth/renewaccesstoken",
+                headers={"Authorization": f"Bearer {token}"}, timeout=20)
+            md = (r.json() or {}).get("mdAccessToken")
+            if md:
+                return md
+        except Exception as exc:
+            self.last_error = f"renewaccesstoken: {exc}"
+        return token
 
     def _run(self) -> None:
         import websocket
@@ -205,12 +222,13 @@ class TradovateMDFeed:
                 time.sleep(15)
                 continue
             token, env = creds[0], (creds[1] or "demo").lower()
+            md_token = self._md_access_token(token, env)
             host = "md.tradovateapi.com" if env == "live" else "md-demo.tradovateapi.com"
             symbol = self._symbol or front_quarter_symbol("NQ")
             try:
                 self._ws = websocket.create_connection(
                     f"wss://{host}/v1/websocket", timeout=30)
-                self._session(token, symbol)
+                self._session(md_token, symbol)
                 backoff = 5  # clean session → reset backoff
             except Exception as exc:
                 self.last_error = str(exc)
@@ -245,7 +263,8 @@ class TradovateMDFeed:
 
             kind, payload = raw[0], raw[1:]
             if kind == "o":
-                auth_id = self._send("authorize", query=token)
+                # Token rides in the frame body per the WS API spec
+                auth_id = self._send("authorize", body=token)
             elif kind == "h":
                 self._ws.send("[]")
                 last_heartbeat = time.time()
