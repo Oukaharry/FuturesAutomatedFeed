@@ -832,7 +832,7 @@ def wait_for_model(symbol: str = "ustech", timeframe_minutes: int = 5,
     return get_cached_bundle(symbol, timeframe_minutes)
 
 
-TRAIN_RETRY_ATTEMPTS = 3
+TRAIN_RETRY_ATTEMPTS = 10
 TRAIN_RETRY_WAIT_SEC = 20
 
 
@@ -852,7 +852,8 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
         mt5_symbol=mt5_symbol, mt5_server=mt5_server, mt5_broker=mt5_broker)
     if get_cached_bundle(model_key, timeframe_minutes):
         return True
-    if not (SKLEARN_AVAILABLE and MT5_AVAILABLE):
+    # Data comes from the Tradovate feed — MT5 is not required to train
+    if not SKLEARN_AVAILABLE:
         return False
     key = (model_key, timeframe_minutes)
     with _training_lock:
@@ -882,10 +883,10 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
                 reason = str(bundle.get("reason", ""))
                 if log_fn:
                     log_fn(f"🧠 ML training attempt {attempt} failed: {reason} "
-                           f"(MT5 returned {got} bars)")
+                           f"(feed returned {got} bars)")
                 if "insufficient" not in reason.lower():
                     return  # non-recoverable (e.g. sklearn missing)
-                # Bars likely still downloading from the broker — wait and retry
+                # Feed history still streaming in — wait and retry
                 time.sleep(TRAIN_RETRY_WAIT_SEC)
         except Exception as e:
             if log_fn:

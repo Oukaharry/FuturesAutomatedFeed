@@ -353,7 +353,11 @@ class TradovateMDFeed:
             if len(store) > limit * 1.2:
                 for t in sorted(store)[:-limit]:
                     del store[t]
+            depth = len(store)
             m1 = dict(self._bars_by_tf.get(1) or {}) if tf == 1 else None
+        if tf == 5 and depth >= 500 and not getattr(self, "_m5_depth_logged", False):
+            self._m5_depth_logged = True
+            self._log(f"📚 Tradovate M5 history loaded ({depth} bars) — ML training can start")
         if m1 is None:
             return
         rates = bars_to_mt5_rates(m1, self._bar_count)
