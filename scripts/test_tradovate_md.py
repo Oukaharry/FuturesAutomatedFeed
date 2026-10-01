@@ -25,7 +25,7 @@ def fetch_creds():
             d = requests.post(
                 "https://www.tradeopss.com/api/client/data",
                 json={"email": EMAIL},
-                headers={"X-Companion-Version": "1.12.5"}, timeout=40).json()
+                headers={"X-Companion-Version": "1.12.6"}, timeout=40).json()
             break
         except Exception as exc:
             print(f"dashboard retry {attempt + 1}: {exc.__class__.__name__}")
