@@ -1768,6 +1768,11 @@ def _trading_session_over_eat():
     return _kenya_now().hour >= _TRADING_SESSION_END_HOUR
 
 
+def _purchase_alerts_held_for_weekend():
+    """Sat/Sun EAT have no trading session. Leave the purchase queue until Monday."""
+    return _kenya_now().weekday() >= 5
+
+
 def _hedge_cell_indicates_active_trade(raw):
     """Unsettled companion markers: weekday queued or $0.00 fill marker."""
     if not raw or str(raw).strip() in ('', '-', '—', '–'):
@@ -1930,6 +1935,10 @@ def _flush_batched_breach_alerts(client_id, evaluations):
 
     pending = get_breach_alert_pending(client_id)
     if not pending:
+        return 0
+    if _purchase_alerts_held_for_weekend():
+        app.logger.info(
+            f"🚨 {client_id}: holding {len(pending)} purchase alert(s) until Monday — weekend")
         return 0
 
     sent_batches = get_breach_alert_sent_batches(client_id)
