@@ -11,6 +11,13 @@ from dashboard.watermark_service import save_daily_profit
 
 stop_event = threading.Event()
 
+# Quality-bot posts to traders-hub are paused. The scan still saves the
+# super-admin report. Set QUALITY_SLACK_PAUSED=0 to resume Slack.
+QUALITY_SLACK_PAUSED = (
+    str(os.environ.get('QUALITY_SLACK_PAUSED', '1')).strip().lower()
+    in ('1', 'true', 'yes')
+)
+
 # File-based tracking of which jobs already ran today.
 # In-memory dicts get wiped when Flask reloader restarts the module, causing
 # duplicate runs.  A tiny JSON file survives reloads within the same day.
@@ -65,9 +72,13 @@ def run_scheduler():
                 _mark_ran('quality_scan', today)
                 time.sleep(60)
 
-            # 23:30 UTC (02:30 EAT) — Post daily summary to Slack (fresh scan runs again in post_slack_summary)
+            # 23:30 UTC (02:30 EAT) — Refresh the quality scan. Slack is paused
+            # unless QUALITY_SLACK_PAUSED=0 (see post_slack_summary).
             if now.hour == 23 and now.minute == 30 and ran.get('slack_summary') != today:
-                logging.info("Posting daily quality summary to Slack (02:30 EAT)...")
+                if QUALITY_SLACK_PAUSED:
+                    logging.info("Quality Slack summary paused (02:30 EAT) — refreshing scan only...")
+                else:
+                    logging.info("Posting daily quality summary to Slack (02:30 EAT)...")
                 post_slack_summary()
                 _mark_ran('slack_summary', today)
                 time.sleep(60)
@@ -567,9 +578,18 @@ def _build_daily_summary_text():
 
 
 def post_slack_summary():
-    """Build and post the daily quality summary to Slack."""
+    """Refresh the quality scan. Slack to traders-hub stays off while paused."""
     try:
         run_scheduled_quality_scan(label='pre_slack')
+        if QUALITY_SLACK_PAUSED:
+            logging.info(
+                "Quality Slack summary paused — scan saved for super admin, not posted to traders-hub.")
+            try:
+                from dashboard.app import record_team_leaderboard_for_date, _summary_tracker_display_date_str
+                record_team_leaderboard_for_date(_summary_tracker_display_date_str())
+            except Exception as lb_err:
+                logging.warning('Team leaderboard record while Slack paused: %s', lb_err)
+            return
         text = _build_daily_summary_text()
         ok = send_slack_message(text)
         if ok:
