@@ -1774,13 +1774,18 @@ def _purchase_alerts_held_for_weekend():
 
 
 def _hedge_cell_indicates_active_trade(raw):
-    """Unsettled companion markers: weekday queued or $0.00 fill marker."""
+    """True only for an open fill ($0.00).
+
+    A weekday name is the next queued session, which every active book has.
+    Treating it as a live trade held the whole firm's purchase alert on every
+    push, so the batch never reached the admin channel.
+    """
     if not raw or str(raw).strip() in ('', '-', '—', '–'):
         return False
     if _cell_is_payout_marker(raw):
         return False
     if _weekday_abbrs_in_text(raw):
-        return True
+        return False
     if _hedge_cell_currency_only(raw):
         try:
             s = str(raw).replace('$', '').replace(',', '').strip()
@@ -1800,6 +1805,7 @@ def _eval_row_terminal_for_breach_batch(ev):
     )
     funded_done = (
         not funded
+        or _status_is_pass_or_fail(funded)
         or is_funded_phase_ended(funded)
         or any(kw in funded for kw in _BREACH_ROW_INACTIVE_KEYWORDS)
     )
