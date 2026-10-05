@@ -65,6 +65,16 @@ def run_scheduler():
                 _mark_ran('watermark', today)
                 time.sleep(60)
 
+            # 17:00 UTC (20:00 EAT) — Release purchase alerts held during the session.
+            # A push after 20:00 is what used to do this. Desks that shut the
+            # companion down before then left the queue held overnight, and the
+            # next morning's day placeholder held it again.
+            if now.hour == 17 and now.minute == 0 and ran.get('purchase_alerts') != today:
+                logging.info("Flushing queued purchase alerts (20:00 EAT)...")
+                flush_queued_purchase_alerts()
+                _mark_ran('purchase_alerts', today)
+                time.sleep(60)
+
             # 23:10 UTC (02:10 EAT) — Quality scan before daily Slack summary (~20 min buffer)
             if now.hour == 23 and now.minute == 10 and ran.get('quality_scan') != today:
                 logging.info("Running scheduled quality scan (02:10 EAT)...")
@@ -575,6 +585,21 @@ def _build_daily_summary_text():
         lines.append("")
 
     return "\n".join(lines)
+
+
+def flush_queued_purchase_alerts():
+    """Send purchase alerts still queued once the EAT session is over."""
+    from dashboard.app import _flush_batched_breach_alerts
+    from dashboard.database import get_client_data, list_pending_breach_alert_clients
+
+    clients = list_pending_breach_alert_clients()
+    logging.info("Session-end purchase alert flush: %s client queue(s)", len(clients))
+    for client_id in clients:
+        try:
+            data = get_client_data(client_id) or {}
+            _flush_batched_breach_alerts(client_id, data.get('evaluations') or [])
+        except Exception as exc:
+            logging.error("Purchase alert flush failed for %s: %s", client_id, exc)
 
 
 def post_slack_summary():

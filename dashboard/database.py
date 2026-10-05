@@ -2051,6 +2051,30 @@ def _breach_alert_setting_key(kind: str, client_id: str) -> str:
     return f'breach_alerts_{kind}:{norm}'
 
 
+def list_pending_breach_alert_clients() -> list:
+    """Client ids that still have a non-empty purchase-alert queue."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT key, value FROM system_settings WHERE key LIKE ?",
+            ('breach_alerts_pending:%',),
+        )
+        rows = cursor.fetchall()
+    prefix = 'breach_alerts_pending:'
+    clients = []
+    for row in rows:
+        key = str(row['key'] or '')
+        if not key.startswith(prefix):
+            continue
+        try:
+            data = json.loads(row['value'] or '[]')
+        except (TypeError, ValueError):
+            continue
+        if isinstance(data, list) and data:
+            clients.append(key[len(prefix):])
+    return clients
+
+
 def get_breach_alert_pending(client_id: str) -> list:
     """Queued breach payloads awaiting batched Slack send for one client."""
     raw = get_setting(_breach_alert_setting_key('pending', client_id))
