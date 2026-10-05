@@ -1531,7 +1531,7 @@ def normalize_evaluations(evaluations):
     for ev in evaluations:
         if 'Account Size' in ev and ev['Account Size']:
             ev['Account Size'] = normalize_account_size(ev['Account Size'])
-    
+    _apply_server_eval_guards(evaluations)
     return evaluations
 
 
@@ -2270,6 +2270,78 @@ def _existing_eval_for_account(existing_evals, account):
     return None
 
 
+# Lucid farming blows at the $48,000 hard stop. The companion's post-FT2
+# check uses the $50,100 funded ceiling, which marks a healthy farming
+# balance as Fail. The server keeps the farming floor.
+_LUCID_FARMING_FLOOR = 48000.0
+
+
+def _firm_is_lucid(ev):
+    compact = re.sub(r'[^a-z0-9]', '', str((ev or {}).get('Prop Firm') or '').lower())
+    return 'lucid' in compact
+
+
+def _row_is_farming(ev):
+    """True once the row has entered farming (section label or day grid)."""
+    if not isinstance(ev, dict):
+        return False
+    for key, val in ev.items():
+        if isinstance(key, str) and not key.startswith('_') and 'FARM SECTION' in str(val or '').upper():
+            return True
+    for i in range(1, 61):
+        for prefix in ('Prop Day', 'Hedge Day'):
+            raw = str(ev.get(f'{prefix} {i}') or '').strip()
+            if raw and raw not in ('-', '—', '–'):
+                return True
+    return False
+
+
+def _balance_from_fail_note(ev, field):
+    note = str((ev or {}).get(f'_derived_{field}') or '')
+    match = re.search(r'balance\s+\$?([\d,]+(?:\.\d+)?)', note, re.I)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(',', ''))
+    except ValueError:
+        return None
+
+
+def _lucid_farming_known_balance(ev, existing_ev, matched):
+    """Balance that accompanied this Fail, or the last one stored on the row."""
+    for src in (ev, existing_ev):
+        if not isinstance(src, dict):
+            continue
+        for field in ('Status', 'Status P1'):
+            noted = _balance_from_fail_note(src, field)
+            if noted is not None:
+                return noted
+    return _resolve_last_known_balance(
+        (matched or [None])[0] if matched else None, ev, existing_ev)
+
+
+def _lucid_farming_fail_disproved(ev, existing_ev, matched):
+    """True when a Lucid farming Fail sits above the $48,000 floor."""
+    if not (_firm_is_lucid(ev) or _firm_is_lucid(existing_ev)):
+        return False
+    if not (_row_is_farming(ev) or _row_is_farming(existing_ev)):
+        return False
+    balance = _lucid_farming_known_balance(ev, existing_ev, matched)
+    return balance is not None and balance > _LUCID_FARMING_FLOOR
+
+
+def _reject_lucid_farming_fail(out, existing, field):
+    """Put a disproved farming Fail back to the pre-fail status."""
+    prior = str((existing or {}).get(field) or '').strip()
+    if prior and 'fail' not in prior.lower():
+        out[field] = prior
+    else:
+        out[field] = 'In Progress'
+    out.pop(f'_derived_{field}', None)
+    ended = 'Date Ended.1' if field == 'Status' else 'Date Ended'
+    out[ended] = ''
+
+
 def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_evals, client_id=None):
     """Block only *new* vanish-driven Fails that stored balance proves are wrong.
 
@@ -2322,6 +2394,15 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
                 ev_out['_last_broker_balance'] = round(reported, 2)
                 break
         for field in _incoming_fail_fields(ev_in):
+            if _lucid_farming_fail_disproved(ev_in, existing_ev, matched):
+                balance = _lucid_farming_known_balance(ev_in, existing_ev, matched)
+                app.logger.warning(
+                    f"🛡️ {client_id or '?'}: held {field} Fail for {accounts or '?'} — "
+                    f"Lucid farming balance {balance:,.2f} is above the ${_LUCID_FARMING_FLOOR:,.0f} floor")
+                for breach in matched:
+                    suppressed.add(id(breach))
+                _reject_lucid_farming_fail(ev_out, existing_ev, field)
+                continue
             if _status_already_terminal(existing_ev, field):
                 continue
             if not _fail_is_vanish_driven(ev_in, field, matched):
@@ -3029,6 +3110,83 @@ _FUNDED_HEDGE_FIELDS = (
     + [f'Hedge Result {i}' for i in range(8, 31)]
 )
 
+_PURE_WEEKDAY_LABELS = {
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+    'MON', 'TUE', 'TUES', 'WED', 'WEDS', 'THU', 'THURS', 'FRI', 'SAT', 'SUN',
+}
+_CHALLENGE_HEDGE_FIELDS = [f'Hedge Result {i}' for i in range(1, 6)]
+
+
+def _status_is_pass_or_fail(status):
+    """Date Ended is kept only for Pass or Fail."""
+    token = re.sub(r'[^a-z]', '', str(status or '').strip().lower())
+    return token.startswith('pass') or token.startswith('fail')
+
+
+def _cell_is_only_weekday(raw):
+    """True when the cell is a day name and nothing else."""
+    compact = re.sub(r'[^A-Za-z]', '', str(raw or '')).upper()
+    return compact in _PURE_WEEKDAY_LABELS
+
+
+def _keep_first_weekday_placeholder(ev, fields):
+    """Leave a single day placeholder. Later copies are the repeat-queue bug."""
+    manual = set(ev.get('_manual_push_fields') or [])
+    kept = False
+    for field in fields:
+        if not _cell_is_only_weekday(ev.get(field)):
+            continue
+        if not kept:
+            kept = True
+            continue
+        if field in manual:
+            continue
+        ev[field] = ''
+
+
+def _clear_date_ended_unless_pass_or_fail(ev):
+    manual = set(ev.get('_manual_push_fields') or [])
+    for status_field, ended_field in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
+        if ended_field in manual or _status_is_pass_or_fail(ev.get(status_field)):
+            continue
+        if str(ev.get(ended_field) or '').strip() not in ('', '-', '—', '–'):
+            ev[ended_field] = ''
+
+
+def _heal_stored_lucid_farming_fail(ev):
+    """Undo a Lucid farming Fail whose recorded balance never reached $48,000."""
+    if not _firm_is_lucid(ev) or not _row_is_farming(ev):
+        return
+    manual = set(ev.get('_manual_push_fields') or [])
+    for field in ('Status', 'Status P1'):
+        if field in manual or 'fail' not in str(ev.get(field) or '').lower():
+            continue
+        balance = _balance_from_fail_note(ev, field)
+        if balance is None:
+            balance = _positive_amount(ev.get('_last_broker_balance'))
+        if balance is None or balance <= _LUCID_FARMING_FLOOR:
+            continue
+        ev[field] = 'In Progress'
+        ev.pop(f'_derived_{field}', None)
+        ended = 'Date Ended.1' if field == 'Status' else 'Date Ended'
+        ev[ended] = ''
+
+
+def _apply_server_eval_guards(evaluations):
+    """Correct companion writes the dashboard should not keep.
+
+    Date Ended only survives a Pass or Fail. A row keeps one weekday
+    placeholder per phase. A Lucid farming Fail above $48,000 is put back
+    to In Progress.
+    """
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        _clear_date_ended_unless_pass_or_fail(ev)
+        _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
+        _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
+        _heal_stored_lucid_farming_fail(ev)
+
 
 def _cell_is_payout_marker(raw):
     """True when a funded/farming hedge cell is awaiting payout (companion marker)."""
@@ -3086,6 +3244,9 @@ def _resume_after_manual_payout_clear(evaluation):
             continue
         if _cell_is_payout_marker(evaluation.get(field)):
             continue
+        if any(_cell_is_only_weekday(evaluation.get(col)) for col in _FUNDED_HEDGE_FIELDS):
+            evaluation.pop(anchor, None)
+            return None
         next_field = _next_funded_hedge_field(evaluation)
         if not next_field:
             return None
@@ -7497,6 +7658,7 @@ def api_client_push():
     push_sheet_url = existing_data.get('sheet_url') or (existing_data.get('identity') or {}).get('sheet_url')
 
     # Recalculate Hedge Net / Hedge Net.1 before stats so formulas stay current
+    _apply_server_eval_guards(evaluations)
     evaluations = recalculate_hedge_nets(evaluations)
 
     if evaluations or mt5_deals or mt5_account:
@@ -15059,6 +15221,7 @@ def update_data():
                     )
 
                 # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
+                _apply_server_eval_guards(evaluations)
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
