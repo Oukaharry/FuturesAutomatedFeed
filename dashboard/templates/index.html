@@ -8239,6 +8239,25 @@
             
             const oldValue = currentData.evaluations[index][key];
             const row = currentData.evaluations[index];
+            // Eval Fail stamps Date Ended; funded Fail stamps Date Ended.1.
+            // A date already on the row, including one the trader typed, is left alone.
+            const failEndField = key === 'Status P1' ? 'Date Ended'
+                : (key === 'Status' ? 'Date Ended.1' : '');
+            if (failEndField && String(value || '').trim().toLowerCase().startsWith('fail')) {
+                const currentEnded = String(row[failEndField] || '').trim();
+                if (!currentEnded || currentEnded === '-' || currentEnded === '—' || currentEnded === '–') {
+                    const today = new Intl.DateTimeFormat('en-CA', {
+                        timeZone: 'Africa/Nairobi',
+                        year: 'numeric', month: '2-digit', day: '2-digit',
+                    }).format(new Date());
+                    row[failEndField] = today;
+                    _changedFields[index].add(failEndField);
+                    if (_dateCellRerenderTimer) clearTimeout(_dateCellRerenderTimer);
+                    _dateCellRerenderTimer = setTimeout(() => {
+                        try { renderEvaluationsTable(false); } catch (e) { console.error('Date rerender error:', e); }
+                    }, 50);
+                }
+            }
             if (key === 'Prop Firm' && shouldDefaultTradeifyToAddon(row)) {
                 value = normalizeTradeifyPropFirmDefault(value);
             }

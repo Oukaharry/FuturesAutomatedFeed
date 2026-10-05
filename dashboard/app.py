@@ -2721,7 +2721,9 @@ def merge_dashboard_update_evaluations(
         cleared = set(merged.get('_cleared_fields') or existing_ev.get('_cleared_fields') or [])
         manual = set(merged.get('_manual_push_fields') or existing_ev.get('_manual_push_fields') or [])
         for key in explicitly_changed:
-            if key not in push_sourced_keys:
+            # Date Ended is typed on the sheet. Lock it or the pass/fail
+            # guard below throws the trader's date away on the next save.
+            if key not in push_sourced_keys and key not in ('Date Ended', 'Date Ended.1'):
                 continue
             if _eval_has_non_blank_value(merged.get(key)):
                 cleared.discard(key)
@@ -3173,6 +3175,11 @@ def _keep_first_weekday_placeholder(ev, fields):
         ev[field] = ''
 
 
+def _status_is_fail(status):
+    token = re.sub(r'[^a-z]', '', str(status or '').strip().lower())
+    return token.startswith('fail')
+
+
 def _clear_date_ended_unless_pass_or_fail(ev):
     manual = set(ev.get('_manual_push_fields') or [])
     for status_field, ended_field in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
@@ -3180,6 +3187,28 @@ def _clear_date_ended_unless_pass_or_fail(ev):
             continue
         if str(ev.get(ended_field) or '').strip() not in ('', '-', '—', '–'):
             ev[ended_field] = ''
+
+
+def _date_ended_blank(val):
+    return str(val or '').strip() in ('', '-', '—', '–')
+
+
+def _stamp_fail_end_date(ev, status_field, ended_field):
+    """Fill Date Ended with today when this phase is Fail and the cell is empty.
+
+    A date already stored, including one the trader typed, is left as it is.
+    """
+    manual = set(ev.get('_manual_push_fields') or [])
+    if ended_field in manual and not _date_ended_blank(ev.get(ended_field)):
+        return
+    status = ev.get(status_field)
+    if status_field == 'Status' and not str(status or '').strip():
+        status = ev.get('Status Funded')
+    if not _status_is_fail(status):
+        return
+    if not _date_ended_blank(ev.get(ended_field)):
+        return
+    ev[ended_field] = _kenya_today_str()
 
 
 def _heal_stored_lucid_farming_fail(ev):
@@ -3204,14 +3233,17 @@ def _heal_stored_lucid_farming_fail(ev):
 def _apply_server_eval_guards(evaluations):
     """Correct companion writes the dashboard should not keep.
 
-    Date Ended only survives a Pass or Fail. A row keeps one weekday
-    placeholder per phase. A Lucid farming Fail above $48,000 is put back
-    to In Progress.
+    Date Ended only survives a Pass or Fail, except a date typed by hand.
+    An eval or funded Fail with an empty Date Ended is filled with today (Kenya).
+    A row keeps one weekday placeholder per phase. A Lucid farming Fail
+    above $48,000 is put back to In Progress.
     """
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
         _clear_date_ended_unless_pass_or_fail(ev)
+        _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
+        _stamp_fail_end_date(ev, 'Status', 'Date Ended.1')
         _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
         _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
         _heal_stored_lucid_farming_fail(ev)
