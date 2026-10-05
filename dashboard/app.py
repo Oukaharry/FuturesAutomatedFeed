@@ -1773,26 +1773,26 @@ def _purchase_alerts_held_for_weekend():
     return _kenya_now().weekday() >= 5
 
 
-def _hedge_cell_indicates_active_trade(raw):
-    """True only for an open fill ($0.00).
+# A live balance this far from the last settled balance is an open trade.
+# Fees and rounding sit under a dollar.
+_OPEN_BALANCE_GAP = 1.0
 
-    A weekday name is the next queued session, which every active book has.
-    Treating it as a live trade held the whole firm's purchase alert on every
-    push, so the batch never reached the admin channel.
+
+def _balance_shows_open_trade(ev):
+    """True when the broker's current balance has left the last settled one.
+
+    The companion stores both on the row (`_broker_balance` is live net
+    liquidation, `_last_recorded_balance` is the last settled cash balance).
+    A sheet with neither — or only one of them — is flat. A leftover $0.00
+    hedge cell is not a position.
     """
-    if not raw or str(raw).strip() in ('', '-', '—', '–'):
+    if not isinstance(ev, dict):
         return False
-    if _cell_is_payout_marker(raw):
+    now = _positive_amount(ev.get('_broker_balance'))
+    recorded = _positive_amount(ev.get('_last_recorded_balance'))
+    if now is None or recorded is None:
         return False
-    if _weekday_abbrs_in_text(raw):
-        return False
-    if _hedge_cell_currency_only(raw):
-        try:
-            s = str(raw).replace('$', '').replace(',', '').strip()
-            return abs(float(s)) < 1e-9
-        except (ValueError, TypeError):
-            return False
-    return False
+    return abs(now - recorded) >= _OPEN_BALANCE_GAP
 
 
 def _eval_row_terminal_for_breach_batch(ev):
@@ -1813,16 +1813,30 @@ def _eval_row_terminal_for_breach_batch(ev):
 
 
 def _eval_row_has_active_trade(ev):
-    """Challenge/funded trades hold alert batches; farming days never do."""
+    """Hold a purchase batch only while this row's balance is still moving."""
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
-    for i in range(1, 6):
-        if _hedge_cell_indicates_active_trade(ev.get(f'Hedge Result {i}')):
-            return True
-    for col in FUNDED_HEDGE_COLS:
-        if _hedge_cell_indicates_active_trade(ev.get(col)):
-            return True
-    return False
+    return _balance_shows_open_trade(ev)
+
+
+def _breach_status_needs_purchase(breach, evaluations):
+    """A purchase replaces a failed account. Pass, Completed and Hit SL do not.
+
+    A Tradovate login disappears when an account passes or finishes, and that
+    vanish used to ask the admin to buy a replacement. Only a Fail on the
+    phase that breached is a purchase.
+    """
+    if not isinstance(breach, dict):
+        return False
+    ev = _existing_eval_for_account(evaluations, breach.get('account'))
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    phase = str(breach.get('phase') or '').strip().lower()
+    if phase.startswith('fund'):
+        status = ev.get('Status') or ev.get('Status Funded') or ''
+    else:
+        status = ev.get('Status P1') or ''
+    return is_eval_phase_failed(status)
 
 
 def _firm_has_active_trades(evaluations, firm_family):
@@ -1956,6 +1970,15 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     still_pending = []
     announced = 0
     for firm_key, firm_breaches in by_firm.items():
+        actionable = [b for b in firm_breaches if _breach_status_needs_purchase(b, evaluations)]
+        dropped = len(firm_breaches) - len(actionable)
+        if dropped:
+            app.logger.info(
+                f"🚨 {client_id}: dropped {dropped} {firm_key} purchase alert(s) — "
+                f"row is not Fail")
+        if not actionable:
+            continue
+        firm_breaches = actionable
         if _firm_has_active_trades(evaluations, firm_key) and not session_over:
             still_pending.extend(firm_breaches)
             app.logger.info(

@@ -5295,6 +5295,50 @@ class TradeOpssAIApp:
                 continue
         return losses
 
+    def _stamp_balance_snapshots(self, evaluations):
+        """Write live balance and the last settled balance onto each row.
+
+        The dashboard holds a purchase alert only while those two differ.
+        A row with no pair is flat, so an empty sheet cannot block the alert.
+        """
+        try:
+            history = self._trade_outcome_history() or {}
+        except Exception:
+            return
+        if not history:
+            return
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            account = self._primary_trade_account(ev)
+            entry = history.get(str(account or "").strip().lower())
+            if not entry:
+                continue
+            try:
+                now = float(entry.get("balance") or 0)
+            except (TypeError, ValueError):
+                now = 0.0
+            recorded = None
+            for day in reversed(entry.get("daily_pnl") or []):
+                try:
+                    bal = float(day.get("balance_eod") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if bal > 0:
+                    recorded = bal
+                    break
+            if recorded is None:
+                try:
+                    sod = float(entry.get("balance_sod") or 0)
+                except (TypeError, ValueError):
+                    sod = 0.0
+                if sod > 0:
+                    recorded = sod
+            if now > 0:
+                ev["_broker_balance"] = round(now, 2)
+            if recorded is not None:
+                ev["_last_recorded_balance"] = round(float(recorded), 2)
+
     def _apply_outcome_corrections(self, force_history=False):
         """Re-home pending placeholders once their trade has resolved.
 
@@ -5355,6 +5399,7 @@ class TradeOpssAIApp:
             force_fields.extend(self._backfill_missing_end_dates(evaluations))
             self._release_held_breach_alerts(evaluations)
 
+            self._stamp_balance_snapshots(evaluations)
             breaches = list(self._pending_breach_alerts)
             ledger_events = self._drain_ledger_events()
             if not force_fields and not breaches and not ledger_events:
