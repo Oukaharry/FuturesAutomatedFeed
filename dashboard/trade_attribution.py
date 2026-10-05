@@ -208,6 +208,13 @@ def post_trade_attribution_report():
     """Build the report from the ledger and post it to Slack."""
     import logging
     try:
+        from dashboard.scheduler import QUALITY_SLACK_PAUSED
+        if QUALITY_SLACK_PAUSED:
+            logging.info("Trade attribution report suppressed — quality bot is paused.")
+            return False
+    except Exception:
+        pass
+    try:
         from dashboard.database import get_trade_ledger_rows
         rows = get_trade_ledger_rows(days=30)
     except Exception as exc:

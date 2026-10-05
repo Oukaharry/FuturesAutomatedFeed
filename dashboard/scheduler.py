@@ -11,8 +11,10 @@ from dashboard.watermark_service import save_daily_profit
 
 stop_event = threading.Event()
 
-# Quality-bot posts to traders-hub are paused. The scan still saves the
-# super-admin report. Set QUALITY_SLACK_PAUSED=0 to resume Slack.
+# The whole quality bot (daily quality summary + trade attribution report) is
+# paused: nothing it produces is posted to traders-hub. The quality scan still
+# runs and saves the super-admin report, and purchase/breach alerts are a
+# separate path that keeps working. Set QUALITY_SLACK_PAUSED=0 to resume Slack.
 QUALITY_SLACK_PAUSED = (
     str(os.environ.get('QUALITY_SLACK_PAUSED', '1')).strip().lower()
     in ('1', 'true', 'yes')
@@ -100,14 +102,18 @@ def run_scheduler():
                 _mark_ran('db_cleanup', today)
                 time.sleep(60)
 
-            # 23:45 UTC (02:45 EAT) — Trade ledger attribution report
+            # 23:45 UTC (02:45 EAT) — Trade ledger attribution report.
+            # Part of the quality bot, so it stays off while the bot is paused.
             if now.hour == 23 and now.minute == 45 and ran.get('trade_attribution') != today:
-                logging.info("Posting trade attribution report to Slack (02:45 EAT)...")
-                try:
-                    from dashboard.trade_attribution import post_trade_attribution_report
-                    post_trade_attribution_report()
-                except Exception as exc:
-                    logging.error(f"Trade attribution job failed: {exc}")
+                if QUALITY_SLACK_PAUSED:
+                    logging.info("Trade attribution report paused (quality bot off) — skipping Slack post.")
+                else:
+                    logging.info("Posting trade attribution report to Slack (02:45 EAT)...")
+                    try:
+                        from dashboard.trade_attribution import post_trade_attribution_report
+                        post_trade_attribution_report()
+                    except Exception as exc:
+                        logging.error(f"Trade attribution job failed: {exc}")
                 _mark_ran('trade_attribution', today)
                 time.sleep(60)
 
