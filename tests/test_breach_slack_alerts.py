@@ -69,9 +69,8 @@ def test_breach_alert_respects_pause():
 
 
 def test_alerts_pause_state_matches_the_ops_default():
-    # Deliberately paused on main until ops verifies the new pipeline in
-    # production (set BREACH_SLACK_PAUSED=0 to go live without a deploy).
-    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is True
+    # Live by default; set BREACH_SLACK_PAUSED=1 to pause without a deploy.
+    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is False
 
 
 def test_firm_short_names():
