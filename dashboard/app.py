@@ -1589,6 +1589,16 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             if key in base_manual_locked and _eval_has_non_blank_value(base_row.get(key)):
                 merged[key] = base_row.get(key)
                 continue
+            # Old companion still Fail-marks PAYOUT rows (vanish). Do not let
+            # force_fields turn that into a purchase; keep the stored status.
+            if (key in ('Status P1', 'Status', 'Status Funded')
+                    and _status_is_fail(incoming_row.get(key))
+                    and (_evaluation_has_payout_pending(base_row)
+                         or _evaluation_has_payout_pending(incoming_row)
+                         or _evaluation_has_payout_pending(merged))):
+                if key in base_row:
+                    merged[key] = base_row.get(key)
+                continue
             if key in incoming_row:
                 merged[key] = incoming_row[key]
             continue
@@ -1826,6 +1836,8 @@ def _eval_row_has_active_trade(ev):
     """Hold a purchase batch only while this row's balance is still moving."""
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
+    if _evaluation_has_payout_pending(ev):
+        return False
     return _balance_shows_open_trade(ev)
 
 
@@ -1846,7 +1858,11 @@ def _breach_alert_disposition(breach, evaluations):
     else:
         status = ev.get('Status P1') or ''
     if is_eval_phase_failed(status):
+        if _evaluation_has_payout_pending(ev):
+            return 'discard'
         return 'send'
+    if _evaluation_has_payout_pending(ev):
+        return 'discard'
     if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
         return 'discard'
     if 'delete' in str(status or '').lower():
@@ -2008,7 +2024,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         if discarded:
             app.logger.info(
                 f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
-                f"row is Pass/Completed, not a buy")
+                f"row is Pass/Completed/PAYOUT, not a buy")
         if hold and not session_over:
             still_pending.extend(sendable)
             still_pending.extend(hold)
@@ -2439,6 +2455,17 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
                 f"last known balance is above the firm floor")
             suppressed.add(id(breach))
 
+    for breach in breach_alerts:
+        if id(breach) in suppressed:
+            continue
+        account = breach.get('account')
+        if (_evaluation_has_payout_pending(_existing_eval_for_account(incoming_evals, account))
+                or _evaluation_has_payout_pending(_existing_eval_for_account(existing_evals, account))):
+            app.logger.info(
+                f"🛡️ {client_id or '?'}: dropped purchase alert for {account} — "
+                f"PAYOUT pending (account was not traded)")
+            suppressed.add(id(breach))
+
     sanitized_evals = []
     for ev_in in incoming_evals:
         if not isinstance(ev_in, dict):
@@ -2454,6 +2481,14 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
                 if existing_ev is not None:
                     break
         matched = _breaches_for_accounts(breach_alerts, accounts)
+        if (_evaluation_has_payout_pending(ev_in)
+                or _evaluation_has_payout_pending(existing_ev)):
+            for field in _incoming_fail_fields(ev_in):
+                _hold_fail_field_at_stored_value(ev_out, ev_in, existing_ev, field)
+            for breach in matched:
+                suppressed.add(id(breach))
+            sanitized_evals.append(ev_out)
+            continue
         # Breach alerts are the only place a prop-account balance reaches the
         # server, so keep the latest one on the row: it is the evidence the
         # next vanish alert (which reports 0.0) gets judged against.
@@ -3241,6 +3276,8 @@ def _stamp_fail_end_date(ev, status_field, ended_field):
     manual = set(ev.get('_manual_push_fields') or [])
     if ended_field in manual and not _date_ended_blank(ev.get(ended_field)):
         return
+    if _evaluation_has_payout_pending(ev):
+        return
     status = ev.get(status_field)
     if status_field == 'Status' and not str(status or '').strip():
         status = ev.get('Status Funded')
@@ -3258,6 +3295,8 @@ _DERIVED_FLOOR_FAIL_RE = re.compile(
 def _heal_hit_marker_after_floor_fail(ev):
     """If the companion already recorded a floor Fail, don't leave Hit TP/SL."""
     if not isinstance(ev, dict):
+        return
+    if _evaluation_has_payout_pending(ev):
         return
     manual = set(ev.get('_manual_push_fields') or [])
     for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
@@ -7663,7 +7702,13 @@ def api_client_push():
     breach_alerts = breach_alerts_sanitized if "evaluations" in data and data["evaluations"] else (data.get('breach_alerts') or [])
     if breach_alerts:
         try:
-            _queue_breach_alerts(client_id, breach_alerts)
+            breach_alerts = [
+                b for b in breach_alerts
+                if isinstance(b, dict) and not _evaluation_has_payout_pending(
+                    _existing_eval_for_account(evaluations, b.get('account')))
+            ]
+            if breach_alerts:
+                _queue_breach_alerts(client_id, breach_alerts)
         except Exception as exc:
             app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
 
