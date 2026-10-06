@@ -88,3 +88,4 @@ TradeopssAI_v1.11.15/
 
 # Local companion build executables
 *.exe
+trader_companion/breach_state.json

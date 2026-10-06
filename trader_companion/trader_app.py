@@ -1748,6 +1748,8 @@ class TradeOpssAIApp:
         self._farming_close_poll_active = False
         self._pending_breach_alerts = []   # Breaches the dashboard has not announced yet.
         self._breach_alerts_sent = set()
+        self._pre_trade_balances = {}      # account → balance a trade started from
+        self._load_breach_state()
         # Challenge breaches wait here (per firm family) until every challenge
         # account of that firm has closed, so admins get one "Purchase N" ping.
         self._held_challenge_breaches = {}
@@ -5402,11 +5404,11 @@ class TradeOpssAIApp:
             self._release_held_breach_alerts(evaluations)
 
             self._stamp_balance_snapshots(evaluations)
+            self._stamp_open_positions(evaluations)
             breaches = list(self._pending_breach_alerts)
             ledger_events = self._drain_ledger_events()
             if not force_fields and not breaches and not ledger_events:
                 return
-            self._pending_breach_alerts.clear()
             push_response = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json={
@@ -5424,6 +5426,8 @@ class TradeOpssAIApp:
             if push_response.status_code != 200:
                 self.log(f"⚠ Outcome correction push rejected ({push_response.status_code}): "
                          f"{push_response.text[:300]}", "WARN")
+                for ev_ledger in ledger_events:
+                    self._queue_ledger_event(ev_ledger)  # breaches stay pending too
                 return
             try:
                 push_result = push_response.json() or {}
@@ -5431,7 +5435,12 @@ class TradeOpssAIApp:
                 push_result = {}
             if push_result.get("status") not in (None, "success"):
                 self.log(f"⚠ Outcome correction push failed: {push_result}", "WARN")
+                for ev_ledger in ledger_events:
+                    self._queue_ledger_event(ev_ledger)
             else:
+                # Delivered: drop exactly what was sent (appends-after stay queued)
+                self._pending_breach_alerts = self._pending_breach_alerts[len(breaches):]
+                self._save_breach_state()
                 self.log(f"📤 Outcome correction persisted ({len(set(force_fields))} field(s))")
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
@@ -6411,6 +6420,7 @@ class TradeOpssAIApp:
         else:
             self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
                      f"below floor {float(floor):,.2f}", "ERROR")
+        self._save_breach_state()
 
     def _breach_hold_family(self, firm_name):
         """Grouping key for held challenge breaches (login family when known)."""
@@ -6421,6 +6431,95 @@ class TradeOpssAIApp:
         except Exception:
             pass
         return re.sub(r"[^a-z0-9]", "", str(firm_name or "").lower()) or "unknown"
+
+    # ── Breach state persistence (survives app restarts) ───────────────
+
+    def _breach_state_path(self):
+        return os.path.join(os.path.dirname(__file__), "breach_state.json")
+
+    def _load_breach_state(self):
+        try:
+            with open(self._breach_state_path(), "r") as f:
+                state = json.load(f) or {}
+        except Exception:
+            return
+        self._pending_breach_alerts = list(state.get("pending") or [])
+        self._breach_alerts_sent = set(state.get("sent_keys") or [])
+        self._held_challenge_breaches = dict(state.get("held_challenge") or {})
+        self._pre_trade_balances = dict(state.get("pre_trade_balances") or {})
+        if self._pending_breach_alerts or self._held_challenge_breaches:
+            held_n = sum(len(v) for v in self._held_challenge_breaches.values())
+            try:
+                self.log(f"🚨 Restored breach state: {len(self._pending_breach_alerts)} "
+                         f"pending, {held_n} held challenge alert(s)")
+            except Exception:
+                pass
+
+    def _save_breach_state(self):
+        try:
+            state = {
+                "pending": list(getattr(self, "_pending_breach_alerts", []) or []),
+                "sent_keys": sorted(getattr(self, "_breach_alerts_sent", set()) or set()),
+                "held_challenge": dict(getattr(self, "_held_challenge_breaches", {}) or {}),
+                "pre_trade_balances": dict(getattr(self, "_pre_trade_balances", {}) or {}),
+            }
+            with open(self._breach_state_path(), "w") as f:
+                json.dump(state, f, indent=1)
+        except Exception:
+            pass
+
+    def _snapshot_pre_trade_balance(self, account):
+        """Remember the balance a trade starts from — the close-detection baseline."""
+        acct = str(account or "").strip().lower()
+        if not acct:
+            return
+        balance = None
+        try:
+            entry = (self._trade_outcome_history() or {}).get(acct) or {}
+            raw = float(entry.get("balance") or 0)
+            if raw > 0:
+                balance = round(raw, 2)
+        except Exception:
+            pass
+        if not hasattr(self, "_pre_trade_balances"):
+            self._pre_trade_balances = {}
+        self._pre_trade_balances[acct] = {
+            "balance": balance,
+            "at": kenya_now().isoformat(timespec="seconds"),
+        }
+        self._save_breach_state()
+
+    def _stamp_open_positions(self, evaluations):
+        """Mark each row with whether its firm currently holds an open position.
+
+        The dashboard holds a firm's purchase batch only while this flag is
+        true — live position truth instead of the balance-gap guess.
+        """
+        try:
+            open_sides = self._detect_open_prop_sides_by_firm()
+        except Exception:
+            return
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            family = self._broker_login_family(self._cell(ev.get("Prop Firm")))
+            ev["_open_position"] = family in open_sides
+
+    # ── Periodic status poll: balance-driven close detection every 5 min ──
+    _STATUS_POLL_INTERVAL_MS = 300_000
+
+    def _start_status_poll(self):
+        if getattr(self, "_status_poll_started", False):
+            return
+        self._status_poll_started = True
+        self.log("⏱ Status poll active — balances checked every 5 minutes")
+        self.root.after(self._STATUS_POLL_INTERVAL_MS, self._run_status_poll)
+
+    def _run_status_poll(self):
+        threading.Thread(
+            target=lambda: self._apply_outcome_corrections(force_history=True),
+            daemon=True).start()
+        self.root.after(self._STATUS_POLL_INTERVAL_MS, self._run_status_poll)
 
     def _release_held_breach_alerts(self, evaluations):
         """Queue held challenge breaches once their firm's accounts all closed.
@@ -6441,6 +6540,7 @@ class TradeOpssAIApp:
                 continue
             self._pending_breach_alerts.extend(alerts)
             held.pop(family, None)
+            self._save_breach_state()
             firm = alerts[0].get("prop_firm", family)
             self.log(f"🚨 Releasing {len(alerts)} held {firm} challenge breach "
                      f"alert(s) — all challenge accounts closed", "WARN")
@@ -11809,6 +11909,7 @@ class TradeOpssAIApp:
 
                     # Trade ledger: record the decision at execution time.
                     try:
+                        self._snapshot_pre_trade_balance(acct_num)
                         self._queue_ledger_event(self._build_ledger_entry_event(
                             account=acct_num, prop_firm=firm_name,
                             phase_key=phase_key, platform=platform,
@@ -12281,6 +12382,7 @@ class TradeOpssAIApp:
                 if platform == "Tradovate":
                     # NQ M1 stream for the AI — works with or without MT5
                     self._start_tradovate_md_feed()
+                    self.root.after(0, self._start_status_poll)
                     # SCAN can finish before the asynchronous login does. Once
                     # history is available, immediately reconcile all loaded
                     # closed rows, including challenge and funded accounts.

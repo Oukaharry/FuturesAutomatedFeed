@@ -12,8 +12,8 @@ def _app():
     app._breach_alerts_sent = set()
     app._held_challenge_breaches = {}
     app._broker_login_family = lambda firm: str(firm or '').strip().lower().split(' (')[0]
-    app._account_has_open_position = lambda ev: False
-    app._resolve_trade_outcome = lambda account: 'loss'
+    app._save_breach_state = lambda: None  # no disk writes from tests
+    app._trade_outcome_history = lambda: {}
     return app
 
 
@@ -54,35 +54,25 @@ def test_held_breaches_release_when_no_challenge_account_is_pending():
     assert app._held_challenge_breaches == {}
 
 
-def test_held_breaches_wait_for_open_position_and_unresolved_trades():
+def test_held_breaches_wait_for_live_sibling_rows():
     app = _app()
     app._primary_trade_account = lambda ev: ev.get('Account #')
     _record(app, 'T1', 'Tradeify', 'Challenge')
 
-    open_pos = [
+    rows = [
         {'Prop Firm': 'Tradeify', 'Account #': 'T1', 'Status P1': 'Fail'},
-        {'Prop Firm': 'Tradeify', 'Account #': 'T3', 'Status P1': 'In Progress',
-         'Hedge Result 1': '$0.00'},
+        {'Prop Firm': 'Tradeify', 'Account #': 'T3', 'Status P1': 'In Progress'},
     ]
-    app._account_has_open_position = lambda ev: ev.get('Account #') == 'T3'
     with patch('trader_companion.trader_app.kenya_now') as now:
         now.return_value.hour = 12
-        app._release_held_breach_alerts(open_pos)
-    assert app._pending_breach_alerts == []
+        app._release_held_breach_alerts(rows)
+    assert app._pending_breach_alerts == []  # sibling still live
 
-    # Position closed but outcome not settled yet — still waiting.
-    app._account_has_open_position = lambda ev: False
-    app._resolve_trade_outcome = lambda account: None
+    # Sibling resolved — the firm batch releases.
+    rows[1]['Status P1'] = 'Fail'
     with patch('trader_companion.trader_app.kenya_now') as now:
         now.return_value.hour = 12
-        app._release_held_breach_alerts(open_pos)
-    assert app._pending_breach_alerts == []
-
-    # Outcome resolved — release.
-    app._resolve_trade_outcome = lambda account: 'win'
-    with patch('trader_companion.trader_app.kenya_now') as now:
-        now.return_value.hour = 12
-        app._release_held_breach_alerts(open_pos)
+        app._release_held_breach_alerts(rows)
     assert [b['account'] for b in app._pending_breach_alerts] == ['T1']
 
 
@@ -95,7 +85,6 @@ def test_session_end_flushes_held_breaches_regardless():
         {'Prop Firm': 'Tradeify', 'Account #': 'T3', 'Status P1': 'In Progress',
          'Hedge Result 1': '$0.00'},
     ]
-    app._account_has_open_position = lambda ev: True
     with patch('trader_companion.trader_app.kenya_now') as now:
         now.return_value.hour = 20
         app._release_held_breach_alerts(still_open)

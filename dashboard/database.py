@@ -3554,5 +3554,27 @@ def get_trade_ledger_rows(days: int = 30) -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_client_recent_ledger_firms(client_id: str, days: int = 7) -> set:
+    """Prop firms this client actually traded in the last `days` (ledger truth)."""
+    cutoff = (datetime.now() - timedelta(days=int(days))).strftime('%Y-%m-%d')
+    try:
+        _ensure_trade_ledger_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT DISTINCT prop_firm FROM trade_ledger '
+                'WHERE client_id = ? AND entry_date >= ?',
+                (client_id, cutoff),
+            )
+            return {
+                str(row['prop_firm']).strip()
+                for row in cursor.fetchall()
+                if row.get('prop_firm') and str(row['prop_firm']).strip()
+            }
+    except Exception as exc:
+        print(f"[LEDGER] recent firms lookup failed for {client_id}: {exc}")
+        return set()
+
+
 # Schema/connectivity checks run from app startup (background thread), not on import.
 # Import-time DB calls multiplied by uWSGI workers exhaust Postgres connection slots.

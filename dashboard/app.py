@@ -1715,11 +1715,11 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: purchase/breach Slack alerts (paused until re-enabled).
-# Set BREACH_SLACK_PAUSED=0 in .env to resume without a code change.
-# Detection and dashboard updates always continue; alerts stay queued while paused.
+# Ops kill switch: purchase/breach Slack alerts run by default (batching is
+# client-specific and census-driven now). Set BREACH_SLACK_PAUSED=1 to pause;
+# detection and dashboard updates always continue; alerts queue while paused.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
-    str(os.environ.get('BREACH_SLACK_PAUSED', '1')).strip().lower()
+    str(os.environ.get('BREACH_SLACK_PAUSED', '0')).strip().lower()
     not in ('0', 'false', 'no')
 )
 
@@ -1823,10 +1823,41 @@ def _eval_row_terminal_for_breach_batch(ev):
 
 
 def _eval_row_has_active_trade(ev):
-    """Hold a purchase batch only while this row's balance is still moving."""
+    """Hold a purchase batch only while this row still has an open trade.
+
+    The companion stamps `_open_position` from its live position snapshot;
+    that flag is the truth when present. The balance-gap heuristic is only
+    a fallback for rows pushed by older companions.
+    """
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
+    flag = ev.get('_open_position')
+    if flag is not None:
+        return bool(flag)
     return _balance_shows_open_trade(ev)
+
+
+def _client_active_firm_families(client_id, evaluations, days=7):
+    """Firm families this client actually runs — alerts are client-specific.
+
+    Ledger entries from the last `days` are the primary evidence; any
+    non-deleted row holding a broker account number supplements it (covers
+    clients whose companions predate the ledger).
+    """
+    families = set()
+    try:
+        from dashboard.database import get_client_recent_ledger_firms
+        for firm in get_client_recent_ledger_firms(client_id, days=days):
+            families.add(_breach_firm_family(firm))
+    except Exception as exc:
+        app.logger.warning(f"Recent-firm ledger lookup failed for {client_id}: {exc}")
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        if not _eval_broker_account_numbers(ev):
+            continue
+        families.add(_breach_firm_family(ev.get('Prop Firm')))
+    return families
 
 
 def _breach_alert_disposition(breach, evaluations):
@@ -1839,7 +1870,9 @@ def _breach_alert_disposition(breach, evaluations):
         return 'discard'
     ev = _existing_eval_for_account(evaluations, breach.get('account'))
     if not isinstance(ev, dict) or ev.get('_deleted'):
-        return 'hold'
+        # A vanished account is Tradovate's way of saying breached — buy it.
+        reason = str(breach.get('reason_code') or '').strip().lower()
+        return 'send' if reason in _BREACH_VANISH_REASON_CODES else 'hold'
     phase = str(breach.get('phase') or '').strip().lower()
     if phase.startswith('fund'):
         status = ev.get('Status') or ev.get('Status Funded') or ''
@@ -1912,8 +1945,11 @@ def _eval_row_occupies_max_out_slot(ev):
 
     Hit TP / Hit SL / In Progress still occupy the slot. Substring 'sl'
     used to treat Hit SL as ended, so the purchase count went over the cap.
+    A row without a broker account number is a placeholder, not a slot.
     """
     if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    if not _eval_broker_account_numbers(ev):
         return False
     sp1 = str(ev.get('Status P1') or '').strip()
     funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip()
@@ -1991,6 +2027,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
 
     sent_batches = get_breach_alert_sent_batches(client_id)
     session_over = _trading_session_over_eat()
+    active_families = _client_active_firm_families(client_id, evaluations)
     by_firm = defaultdict(list)
     for breach in pending:
         by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
@@ -1998,6 +2035,11 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     still_pending = []
     announced = 0
     for firm_key, firm_breaches in by_firm.items():
+        if active_families and firm_key not in active_families:
+            app.logger.warning(
+                f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase alert(s) — "
+                f"client has no recent activity for that firm")
+            continue
         sendable, hold, discarded = [], [], []
         for breach in firm_breaches:
             kind = _breach_alert_disposition(breach, evaluations)
@@ -2011,9 +2053,10 @@ def _flush_batched_breach_alerts(client_id, evaluations):
             app.logger.info(
                 f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
                 f"row is Pass/Completed, not a buy")
+        # A hold is never destroyed: it re-queues until its row turns terminal.
+        still_pending.extend(hold)
         if hold and not session_over:
             still_pending.extend(sendable)
-            still_pending.extend(hold)
             app.logger.info(
                 f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
                 f"waiting for Fail on the remaining live rows")
@@ -2040,9 +2083,11 @@ def _flush_batched_breach_alerts(client_id, evaluations):
                 f"🚨 {client_id}: {firm_key} purchase capped at {len(to_announce)} "
                 f"(max-out {_firm_max_out(firm_key)}, {len(firm_breaches)} breach alert(s))")
         if not to_announce:
-            # Already at the firm's slot cap, so these breaches are excess.
-            # Mark the batch sent or the next push asks for them again.
-            mark_breach_alert_batch_sent(client_id, batch_key)
+            # Every slot is occupied right now — keep the batch queued and
+            # re-check on the next push; slots open as sibling rows turn Fail.
+            still_pending.extend(firm_breaches)
+            app.logger.info(
+                f"🚨 {client_id}: {firm_key} at max-out — purchase alert waits for a free slot")
             continue
 
         count = _send_admin_breach_alert(client_id, to_announce)
