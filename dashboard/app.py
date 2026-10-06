@@ -1715,11 +1715,11 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: purchase/breach Slack alerts run by default (batching is
-# client-specific and census-driven now). Set BREACH_SLACK_PAUSED=1 to pause;
-# detection and dashboard updates always continue; alerts queue while paused.
+# Ops kill switch: purchase/breach Slack alerts (paused by default in production).
+# Set BREACH_SLACK_PAUSED=0 when batching/census logic is verified.
+# Detection and dashboard updates always continue; alerts queue while paused.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
-    str(os.environ.get('BREACH_SLACK_PAUSED', '0')).strip().lower()
+    str(os.environ.get('BREACH_SLACK_PAUSED', '1')).strip().lower()
     not in ('0', 'false', 'no')
 )
 
