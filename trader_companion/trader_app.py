@@ -5037,6 +5037,8 @@ class TradeOpssAIApp:
             return []
         field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
         current = self._cell(ev.get(field)).strip().lower()
+        if current in ("fail", "completed") and status not in ("Fail", "Completed"):
+            return []
         is_prior_trade_marker = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", current))
         terminal_broker_verdict = status in ("Fail", "Completed")
         if (current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker
@@ -6446,10 +6448,11 @@ class TradeOpssAIApp:
     def _challenge_accounts_still_pending(self, evaluations, family):
         """True while any live challenge account of this firm has not closed.
 
-        Not closed = an open broker position, a traded cell whose outcome has
-        not resolved yet, or an untraded placeholder still queued for today.
+        Closed means Fail or Pass. A Hit TP/SL, In Progress, or a next-day
+        placeholder is still live — waiting for $0.00 or today's weekday
+        released Abby's batch after 2 of 4 Tradeify challenges.
         """
-        today_wd = kenya_today().weekday()
+        history = None
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
@@ -6457,33 +6460,21 @@ class TradeOpssAIApp:
                 continue
             if self._on_funded_leg(ev):
                 continue
+            account = self._cell_account(ev.get("Account #"))
+            if not account:
+                continue
             status = self._cell(ev.get("Status P1")).lower()
             if any(kw in status for kw in self._INACTIVE_KEYWORDS) or "pass" in status:
                 continue
-            traded_zero = False
-            for i in range(1, 6):
-                val = self._cell(ev.get(f"Hedge Result {i}"))
-                if not val or val in ("—", "-"):
-                    continue
-                if self._parse_day_token(val) == today_wd:
-                    return True  # queued to trade today, not traded yet
+            if re.fullmatch(r"hit\s+(?:tp|sl)\d+", status) or "progress" in status or status == "live":
+                return True
+            if history is None:
                 try:
-                    if float(val.replace("$", "").replace(",", "")) == 0:
-                        traded_zero = True
-                except ValueError:
-                    continue
-            try:
-                if self._account_has_open_position(ev):
-                    return True
-            except Exception:
-                pass
-            if traded_zero:
-                account = self._cell_account(ev.get("Account #"))
-                try:
-                    if account and self._resolve_trade_outcome(account) is None:
-                        return True  # trade taken, outcome not settled yet
+                    history = self._trade_outcome_history() or {}
                 except Exception:
-                    return True
+                    history = {}
+            if str(account).strip().lower() in history:
+                return True
         return False
 
     def _outcome_gate_blocks(self, ev, firm_code, phase_key):
