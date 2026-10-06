@@ -24,6 +24,7 @@ from dashboard.financial_overview import calculate_propfirm_overview, get_payout
 from dashboard.eval_status import (
     is_eval_phase_failed,
     is_funded_phase_ended,
+    is_hit_tp_sl_status,
     FUNDED_HEDGE_COLS,
     FUNDED_OVERFLOW_COLS,
 )
@@ -1600,6 +1601,15 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
                         continue
                 except (ValueError, TypeError):
                     pass
+            incoming_val = incoming_row.get(key)
+            # A broker Fail must replace a leftover Hit TP/SL. Restoring the
+            # marker here is why Abby stayed Hit TP1 after the companion
+            # logged Fail, so the purchase batch counted the wrong number.
+            if (key in ('Status P1', 'Status', 'Status Funded')
+                    and key not in base_manual_locked
+                    and _status_is_fail(incoming_val)
+                    and is_hit_tp_sl_status(existing_val)):
+                continue
             merged[key] = existing_val
     
     # Protect Hedge Result / Hedge Day / Prop Day weekday markers from stale push overwrites.
@@ -1819,24 +1829,29 @@ def _eval_row_has_active_trade(ev):
     return _balance_shows_open_trade(ev)
 
 
-def _breach_status_needs_purchase(breach, evaluations):
-    """A purchase replaces a failed account. Pass, Completed and Hit SL do not.
+def _breach_alert_disposition(breach, evaluations):
+    """send = Fail (buy it). hold = still live. discard = Pass/Completed, not a buy.
 
-    A Tradovate login disappears when an account passes or finishes, and that
-    vanish used to ask the admin to buy a replacement. Only a Fail on the
-    phase that breached is a purchase.
+    Dropping Hit TP/SL used to throw away the rest of the firm batch. Abby
+    sent Purchase 2 because two rows were still Hit TP1 after a real Fail.
     """
     if not isinstance(breach, dict):
-        return False
+        return 'discard'
     ev = _existing_eval_for_account(evaluations, breach.get('account'))
     if not isinstance(ev, dict) or ev.get('_deleted'):
-        return False
+        return 'hold'
     phase = str(breach.get('phase') or '').strip().lower()
     if phase.startswith('fund'):
         status = ev.get('Status') or ev.get('Status Funded') or ''
     else:
         status = ev.get('Status P1') or ''
-    return is_eval_phase_failed(status)
+    if is_eval_phase_failed(status):
+        return 'send'
+    if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
+        return 'discard'
+    if 'delete' in str(status or '').lower():
+        return 'discard'
+    return 'hold'
 
 
 def _firm_has_active_trades(evaluations, firm_family):
@@ -1884,8 +1899,8 @@ ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
     'apex': 10,
 }
 ADMIN_PROP_MAX_ACTIVE_DEFAULT = 5
-_MAX_OUT_INACTIVE_P1 = ('fail', 'breach', 'closed', 'sl', 'delete')
-_MAX_OUT_INACTIVE_FUNDED = ('fail', 'breach', 'closed', 'sl', 'delete', 'complete', 'completed')
+_MAX_OUT_INACTIVE_P1 = ('fail', 'breach', 'closed', 'delete')
+_MAX_OUT_INACTIVE_FUNDED = ('fail', 'breach', 'closed', 'delete', 'complete', 'completed')
 
 
 def _firm_max_out(firm_family):
@@ -1893,14 +1908,22 @@ def _firm_max_out(firm_family):
 
 
 def _eval_row_occupies_max_out_slot(ev):
-    """True when this row is one of the firm's live accounts (a filled slot)."""
+    """True when this row is one of the firm's live accounts (a filled slot).
+
+    Hit TP / Hit SL / In Progress still occupy the slot. Substring 'sl'
+    used to treat Hit SL as ended, so the purchase count went over the cap.
+    """
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
-    sp1 = str(ev.get('Status P1') or '').strip().lower()
-    funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
-    if any(tok in sp1 for tok in _MAX_OUT_INACTIVE_P1):
+    sp1 = str(ev.get('Status P1') or '').strip()
+    funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip()
+    if is_hit_tp_sl_status(sp1) or is_hit_tp_sl_status(funded):
+        return True
+    sp1_l = sp1.lower()
+    funded_l = funded.lower()
+    if any(tok in sp1_l for tok in _MAX_OUT_INACTIVE_P1):
         return False
-    if any(tok in funded for tok in _MAX_OUT_INACTIVE_FUNDED):
+    if any(tok in funded_l for tok in _MAX_OUT_INACTIVE_FUNDED):
         return False
     return True
 
@@ -1956,6 +1979,9 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     pending = get_breach_alert_pending(client_id)
     if not pending:
         return 0
+    for ev in evaluations or []:
+        if isinstance(ev, dict) and not ev.get('_deleted'):
+            _heal_hit_marker_after_floor_fail(ev)
     if _purchase_alerts_held_for_weekend():
         app.logger.info(
             f"🚨 {client_id}: holding {len(pending)} purchase alert(s) until Monday — weekend")
@@ -1970,15 +1996,29 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     still_pending = []
     announced = 0
     for firm_key, firm_breaches in by_firm.items():
-        actionable = [b for b in firm_breaches if _breach_status_needs_purchase(b, evaluations)]
-        dropped = len(firm_breaches) - len(actionable)
-        if dropped:
+        sendable, hold, discarded = [], [], []
+        for breach in firm_breaches:
+            kind = _breach_alert_disposition(breach, evaluations)
+            if kind == 'send':
+                sendable.append(breach)
+            elif kind == 'hold':
+                hold.append(breach)
+            else:
+                discarded.append(breach)
+        if discarded:
             app.logger.info(
-                f"🚨 {client_id}: dropped {dropped} {firm_key} purchase alert(s) — "
-                f"row is not Fail")
-        if not actionable:
+                f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
+                f"row is Pass/Completed, not a buy")
+        if hold and not session_over:
+            still_pending.extend(sendable)
+            still_pending.extend(hold)
+            app.logger.info(
+                f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
+                f"waiting for Fail on the remaining live rows")
             continue
-        firm_breaches = actionable
+        if not sendable:
+            continue
+        firm_breaches = sendable
         if _firm_has_active_trades(evaluations, firm_key) and not session_over:
             still_pending.extend(firm_breaches)
             app.logger.info(
@@ -3211,6 +3251,35 @@ def _stamp_fail_end_date(ev, status_field, ended_field):
     ev[ended_field] = _kenya_today_str()
 
 
+_DERIVED_FLOOR_FAIL_RE = re.compile(
+    r'at or below floor|account breached|no daily loss limit', re.I)
+
+
+def _heal_hit_marker_after_floor_fail(ev):
+    """If the companion already recorded a floor Fail, don't leave Hit TP/SL."""
+    if not isinstance(ev, dict):
+        return
+    manual = set(ev.get('_manual_push_fields') or [])
+    for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
+        if field in manual:
+            continue
+        current = ev.get(field)
+        if _status_is_fail(current) or _status_is_pass_or_fail(current):
+            continue
+        if field == 'Status' and is_funded_phase_ended(current):
+            continue
+        note = str(ev.get(f'_derived_{field}') or '')
+        if not _DERIVED_FLOOR_FAIL_RE.search(note):
+            continue
+        if not (is_hit_tp_sl_status(current)
+                or str(current or '').strip().lower() in (
+                    '', '-', 'in progress', 'not started', 'live')):
+            continue
+        ev[field] = 'Fail'
+        if _date_ended_blank(ev.get(ended)):
+            ev[ended] = _kenya_today_str()
+
+
 def _heal_stored_lucid_farming_fail(ev):
     """Undo a Lucid farming Fail whose recorded balance never reached $48,000."""
     if not _firm_is_lucid(ev) or not _row_is_farming(ev):
@@ -3242,6 +3311,7 @@ def _apply_server_eval_guards(evaluations):
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
         _clear_date_ended_unless_pass_or_fail(ev)
+        _heal_hit_marker_after_floor_fail(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
         _stamp_fail_end_date(ev, 'Status', 'Date Ended.1')
         _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
