@@ -1589,16 +1589,6 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
             if key in base_manual_locked and _eval_has_non_blank_value(base_row.get(key)):
                 merged[key] = base_row.get(key)
                 continue
-            # Old companion still Fail-marks PAYOUT rows (vanish). Do not let
-            # force_fields turn that into a purchase; keep the stored status.
-            if (key in ('Status P1', 'Status', 'Status Funded')
-                    and _status_is_fail(incoming_row.get(key))
-                    and (_evaluation_has_payout_pending(base_row)
-                         or _evaluation_has_payout_pending(incoming_row)
-                         or _evaluation_has_payout_pending(merged))):
-                if key in base_row:
-                    merged[key] = base_row.get(key)
-                continue
             if key in incoming_row:
                 merged[key] = incoming_row[key]
             continue
@@ -1725,18 +1715,13 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: purchase/breach Slack alerts (paused until logic is verified).
+# Ops kill switch: purchase/breach Slack alerts (paused until re-enabled).
 # Set BREACH_SLACK_PAUSED=0 in .env to resume without a code change.
 # Detection and dashboard updates always continue; alerts stay queued while paused.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
     str(os.environ.get('BREACH_SLACK_PAUSED', '1')).strip().lower()
     not in ('0', 'false', 'no')
 )
-
-# Coalesce companion pushes into one Slack line per firm (e.g. Purchase 5, not 5× Purchase 1).
-_PURCHASE_ALERT_FLUSH_DELAY_SEC = 90
-_purchase_flush_lock = threading.Lock()
-_purchase_flush_timers = {}
 
 # Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
 _BREACH_FIRM_SHORT_NAMES = (
@@ -1841,8 +1826,6 @@ def _eval_row_has_active_trade(ev):
     """Hold a purchase batch only while this row's balance is still moving."""
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
-    if _evaluation_has_payout_pending(ev):
-        return False
     return _balance_shows_open_trade(ev)
 
 
@@ -1860,27 +1843,10 @@ def _breach_alert_disposition(breach, evaluations):
     phase = str(breach.get('phase') or '').strip().lower()
     if phase.startswith('fund'):
         status = ev.get('Status') or ev.get('Status Funded') or ''
-        status_field = 'Status'
     else:
         status = ev.get('Status P1') or ''
-        status_field = 'Status P1'
-    reason = str(breach.get('reason_code') or 'balance').strip().lower()
-    if reason in _BREACH_VANISH_REASON_CODES or reason == 'balance':
-        if _evaluation_has_payout_pending(ev):
-            return 'discard'
-        _promote_breach_evidence_to_fail(ev)
-        return 'send'
-    if _derived_note_implies_breach(ev, status_field):
-        if _evaluation_has_payout_pending(ev):
-            return 'discard'
-        _promote_breach_evidence_to_fail(ev)
-        return 'send'
     if is_eval_phase_failed(status):
-        if _evaluation_has_payout_pending(ev):
-            return 'discard'
         return 'send'
-    if _evaluation_has_payout_pending(ev):
-        return 'discard'
     if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
         return 'discard'
     if 'delete' in str(status or '').lower():
@@ -1900,43 +1866,6 @@ def _firm_has_active_trades(evaluations, firm_family):
         if _eval_row_has_active_trade(ev):
             return True
     return False
-
-
-def _run_purchase_alert_flush(client_id):
-    """Load latest sheet data, queue Fail rows, send batched Slack purchase lines."""
-    from dashboard.database import get_client_data
-    if not client_id:
-        return 0
-    data = get_client_data(client_id) or {}
-    evaluations = data.get('evaluations') or []
-    _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
-    return _flush_batched_breach_alerts(client_id, evaluations)
-
-
-def _schedule_purchase_alert_flush(client_id):
-    """Defer Slack so multiple breaches in one session batch into one message."""
-    if not client_id or BREACH_SLACK_NOTIFICATIONS_PAUSED:
-        return
-
-    def _fire():
-        with _purchase_flush_lock:
-            _purchase_flush_timers.pop(client_id, None)
-        try:
-            announced = _run_purchase_alert_flush(client_id)
-            if announced:
-                app.logger.warning(
-                    f"🚨 {client_id}: announced {announced} batched breach alert(s) to the admin")
-        except Exception as exc:
-            app.logger.error(f"Deferred purchase alert flush failed for {client_id}: {exc}")
-
-    with _purchase_flush_lock:
-        existing = _purchase_flush_timers.pop(client_id, None)
-        if existing:
-            existing.cancel()
-        timer = threading.Timer(_PURCHASE_ALERT_FLUSH_DELAY_SEC, _fire)
-        _purchase_flush_timers[client_id] = timer
-        timer.daemon = True
-        timer.start()
 
 
 def _queue_breach_alerts(client_id, breaches):
@@ -1959,150 +1888,6 @@ def _queue_breach_alerts(client_id, breaches):
         app.logger.warning(
             f"🚨 {client_id}: queued {added} breach alert(s) ({len(pending)} pending total)")
     return added
-
-
-def _fail_row_ended_today(ev, ended_field):
-    ended = str((ev or {}).get(ended_field) or '').strip()
-    today = _kenya_today_str()
-    if not ended:
-        return False
-    return ended[:10] == today or ended.replace('/', '-')[:10] == today
-
-
-def _derived_note_implies_breach(ev, status_field):
-    """True when the companion left a floor/vanish note on this status field."""
-    note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
-    if any(marker in note for marker in _VANISH_DERIVED_MARKERS):
-        return True
-    return bool(_DERIVED_FLOOR_FAIL_RE.search(note or ''))
-
-
-def _promote_breach_evidence_to_fail(ev):
-    """Write Fail + Date Ended when _derived_* already records a breach.
-
-    Slack and purchases must not wait on Hit TP / In Progress while the
-    companion has already decided the account blew.
-    """
-    if not isinstance(ev, dict) or ev.get('_deleted'):
-        return
-    if _evaluation_has_payout_pending(ev):
-        return
-    manual = set(ev.get('_manual_push_fields') or [])
-    for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
-        if field in manual or not _derived_note_implies_breach(ev, field):
-            continue
-        current = ev.get(field)
-        if field == 'Status' and is_funded_phase_ended(current):
-            continue
-        if _status_is_fail(current):
-            pass
-        elif is_hit_tp_sl_status(current) or str(current or '').strip().lower() in (
-                '', '-', 'in progress', 'not started', 'live'):
-            ev[field] = 'Fail'
-        else:
-            continue
-        if _date_ended_blank(ev.get(ended)) and ended not in manual:
-            ev[ended] = _kenya_today_str()
-
-
-def _fail_row_needs_purchase(ev, ended_field, status_field):
-    """True for a breach that should buy today — every client, every firm."""
-    if _fail_row_ended_today(ev, ended_field):
-        return True
-    ended = str((ev or {}).get(ended_field) or '').strip()
-    if ended:
-        return False
-    status = ev.get(status_field)
-    if is_eval_phase_failed(status) or _derived_note_implies_breach(ev, status_field):
-        return True
-    return False
-
-
-def _row_has_today_weekday_placeholder(ev):
-    """True when a hedge/day cell still shows today's weekday (EAT)."""
-    if not isinstance(ev, dict):
-        return False
-    label = _kenya_now().strftime('%A').upper()
-    for key, val in ev.items():
-        if not isinstance(key, str) or key.startswith('_'):
-            continue
-        if not (key.startswith('Hedge Result') or key.startswith('Hedge Day')
-                or key.startswith('Prop Day')):
-            continue
-        if str(val or '').strip().upper() == label:
-            return True
-    return False
-
-
-def _synthetic_breach_from_fail_row(ev):
-    """Purchase payload for a breached row (Fail or companion breach evidence)."""
-    if not isinstance(ev, dict) or ev.get('_deleted'):
-        return None
-    if _evaluation_has_payout_pending(ev):
-        return None
-    _promote_breach_evidence_to_fail(ev)
-    funded = ev.get('Status') or ev.get('Status Funded') or ''
-    p1 = ev.get('Status P1') or ''
-    if _eval_on_funded_leg(ev) and (
-            is_eval_phase_failed(funded) or _derived_note_implies_breach(ev, 'Status')):
-        if not _fail_row_needs_purchase(ev, 'Date Ended.1', 'Status'):
-            return None
-        account = str(ev.get('Account #.1') or ev.get('Account #') or '').strip()
-        phase = 'Funded'
-    elif is_eval_phase_failed(p1) or _derived_note_implies_breach(ev, 'Status P1'):
-        if not _fail_row_needs_purchase(ev, 'Date Ended', 'Status P1'):
-            return None
-        account = str(ev.get('Account #') or '').strip()
-        phase = 'Challenge'
-    else:
-        return None
-    if not account or account in ('-', '—', '–'):
-        return None
-    return {
-        'account': account,
-        'prop_firm': ev.get('Prop Firm') or '',
-        'phase': phase,
-        'balance': 0.0,
-        'floor': None,
-        'reason_code': 'dashboard_fail',
-    }
-
-
-def _account_already_in_purchase_queue(account, pending, sent_batches):
-    acct = str(account or '').strip().lower()
-    if not acct:
-        return True
-    for breach in pending or []:
-        if str((breach or {}).get('account') or '').strip().lower() == acct:
-            return True
-    needle = f'|{acct}|'
-    for key in sent_batches or []:
-        if acct in str(key).lower() or needle in f'|{str(key).lower()}|':
-            return True
-    return False
-
-
-def _queue_fail_rows_as_purchase_alerts(client_id, evaluations):
-    """Enqueue today's Fail rows that never got a companion purchase payload."""
-    from dashboard.database import (
-        get_breach_alert_pending,
-        get_breach_alert_sent_batches,
-    )
-    pending = get_breach_alert_pending(client_id)
-    sent = get_breach_alert_sent_batches(client_id)
-    to_queue = []
-    for ev in evaluations or []:
-        _promote_breach_evidence_to_fail(ev)
-        breach = _synthetic_breach_from_fail_row(ev)
-        if not breach:
-            continue
-        if _account_already_in_purchase_queue(breach.get('account'), pending, sent):
-            continue
-        to_queue.append(breach)
-        pending.append(breach)
-    if to_queue:
-        _queue_breach_alerts(client_id, to_queue)
-    return len(to_queue)
 
 
 # Slot caps shared with the admin max-out check. A purchase alert refills
@@ -2198,7 +1983,6 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         return 0
     for ev in evaluations or []:
         if isinstance(ev, dict) and not ev.get('_deleted'):
-            _promote_breach_evidence_to_fail(ev)
             _heal_hit_marker_after_floor_fail(ev)
     if _purchase_alerts_held_for_weekend():
         app.logger.info(
@@ -2226,12 +2010,23 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         if discarded:
             app.logger.info(
                 f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
-                f"row is Pass/Completed/PAYOUT, not a buy")
-        if hold:
+                f"row is Pass/Completed, not a buy")
+        if hold and not session_over:
+            still_pending.extend(sendable)
             still_pending.extend(hold)
+            app.logger.info(
+                f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
+                f"waiting for Fail on the remaining live rows")
+            continue
         if not sendable:
             continue
         firm_breaches = sendable
+        if _firm_has_active_trades(evaluations, firm_key) and not session_over:
+            still_pending.extend(firm_breaches)
+            app.logger.info(
+                f"🚨 {client_id}: holding {len(firm_breaches)} {firm_key} breach alert(s) — "
+                f"active trades still open")
+            continue
 
         batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
         if batch_key in sent_batches:
@@ -2264,14 +2059,6 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         announced += count
         app.logger.warning(
             f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(to_announce)} account(s))")
-        if len(to_announce) < len(firm_breaches):
-            announced_accts = {
-                str(b.get('account') or '').strip().lower() for b in to_announce if isinstance(b, dict)
-            }
-            for breach in firm_breaches:
-                acct = str((breach or {}).get('account') or '').strip().lower()
-                if acct and acct not in announced_accts:
-                    still_pending.append(breach)
 
     set_breach_alert_pending(client_id, still_pending)
     return announced
@@ -2654,17 +2441,6 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
                 f"last known balance is above the firm floor")
             suppressed.add(id(breach))
 
-    for breach in breach_alerts:
-        if id(breach) in suppressed:
-            continue
-        account = breach.get('account')
-        if (_evaluation_has_payout_pending(_existing_eval_for_account(incoming_evals, account))
-                or _evaluation_has_payout_pending(_existing_eval_for_account(existing_evals, account))):
-            app.logger.info(
-                f"🛡️ {client_id or '?'}: dropped purchase alert for {account} — "
-                f"PAYOUT pending (account was not traded)")
-            suppressed.add(id(breach))
-
     sanitized_evals = []
     for ev_in in incoming_evals:
         if not isinstance(ev_in, dict):
@@ -2680,14 +2456,6 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
                 if existing_ev is not None:
                     break
         matched = _breaches_for_accounts(breach_alerts, accounts)
-        if (_evaluation_has_payout_pending(ev_in)
-                or _evaluation_has_payout_pending(existing_ev)):
-            for field in _incoming_fail_fields(ev_in):
-                _hold_fail_field_at_stored_value(ev_out, ev_in, existing_ev, field)
-            for breach in matched:
-                suppressed.add(id(breach))
-            sanitized_evals.append(ev_out)
-            continue
         # Breach alerts are the only place a prop-account balance reaches the
         # server, so keep the latest one on the row: it is the evidence the
         # next vanish alert (which reports 0.0) gets judged against.
@@ -2735,23 +2503,18 @@ def _send_admin_breach_alert(client_id, breaches):
         app.logger.warning(
             f"🚨 {client_id}: suppressed {len(breaches)} breach Slack notification(s) (paused)")
         return 0
-    from collections import defaultdict
+    from collections import Counter
     from dashboard.scheduler import send_slack_message
 
     admin, slack_id, channel_id = _admin_slack_route_for_client(client_id)
-    by_firm = defaultdict(list)
-    for breach in breaches:
-        if isinstance(breach, dict):
-            by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
+    counts = Counter(
+        _breach_firm_short_name(breach.get('prop_firm'))
+        for breach in breaches if isinstance(breach, dict)
+    )
     mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
     client_label = str(client_id or '').strip()
     sent = 0
-    for firm_key, firm_breaches in by_firm.items():
-        firm = _breach_firm_short_name(
-            (firm_breaches[0] or {}).get('prop_firm') if firm_breaches else '')
-        n = len(_unique_breach_accounts(firm_breaches))
-        if n <= 0:
-            continue
+    for firm, n in counts.items():
         purchase = f"Purchase {n} {firm} account{'s' if n > 1 else ''}"
         line = f"{mention} {purchase} for {client_label}" if client_label else f"{mention} {purchase}"
         delivered = False
@@ -3480,8 +3243,6 @@ def _stamp_fail_end_date(ev, status_field, ended_field):
     manual = set(ev.get('_manual_push_fields') or [])
     if ended_field in manual and not _date_ended_blank(ev.get(ended_field)):
         return
-    if _evaluation_has_payout_pending(ev):
-        return
     status = ev.get(status_field)
     if status_field == 'Status' and not str(status or '').strip():
         status = ev.get('Status Funded')
@@ -3499,8 +3260,6 @@ _DERIVED_FLOOR_FAIL_RE = re.compile(
 def _heal_hit_marker_after_floor_fail(ev):
     """If the companion already recorded a floor Fail, don't leave Hit TP/SL."""
     if not isinstance(ev, dict):
-        return
-    if _evaluation_has_payout_pending(ev):
         return
     manual = set(ev.get('_manual_push_fields') or [])
     for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
@@ -3553,7 +3312,6 @@ def _apply_server_eval_guards(evaluations):
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
-        _promote_breach_evidence_to_fail(ev)
         _clear_date_ended_unless_pass_or_fail(ev)
         _heal_hit_marker_after_floor_fail(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
@@ -7907,14 +7665,7 @@ def api_client_push():
     breach_alerts = breach_alerts_sanitized if "evaluations" in data and data["evaluations"] else (data.get('breach_alerts') or [])
     if breach_alerts:
         try:
-            breach_alerts = [
-                b for b in breach_alerts
-                if isinstance(b, dict) and not _evaluation_has_payout_pending(
-                    _existing_eval_for_account(evaluations, b.get('account')))
-            ]
-            if breach_alerts:
-                _queue_breach_alerts(client_id, breach_alerts)
-                _schedule_purchase_alert_flush(client_id)
+            _queue_breach_alerts(client_id, breach_alerts)
         except Exception as exc:
             app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
 
@@ -8259,11 +8010,10 @@ def api_client_push():
     app.logger.info(f"💾 Saving to database...")
 
     try:
-        filled = _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
-        if filled:
+        announced = _flush_batched_breach_alerts(client_id, evaluations)
+        if announced:
             app.logger.warning(
-                f"🚨 {client_id}: queued {filled} purchase alert(s) from today's Fail rows")
-        _schedule_purchase_alert_flush(client_id)
+                f"🚨 {client_id}: announced {announced} batched breach alert(s) to the admin")
     except Exception as exc:
         app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
 
@@ -15608,8 +15358,7 @@ def update_data():
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
-                    _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
-                    _schedule_purchase_alert_flush(client_id)
+                    _flush_batched_breach_alerts(client_id, evaluations)
                 except Exception as exc:
                     app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
 
@@ -16453,23 +16202,6 @@ def run_dashboard():
     print(f"\nClients in database: {get_clients_count()}")
     print(f"{'='*60}\n")
     app.run(host='0.0.0.0', port=5001, debug=True)
-
-def _kick_startup_purchase_backfill():
-    """Reload must send today's Fail buys without waiting for the 10-minute tick."""
-    def _run():
-        time.sleep(2)
-        try:
-            from dashboard.scheduler import flush_queued_purchase_alerts
-            logging.info("Startup purchase alert backfill...")
-            n = flush_queued_purchase_alerts()
-            logging.info("Startup purchase alert backfill done (announced %s)", n)
-        except Exception as exc:
-            logging.error("Startup purchase alert backfill failed: %s", exc)
-    threading.Thread(target=_run, daemon=True).start()
-
-
-_kick_startup_purchase_backfill()
-
 
 if __name__ == '__main__':
     run_dashboard()

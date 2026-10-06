@@ -77,15 +77,6 @@ def run_scheduler():
                 _mark_ran('purchase_alerts', today)
                 time.sleep(60)
 
-            # Every 10 minutes: Fail rows on any client that never got a
-            # companion purchase payload (held in RAM / first-trade TUESDAY).
-            backfill_key = f"{today}-{now.hour:02d}{now.minute:02d}"
-            if now.minute % 10 == 0 and ran.get('purchase_backfill') != backfill_key:
-                logging.info("Backfilling purchase alerts from today's Fail rows...")
-                flush_queued_purchase_alerts()
-                _mark_ran('purchase_backfill', backfill_key)
-                time.sleep(60)
-
             # 23:10 UTC (02:10 EAT) — Quality scan before daily Slack summary (~20 min buffer)
             if now.hour == 23 and now.minute == 10 and ran.get('quality_scan') != today:
                 logging.info("Running scheduled quality scan (02:10 EAT)...")
@@ -603,43 +594,22 @@ def _build_daily_summary_text():
 
 
 def flush_queued_purchase_alerts():
-    """Queue today's Fail buys and send them — every client, not only pending queues."""
-    from dashboard.app import (
-        BREACH_SLACK_NOTIFICATIONS_PAUSED,
-        _flush_batched_breach_alerts,
-        _queue_fail_rows_as_purchase_alerts,
-    )
-    from dashboard.database import get_all_clients, list_pending_breach_alert_clients
+    """Send purchase alerts still queued once the EAT session is over."""
+    from dashboard.app import BREACH_SLACK_NOTIFICATIONS_PAUSED, _flush_batched_breach_alerts
+    from dashboard.database import get_client_data, list_pending_breach_alert_clients
 
     if BREACH_SLACK_NOTIFICATIONS_PAUSED:
         logging.info("Purchase alert flush skipped — BREACH_SLACK_PAUSED is on")
         return 0
 
-    all_data = get_all_clients() or {}
-    queued = list(list_pending_breach_alert_clients() or [])
-    clients = list(dict.fromkeys(queued + list(all_data.keys())))
-    logging.info(
-        "Purchase alert flush: %s pending queue(s), %s client(s) scanned",
-        len(queued), len(clients),
-    )
-    sent_total = 0
+    clients = list_pending_breach_alert_clients()
+    logging.info("Session-end purchase alert flush: %s client queue(s)", len(clients))
     for client_id in clients:
         try:
-            data = all_data.get(client_id)
-            if data is None:
-                from dashboard.database import get_client_data
-                data = get_client_data(client_id) or {}
-            evaluations = data.get('evaluations') or []
-            filled = _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
-            if filled:
-                logging.warning(
-                    "Queued %s purchase alert(s) from today's Fail rows for %s",
-                    filled, client_id)
-            sent_total += int(_flush_batched_breach_alerts(client_id, evaluations) or 0)
+            data = get_client_data(client_id) or {}
+            _flush_batched_breach_alerts(client_id, data.get('evaluations') or [])
         except Exception as exc:
             logging.error("Purchase alert flush failed for %s: %s", client_id, exc)
-    logging.info("Purchase alert flush finished — announced %s batch(es)", sent_total)
-    return sent_total
 
 
 def post_slack_summary():
