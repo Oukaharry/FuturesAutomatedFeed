@@ -3245,15 +3245,15 @@
                         #kyc-payouts-body .kyc-field:hover:not(:disabled) { background-color:rgba(148,163,184,0.1) !important; border-color:rgba(148,163,184,0.22) !important; }
                         #kyc-payouts-body .kyc-field:focus { outline:none; background-color:rgba(15,23,42,0.85) !important; border-color:#64748b !important; box-shadow:0 0 0 3px rgba(100,116,139,0.18); }
                         #kyc-payouts-body .kyc-field:disabled { cursor:not-allowed; background-image:none !important; }
-                        #kyc-payouts-body .kyc-field.kyc-status { min-width:240px; }
-                        #kyc-payouts-body .kyc-field.kyc-person { min-width:150px; }
+                        #kyc-payouts-body .kyc-field.kyc-status { min-width:160px; }
+                        #kyc-payouts-body .kyc-field.kyc-person { min-width:110px; }
                         #kyc-payouts-body .is-saving { opacity:.6; }
                         #kyc-payouts-body .kyc-field.is-saved { border-color:rgba(148,163,184,0.5) !important; }
                         #kyc-payouts-body .is-error { border-color:#f87171 !important; }
                         #kyc-payouts-body tr.is-processed td:not(.kyc-proc-cell) { opacity:.55; }
                     </style>
-                    <div id="kyc-payouts-section" style="display:none; overflow-x:auto; max-width:100%;">
-                        <table class="data-table" style="width:100%; min-width:1200px;">
+                    <div id="kyc-payouts-section" style="display:none;">
+                        <table class="data-table" style="width:100%;">
                             <thead>
                                 <tr>
                                     <th style="text-align:left; padding-left:16px;">Client</th>
@@ -3281,9 +3281,8 @@
                         <datalist id="kyc-payout-people-presets">
                             <option value="Joe"></option>
                             <option value="Chris"></option>
-                            <option value="Tyler"></option>
                             <option value="Adam"></option>
-                            <option value="Lynnate"></option>
+                            <option value="Linet"></option>
                             <option value="Need Passkey &amp; Process (Tyler)"></option>
                         </datalist>
                     </div>
@@ -3723,7 +3722,7 @@
                                     <input type="checkbox" class="kyc-check" ${key} data-field="processed" ${p.processed ? 'checked' : ''} ${ro} onchange="saveKycPayoutProcessing(this)" aria-label="Processed">
                                 </td>
                                 <td class="kyc-proc-cell" style="cursor:default;" onclick="event.stopPropagation()">
-                                    <input type="text" class="kyc-field kyc-status" list="kyc-payout-status-presets" ${key} data-field="status" value="${_kycEsc(p.processing_status)}" placeholder="Add status" ${ro} onchange="saveKycPayoutProcessing(this)" autocomplete="off">
+                                    <input type="text" class="kyc-field kyc-status" list="kyc-payout-status-presets" ${key} data-field="status" value="${_kycEsc(p.processing_status)}" placeholder="Status" ${ro} onchange="saveKycPayoutProcessing(this)" autocomplete="off">
                                 </td>
                                 <td class="kyc-proc-cell" style="cursor:default;" onclick="event.stopPropagation()">
                                     <input type="text" class="kyc-field kyc-person" list="kyc-payout-people-presets" ${key} data-field="assigned_to" value="${_kycEsc(p.assigned_to)}" placeholder="Assign" ${ro} onchange="saveKycPayoutProcessing(this)" autocomplete="off">
