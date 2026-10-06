@@ -1925,11 +1925,29 @@ def _fail_row_needs_purchase(ev, ended_field, status_field):
     ended = str((ev or {}).get(ended_field) or '').strip()
     if ended:
         return False
+    if _row_has_today_weekday_placeholder(ev):
+        return True
     note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
     if any(marker in note for marker in _VANISH_DERIVED_MARKERS):
         return True
     if _DERIVED_FLOOR_FAIL_RE.search(note or ''):
         return True
+    return False
+
+
+def _row_has_today_weekday_placeholder(ev):
+    """True when a hedge/day cell still shows today's weekday (EAT)."""
+    if not isinstance(ev, dict):
+        return False
+    label = _kenya_now().strftime('%A').upper()
+    for key, val in ev.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if not (key.startswith('Hedge Result') or key.startswith('Hedge Day')
+                or key.startswith('Prop Day')):
+            continue
+        if str(val or '').strip().upper() == label:
+            return True
     return False
 
 
@@ -16342,6 +16360,23 @@ def run_dashboard():
     print(f"\nClients in database: {get_clients_count()}")
     print(f"{'='*60}\n")
     app.run(host='0.0.0.0', port=5001, debug=True)
+
+def _kick_startup_purchase_backfill():
+    """Reload must send today's Fail buys without waiting for the 10-minute tick."""
+    def _run():
+        time.sleep(2)
+        try:
+            from dashboard.scheduler import flush_queued_purchase_alerts
+            logging.info("Startup purchase alert backfill...")
+            n = flush_queued_purchase_alerts()
+            logging.info("Startup purchase alert backfill done (announced %s)", n)
+        except Exception as exc:
+            logging.error("Startup purchase alert backfill failed: %s", exc)
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_kick_startup_purchase_backfill()
+
 
 if __name__ == '__main__':
     run_dashboard()
