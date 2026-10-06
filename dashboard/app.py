@@ -1837,12 +1837,44 @@ def _eval_row_has_active_trade(ev):
     return _balance_shows_open_trade(ev)
 
 
-def _client_active_firm_families(client_id, evaluations, days=7):
+_ACTIVE_FIRM_WINDOW_DAYS = 30
+_ROW_LIFECYCLE_DATE_FIELDS = (
+    'Date Started', 'Date Started.1', 'Date Ended', 'Date Ended.1', 'Date Purchased')
+
+
+def _parse_row_date(raw):
+    s = str(raw or '').strip()
+    if not s or s in ('-', '—', '–'):
+        return None
+    s = s.split()[0]
+    # Dashboard convention is day-first (20/07/2026)
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d/%m/%y', '%d-%m-%Y', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _row_active_within_window(ev, cutoff_date):
+    """The row's latest lifecycle date falls inside the activity window.
+
+    A row with no dates at all is a brand-new account — count it only while
+    it is still live.
+    """
+    dates = [_parse_row_date(ev.get(f)) for f in _ROW_LIFECYCLE_DATE_FIELDS]
+    dates = [d for d in dates if d]
+    if dates:
+        return max(dates) >= cutoff_date
+    return not _eval_row_terminal_for_breach_batch(ev)
+
+
+def _client_active_firm_families(client_id, evaluations, days=_ACTIVE_FIRM_WINDOW_DAYS):
     """Firm families this client actually runs — alerts are client-specific.
 
-    Ledger entries from the last `days` are the primary evidence; any
-    non-deleted row holding a broker account number supplements it (covers
-    clients whose companions predate the ledger).
+    A firm counts only with activity inside the window: a ledger trade in the
+    last `days`, or a row whose lifecycle dates (started/ended/purchased) fall
+    within it. Luiger's July Lucid rows must not buy Lucid in October.
     """
     families = set()
     try:
@@ -1851,10 +1883,13 @@ def _client_active_firm_families(client_id, evaluations, days=7):
             families.add(_breach_firm_family(firm))
     except Exception as exc:
         app.logger.warning(f"Recent-firm ledger lookup failed for {client_id}: {exc}")
+    cutoff = (_kenya_now() - timedelta(days=days)).date()
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
         if not _eval_broker_account_numbers(ev):
+            continue
+        if not _row_active_within_window(ev, cutoff):
             continue
         families.add(_breach_firm_family(ev.get('Prop Firm')))
     return families
