@@ -57,7 +57,7 @@ def test_summary_matches_manual_format_and_tags_admin():
     assert '✅ MFFU: 1 trade hit SL today' in text
     # Status flips surface under action items
     assert 'status updated today: 1 fail' in text
-    assert text.rstrip().endswith('—')
+    assert text.rstrip().endswith("🤖 Auto-generated from the day's recorded activity")
 
 
 def test_quiet_day_is_all_ok():

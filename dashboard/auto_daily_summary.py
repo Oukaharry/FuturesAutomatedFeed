@@ -210,6 +210,7 @@ def build_client_summary_text(client_id, *, trader='', admin='', admin_slack_id=
             lines.append(f"✅ {ok_text}")
             lines.append('')
     lines.append('—')
+    lines.append('🤖 Auto-generated from the day\'s recorded activity')
     return '\n'.join(lines)
 
 
