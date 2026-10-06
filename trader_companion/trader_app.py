@@ -5354,6 +5354,9 @@ class TradeOpssAIApp:
             dashboard_url = self.url_entry.get().strip().rstrip('/')
             if not email or not dashboard_url:
                 return
+            # Deliver any $0.00 marks whose fill-time write failed, BEFORE the
+            # fetch below so this pass sees the healed cells.
+            self._retry_pending_day_cell_marks()
             resp = requests.post(
                 f"{dashboard_url}/api/client/data",
                 json={"email": email},
@@ -5401,6 +5404,7 @@ class TradeOpssAIApp:
             force_fields.extend(self._apply_dashboard_vanish_breaches(evaluations))
             force_fields.extend(self._apply_tradovate_vanish_breaches(evaluations))
             force_fields.extend(self._backfill_missing_end_dates(evaluations))
+            force_fields.extend(self._reconcile_traded_day_placeholders(evaluations))
             self._release_held_breach_alerts(evaluations)
 
             self._stamp_balance_snapshots(evaluations)
@@ -6447,6 +6451,7 @@ class TradeOpssAIApp:
         self._breach_alerts_sent = set(state.get("sent_keys") or [])
         self._held_challenge_breaches = dict(state.get("held_challenge") or {})
         self._pre_trade_balances = dict(state.get("pre_trade_balances") or {})
+        self._pending_day_cell_marks = list(state.get("day_cell_marks") or [])
         if self._pending_breach_alerts or self._held_challenge_breaches:
             held_n = sum(len(v) for v in self._held_challenge_breaches.values())
             try:
@@ -6462,6 +6467,7 @@ class TradeOpssAIApp:
                 "sent_keys": sorted(getattr(self, "_breach_alerts_sent", set()) or set()),
                 "held_challenge": dict(getattr(self, "_held_challenge_breaches", {}) or {}),
                 "pre_trade_balances": dict(getattr(self, "_pre_trade_balances", {}) or {}),
+                "day_cell_marks": list(getattr(self, "_pending_day_cell_marks", []) or []),
             }
             with open(self._breach_state_path(), "w") as f:
                 json.dump(state, f, indent=1)
@@ -6520,6 +6526,107 @@ class TradeOpssAIApp:
             target=lambda: self._apply_outcome_corrections(force_history=True),
             daemon=True).start()
         self.root.after(self._STATUS_POLL_INTERVAL_MS, self._run_status_poll)
+
+    _HIT_TRADE_RE = re.compile(r"hit\s*(?:tp|sl)\s*(\d+)", re.I)
+    _DAY_MARK_MAX_TRIES = 48  # ~4 hours of 5-minute polls
+
+    def _queue_day_cell_mark(self, account, field, firm_code=None, phase=None):
+        """The fill-time $0.00 write failed — retry it from the status poll."""
+        if not account or not field:
+            return
+        if not hasattr(self, "_pending_day_cell_marks"):
+            self._pending_day_cell_marks = []
+        key = (str(account).lower(), field)
+        for item in self._pending_day_cell_marks:
+            if (str(item.get("account", "")).lower(), item.get("field")) == key:
+                return
+        self._pending_day_cell_marks.append({
+            "account": str(account), "field": field,
+            "firm_code": firm_code or "", "phase": phase or "", "tries": 0,
+        })
+        self._save_breach_state()
+        self.log(f"⏳ {account}: $0.00 mark for {field} queued for retry", "WARN")
+
+    def _retry_pending_day_cell_marks(self):
+        """Re-attempt queued $0.00 marks until they land (idempotent)."""
+        pending = list(getattr(self, "_pending_day_cell_marks", []) or [])
+        if not pending:
+            return
+        kept = []
+        for item in pending:
+            try:
+                ok = self._mark_day_cell_traded_on_dashboard(
+                    item.get("account"), item.get("field"),
+                    firm_code=item.get("firm_code") or None,
+                    current_phase=item.get("phase") or None)
+            except Exception:
+                ok = False
+            if ok:
+                self.log(f"✅ {item.get('account')}: queued $0.00 mark for "
+                         f"{item.get('field')} delivered")
+                continue
+            item["tries"] = int(item.get("tries") or 0) + 1
+            if item["tries"] >= self._DAY_MARK_MAX_TRIES:
+                # Reconciliation below heals it from the row's status instead.
+                self.log(f"⚠ {item.get('account')}: dropping $0.00 retry for "
+                         f"{item.get('field')} after {item['tries']} attempts", "WARN")
+                continue
+            kept.append(item)
+        self._pending_day_cell_marks = kept
+        self._save_breach_state()
+
+    def _reconcile_traded_day_placeholders(self, evaluations):
+        """Heal day cells whose trade provably resolved but still show a weekday.
+
+        The fill-time $0.00 write is one HTTP chain that can fail once and
+        never retry, while the status engine retries every cycle — so a row
+        can say Hit SL1 while its cell still reads TUESDAY (and could trade
+        again). When the status proves trade n resolved, cells 1..n holding a
+        weekday become $0.00 and the next weekday is queued, blueprint-aware.
+        Runs inside the 5-minute poll, so the write is durable.
+        """
+        changed = []
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            manual = set(ev.get("_manual_push_fields") or [])
+            for status_field, phase in (("Status P1", "Challenge"), ("Status", "Funded")):
+                status = self._cell(ev.get(status_field))
+                if status_field == "Status" and not status.strip():
+                    status = self._cell(ev.get("Status Funded"))
+                m = self._HIT_TRADE_RE.fullmatch(status.strip().lower())
+                if not m:
+                    continue
+                n = int(m.group(1))
+                fields = self._get_phase_fields(phase)
+                row_changed = False
+                for idx in range(min(n, len(fields))):
+                    field = fields[idx]
+                    if field in manual:
+                        continue
+                    if self._parse_day_token(self._cell(ev.get(field))) is None:
+                        continue
+                    ev[field] = "$0.00"
+                    changed.append(field)
+                    row_changed = True
+                if not row_changed:
+                    continue
+                # Queue the next weekday unless this leg already has one
+                if not any(self._parse_day_token(self._cell(ev.get(f))) is not None
+                           for f in fields):
+                    traded_field = fields[min(n, len(fields)) - 1]
+                    firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+                    try:
+                        next_field = self._resolve_next_hedge_field(
+                            ev, firm_code, phase, traded_field)
+                    except Exception:
+                        next_field = None
+                    if next_field and self._cell(ev.get(next_field)) in ("", "—", "-"):
+                        ev[next_field] = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+                        changed.append(next_field)
+                self.log(f"🩹 {self._primary_trade_account(ev)}: healed day cell(s) — "
+                         f"{status_field} shows {status} but trade cell still held a weekday")
+        return changed
 
     def _release_held_breach_alerts(self, evaluations):
         """Queue held challenge breaches once their firm's accounts all closed.
@@ -8615,8 +8722,10 @@ class TradeOpssAIApp:
                             force_fields.append(next_field)
                 break
 
-            if not matched_ev or not force_fields:
+            if not matched_ev:
                 return False
+            if not force_fields:
+                return True  # earlier attempt already landed — nothing left to write
 
             payload = {
                 "email": email,
@@ -9717,14 +9826,19 @@ class TradeOpssAIApp:
                 # $0.00 makes the cell-finder skip it on the next scan, so the
                 # same trade can't fire twice.
                 if day_field:
+                    marked = False
                     try:
-                        self._mark_day_cell_traded_on_dashboard(
+                        marked = self._mark_day_cell_traded_on_dashboard(
                             acct_num, day_field,
                             firm_code=firm_code,
                             current_phase=row_data.get("current_phase"),
                         )
                     except Exception:
-                        pass
+                        marked = False
+                    if not marked:
+                        self._queue_day_cell_mark(
+                            acct_num, day_field, firm_code,
+                            row_data.get("current_phase"))
                 if platform == "Tradovate":
                     self._track_account_close(broker_account, acct_num)
 
@@ -11873,14 +11987,19 @@ class TradeOpssAIApp:
                     # MT5 hedge succeeds. $0.00 makes the cell-finder skip it on
                     # the next scan, so the same trade can't fire twice.
                     if day_field:
+                        marked = False
                         try:
-                            self._mark_day_cell_traded_on_dashboard(
+                            marked = self._mark_day_cell_traded_on_dashboard(
                                 acct_num, day_field,
                                 firm_code=firm_code,
                                 current_phase=row_data.get("current_phase"),
                             )
                         except Exception:
-                            pass
+                            marked = False
+                        if not marked:
+                            self._queue_day_cell_mark(
+                                acct_num, day_field, firm_code,
+                                row_data.get("current_phase"))
                     if platform == "Tradovate":
                         self._track_account_close(broker_account, acct_num)
 
