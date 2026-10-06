@@ -3684,5 +3684,100 @@ def purge_daily_events() -> int:
         return 0
 
 
+# ============ Payout processing (KYC portfolio withdrawals via Rise) ============
+
+PAYOUT_PROCESSING_FIELDS = ('processed', 'status', 'assigned_to', 'processed_by')
+
+
+def _ensure_payout_processing_table():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS payout_processing (
+                client_id     TEXT NOT NULL,
+                account       TEXT NOT NULL,
+                payout_num    INTEGER NOT NULL,
+                processed     INTEGER NOT NULL DEFAULT 0,
+                status        TEXT DEFAULT '',
+                assigned_to   TEXT DEFAULT '',
+                processed_by  TEXT DEFAULT '',
+                updated_by    TEXT DEFAULT '',
+                updated_at    TEXT,
+                PRIMARY KEY (client_id, account, payout_num)
+            )
+            '''
+        )
+        conn.commit()
+
+
+def get_payout_processing(client_ids) -> dict:
+    """{(client_id, account, payout_num): row} for the given clients."""
+    names = [str(c or '').strip() for c in (client_ids or []) if str(c or '').strip()]
+    if not names:
+        return {}
+    try:
+        _ensure_payout_processing_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join('?' for _ in names)
+            cursor.execute(
+                f'SELECT * FROM payout_processing WHERE client_id IN ({placeholders})',
+                tuple(names),
+            )
+            return {
+                (row['client_id'], row['account'], int(row['payout_num'])): dict(row)
+                for row in (dict(r) for r in cursor.fetchall())
+            }
+    except Exception as exc:
+        print(f"[PAYOUT PROCESSING] read failed: {exc}")
+        return {}
+
+
+def save_payout_processing(client_id: str, account: str, payout_num: int,
+                           fields: dict, updated_by: str = '') -> dict:
+    """Upsert the given processing fields for one payout; returns the stored row."""
+    client_id = str(client_id or '').strip()
+    account = str(account or '').strip()
+    payout_num = int(payout_num)
+    _ensure_payout_processing_table()
+    current = get_payout_processing([client_id]).get((client_id, account, payout_num)) or {}
+    row = {
+        'processed': 1 if current.get('processed') else 0,
+        'status': current.get('status') or '',
+        'assigned_to': current.get('assigned_to') or '',
+        'processed_by': current.get('processed_by') or '',
+    }
+    for key in PAYOUT_PROCESSING_FIELDS:
+        if key not in fields:
+            continue
+        if key == 'processed':
+            row[key] = 1 if fields[key] else 0
+        else:
+            row[key] = str(fields[key] or '').strip()[:500]
+    now = datetime.now().isoformat(timespec='seconds')
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            INSERT INTO payout_processing
+                (client_id, account, payout_num, processed, status, assigned_to,
+                 processed_by, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(client_id, account, payout_num) DO UPDATE SET
+                processed = excluded.processed,
+                status = excluded.status,
+                assigned_to = excluded.assigned_to,
+                processed_by = excluded.processed_by,
+                updated_by = excluded.updated_by,
+                updated_at = excluded.updated_at
+            ''',
+            (client_id, account, payout_num, row['processed'], row['status'],
+             row['assigned_to'], row['processed_by'], str(updated_by or ''), now),
+        )
+        conn.commit()
+    return {**row, 'updated_by': updated_by or '', 'updated_at': now}
+
+
 # Schema/connectivity checks run from app startup (background thread), not on import.
 # Import-time DB calls multiplied by uWSGI workers exhaust Postgres connection slots.

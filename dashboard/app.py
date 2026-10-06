@@ -9718,8 +9718,15 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
     prop_firm_list.sort(key=lambda x: x["payouts"], reverse=True)
 
     all_payouts.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
+    from dashboard.database import get_payout_processing
+    processing = get_payout_processing({p["client"] for p in all_payouts})
     for p in all_payouts:
         p.pop("_sort_date", None)
+        proc = processing.get((p["client"], str(p["account"] or '').strip(), p["payout_num"])) or {}
+        p["processed"] = bool(proc.get("processed"))
+        p["processing_status"] = proc.get("status") or ''
+        p["assigned_to"] = proc.get("assigned_to") or ''
+        p["processed_by"] = proc.get("processed_by") or ''
 
     all_fees.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
     for row in all_fees:
@@ -9783,6 +9790,50 @@ def api_kyc_portfolio():
     is_bef = request.session_user.get('user_type') == 'bef_admin'
     payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_filter or None)
     return jsonify({"status": "success", **payload})
+
+
+@app.route('/api/kyc/portfolio/payout_processing', methods=['POST'])
+@require_session
+def api_kyc_payout_processing():
+    """Save Processed / Status / Who Has to Process / Processed By for one KYC payout."""
+    from dashboard.database import save_payout_processing, PAYOUT_PROCESSING_FIELDS
+    session_user = request.session_user
+    if session_user.get('user_type') == 'kwok_admin':
+        return jsonify({"status": "error", "message": "Read-only access"}), 403
+    client_id, err = _resolve_kyc_portfolio_client_id(session_user)
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    payout_client = str(data.get('client') or '').strip()
+    account = str(data.get('account') or '').strip()
+    try:
+        payout_num = int(data.get('payout_num'))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "payout_num required"}), 400
+    if not payout_client or not account or not 1 <= payout_num <= 9:
+        return jsonify({"status": "error", "message": "client, account and payout_num required"}), 400
+
+    in_scope = {_normalized_client_key(n) for n in _get_kyc_portfolio_account_names(client_id)}
+    if _normalized_client_key(payout_client) not in in_scope:
+        return jsonify({"status": "error", "message": "Client not in this portfolio"}), 403
+
+    fields = {k: data[k] for k in PAYOUT_PROCESSING_FIELDS if k in data}
+    if not fields:
+        return jsonify({"status": "error", "message": "Nothing to update"}), 400
+    actor = session_user.get('user_identifier', '')
+    try:
+        row = save_payout_processing(payout_client, account, payout_num, fields, updated_by=actor)
+    except Exception as exc:
+        logging.error(f"[PAYOUT PROCESSING] save failed for {payout_client}/{account}#{payout_num}: {exc}")
+        return jsonify({"status": "error", "message": "Save failed"}), 500
+    try:
+        log_action('payout_processing', session_user.get('user_type', ''), actor,
+                   ip_address=request.remote_addr,
+                   details=f"{payout_client} {account} payout {payout_num}: {fields}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "row": row})
 
 
 @app.route('/api/kyc/portfolio/export_fees_csv', methods=['GET'])
