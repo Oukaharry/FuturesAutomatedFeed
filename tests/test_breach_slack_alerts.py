@@ -68,9 +68,10 @@ def test_breach_alert_respects_pause():
         assert dapp._send_admin_breach_alert('Harry', [{'prop_firm': 'Topstep'}]) == 0
 
 
-def test_alerts_are_live_by_default():
-    # BREACH_SLACK_PAUSED defaults to '0'; ops sets it to 1 to pause.
-    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is False
+def test_alerts_pause_state_matches_the_ops_default():
+    # Deliberately paused on main until ops verifies the new pipeline in
+    # production (set BREACH_SLACK_PAUSED=0 to go live without a deploy).
+    assert dapp.BREACH_SLACK_NOTIFICATIONS_PAUSED is True
 
 
 def test_firm_short_names():
