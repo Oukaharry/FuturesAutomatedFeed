@@ -77,6 +77,15 @@ def run_scheduler():
                 _mark_ran('purchase_alerts', today)
                 time.sleep(60)
 
+            # Every 10 minutes: Fail rows on any client that never got a
+            # companion purchase payload (held in RAM / first-trade TUESDAY).
+            backfill_key = f"{today}-{now.hour:02d}{now.minute:02d}"
+            if now.minute % 10 == 0 and ran.get('purchase_backfill') != backfill_key:
+                logging.info("Backfilling purchase alerts from today's Fail rows...")
+                flush_queued_purchase_alerts()
+                _mark_ran('purchase_backfill', backfill_key)
+                time.sleep(60)
+
             # 23:10 UTC (02:10 EAT) — Quality scan before daily Slack summary (~20 min buffer)
             if now.hour == 23 and now.minute == 10 and ran.get('quality_scan') != today:
                 logging.info("Running scheduled quality scan (02:10 EAT)...")
@@ -595,15 +604,26 @@ def _build_daily_summary_text():
 
 def flush_queued_purchase_alerts():
     """Send purchase alerts still queued once the EAT session is over."""
-    from dashboard.app import _flush_batched_breach_alerts
-    from dashboard.database import get_client_data, list_pending_breach_alert_clients
+    from dashboard.app import _flush_batched_breach_alerts, _queue_fail_rows_as_purchase_alerts
+    from dashboard.database import get_all_clients, get_client_data, list_pending_breach_alert_clients
 
-    clients = list_pending_breach_alert_clients()
-    logging.info("Session-end purchase alert flush: %s client queue(s)", len(clients))
+    queued = list(list_pending_breach_alert_clients() or [])
+    all_ids = list((get_all_clients() or {}).keys())
+    clients = list(dict.fromkeys(queued + all_ids))
+    logging.info(
+        "Session-end purchase alert flush: %s pending queue(s), %s client(s) scanned",
+        len(queued), len(clients),
+    )
     for client_id in clients:
         try:
             data = get_client_data(client_id) or {}
-            _flush_batched_breach_alerts(client_id, data.get('evaluations') or [])
+            evaluations = data.get('evaluations') or []
+            filled = _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
+            if filled:
+                logging.warning(
+                    "Queued %s purchase alert(s) from today's Fail rows for %s",
+                    filled, client_id)
+            _flush_batched_breach_alerts(client_id, evaluations)
         except Exception as exc:
             logging.error("Purchase alert flush failed for %s: %s", client_id, exc)
 

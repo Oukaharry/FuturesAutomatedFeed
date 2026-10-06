@@ -1906,6 +1906,105 @@ def _queue_breach_alerts(client_id, breaches):
     return added
 
 
+def _fail_row_ended_today(ev, ended_field):
+    ended = str((ev or {}).get(ended_field) or '').strip()
+    today = _kenya_today_str()
+    if not ended:
+        return False
+    return ended[:10] == today or ended.replace('/', '-')[:10] == today
+
+
+def _fail_row_needs_purchase(ev, ended_field, status_field):
+    """True for a Fail that should buy today — every client, every firm.
+
+    Date Ended today is the usual gate so old Fails are not re-bought.
+    Vanish/floor notes still buy when Date Ended was never stamped.
+    """
+    if _fail_row_ended_today(ev, ended_field):
+        return True
+    ended = str((ev or {}).get(ended_field) or '').strip()
+    if ended:
+        return False
+    note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
+    if any(marker in note for marker in _VANISH_DERIVED_MARKERS):
+        return True
+    if _DERIVED_FLOOR_FAIL_RE.search(note or ''):
+        return True
+    return False
+
+
+def _synthetic_breach_from_fail_row(ev):
+    """Purchase payload for a row that is already Fail on the sheet.
+
+    Companion used to hold challenge alerts in RAM until every sibling
+    closed, so Fail could land for any client with no Slack buy behind it.
+    """
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return None
+    if _evaluation_has_payout_pending(ev):
+        return None
+    funded = ev.get('Status') or ev.get('Status Funded') or ''
+    p1 = ev.get('Status P1') or ''
+    if _eval_on_funded_leg(ev) and is_eval_phase_failed(funded):
+        if not _fail_row_needs_purchase(ev, 'Date Ended.1', 'Status'):
+            return None
+        account = str(ev.get('Account #.1') or ev.get('Account #') or '').strip()
+        phase = 'Funded'
+    elif is_eval_phase_failed(p1):
+        if not _fail_row_needs_purchase(ev, 'Date Ended', 'Status P1'):
+            return None
+        account = str(ev.get('Account #') or '').strip()
+        phase = 'Challenge'
+    else:
+        return None
+    if not account or account in ('-', '—', '–'):
+        return None
+    return {
+        'account': account,
+        'prop_firm': ev.get('Prop Firm') or '',
+        'phase': phase,
+        'balance': 0.0,
+        'floor': None,
+        'reason_code': 'dashboard_fail',
+    }
+
+
+def _account_already_in_purchase_queue(account, pending, sent_batches):
+    acct = str(account or '').strip().lower()
+    if not acct:
+        return True
+    for breach in pending or []:
+        if str((breach or {}).get('account') or '').strip().lower() == acct:
+            return True
+    needle = f'|{acct}|'
+    for key in sent_batches or []:
+        if acct in str(key).lower() or needle in f'|{str(key).lower()}|':
+            return True
+    return False
+
+
+def _queue_fail_rows_as_purchase_alerts(client_id, evaluations):
+    """Enqueue today's Fail rows that never got a companion purchase payload."""
+    from dashboard.database import (
+        get_breach_alert_pending,
+        get_breach_alert_sent_batches,
+    )
+    pending = get_breach_alert_pending(client_id)
+    sent = get_breach_alert_sent_batches(client_id)
+    to_queue = []
+    for ev in evaluations or []:
+        breach = _synthetic_breach_from_fail_row(ev)
+        if not breach:
+            continue
+        if _account_already_in_purchase_queue(breach.get('account'), pending, sent):
+            continue
+        to_queue.append(breach)
+        pending.append(breach)
+    if to_queue:
+        _queue_breach_alerts(client_id, to_queue)
+    return len(to_queue)
+
+
 # Slot caps shared with the admin max-out check. A purchase alert refills
 # open slots; it never asks for more accounts than the firm allows.
 ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
@@ -2025,22 +2124,15 @@ def _flush_batched_breach_alerts(client_id, evaluations):
             app.logger.info(
                 f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
                 f"row is Pass/Completed/PAYOUT, not a buy")
-        if hold and not session_over:
-            still_pending.extend(sendable)
+        if hold:
             still_pending.extend(hold)
-            app.logger.info(
-                f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
-                f"waiting for Fail on the remaining live rows")
-            continue
+            if not session_over:
+                app.logger.info(
+                    f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
+                    f"waiting for Fail on those rows; sending {len(sendable)} Fail buy(s) now")
         if not sendable:
             continue
         firm_breaches = sendable
-        if _firm_has_active_trades(evaluations, firm_key) and not session_over:
-            still_pending.extend(firm_breaches)
-            app.logger.info(
-                f"🚨 {client_id}: holding {len(firm_breaches)} {firm_key} breach alert(s) — "
-                f"active trades still open")
-            continue
 
         batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
         if batch_key in sent_batches:
@@ -8053,6 +8145,10 @@ def api_client_push():
     app.logger.info(f"💾 Saving to database...")
 
     try:
+        filled = _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
+        if filled:
+            app.logger.warning(
+                f"🚨 {client_id}: queued {filled} purchase alert(s) from today's Fail rows")
         announced = _flush_batched_breach_alerts(client_id, evaluations)
         if announced:
             app.logger.warning(
@@ -15401,6 +15497,7 @@ def update_data():
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
+                    _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
                     _flush_batched_breach_alerts(client_id, evaluations)
                 except Exception as exc:
                     app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")

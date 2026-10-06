@@ -5244,6 +5244,9 @@ class TradeOpssAIApp:
         the second hit (or any loss without a DLL) breaches the account.
         """
         traded_field, _traded_phase, placeholder = self._locate_progression_cells(ev)
+        if not traded_field and placeholder:
+            # First trade on the row: the weekday is the trade, not a follow-up.
+            traded_field = placeholder
         if not traded_field or not placeholder:
             return None, None
         account = self._primary_trade_account(ev)
@@ -5366,7 +5369,9 @@ class TradeOpssAIApp:
             self._last_dashboard_evaluations = list(evaluations)
             self._sync_dashboard_vanish_registry(evaluations)
             if force_history or any(
-                    self._outcome_history_needed(ev) for ev in evaluations
+                    (self._outcome_history_needed(ev)
+                     or self._weekday_awaiting_outcome(ev))
+                    for ev in evaluations
                     if not ev.get("_deleted")):
                 self._trade_outcome_history(force=True)
 
@@ -5453,6 +5458,17 @@ class TradeOpssAIApp:
         except ValueError:
             return False
         return True
+
+    def _weekday_awaiting_outcome(self, evaluation):
+        """True when a live row still shows a weekday instead of a resolved P&L."""
+        if not isinstance(evaluation, dict):
+            return False
+        field = "Status" if self._on_funded_leg(evaluation) else "Status P1"
+        current = self._cell(evaluation.get(field)).lower()
+        if any(kw in current for kw in self._INACTIVE_KEYWORDS) or "pass" in current:
+            return False
+        _traded, _phase, placeholder = self._locate_progression_cells(evaluation)
+        return bool(placeholder)
 
     def _account_has_open_position(self, evaluation):
         """Whether a connected broker reports an open position for this row."""
@@ -6397,17 +6413,10 @@ class TradeOpssAIApp:
         }
         if reason_code:
             payload["reason_code"] = reason_code
-        if str(phase) == "Challenge":
-            # One ping per firm once every challenge account has closed — not
-            # one per breach as they land.
-            if not hasattr(self, "_held_challenge_breaches"):
-                self._held_challenge_breaches = {}
-            family = self._breach_hold_family(payload["prop_firm"])
-            self._held_challenge_breaches.setdefault(family, []).append(payload)
-            self.log(f"\U0001f6a8 {account}: challenge breach held \u2014 waiting for all "
-                     f"{payload['prop_firm']} challenge accounts to close", "WARN")
-        else:
-            self._pending_breach_alerts.append(payload)
+        # Push immediately. The dashboard holds the firm batch until remaining
+        # live rows are Fail or the session ends. Holding here kept Chucho's
+        # MFFU buys in RAM while a surviving sibling still showed TUESDAY.
+        self._pending_breach_alerts.append(payload)
         if reason_code == "dashboard_vanish":
             self.log(f"🚨 {account}: {phase} breach — account removed from "
                      f"dashboard after trading", "ERROR")
