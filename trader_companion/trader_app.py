@@ -5035,6 +5035,8 @@ class TradeOpssAIApp:
                 return []
         if not status:
             return []
+        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
+            return []
         field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
         current = self._cell(ev.get(field)).strip().lower()
         if current in ("fail", "completed") and status not in ("Fail", "Completed"):
@@ -6305,6 +6307,8 @@ class TradeOpssAIApp:
         firm_code = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
         if not firm_code:
             return None, None
+        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
+            return None, None
         rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
 
         # A row carrying only Account #.1 is still funded, so the phase test
@@ -6373,6 +6377,8 @@ class TradeOpssAIApp:
     def _record_breach_alert(self, ev, firm_code, phase, balance, floor, *,
                              reason_code=None):
         """Queue a breach for the dashboard to announce to the client's admin."""
+        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
+            return
         if not hasattr(self, "_breach_alerts_sent"):
             self._breach_alerts_sent = set()
         if not hasattr(self, "_pending_breach_alerts"):
@@ -7528,6 +7534,12 @@ class TradeOpssAIApp:
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
+            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
+                for field in ("Account #", "Account #.1"):
+                    acct = self._cell_account(ev.get(field))
+                    if acct:
+                        self._dashboard_vanish_registry.pop(acct.lower(), None)
+                continue
             firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
             if not self._on_funded_leg(ev):
                 ch = self._cell_account(ev.get("Account #"))
@@ -7567,6 +7579,8 @@ class TradeOpssAIApp:
             return force_fields
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
                 continue
             firm_key = self._broker_connection_key(self._cell(ev.get("Prop Firm")))
             if firm_key not in fresh_firms:
@@ -7611,10 +7625,18 @@ class TradeOpssAIApp:
                 to_remove.append(acct_key)
                 continue
             ev = dict(meta["ev_snapshot"])
+            for candidate in evaluations or []:
+                if (isinstance(candidate, dict) and not candidate.get("_deleted")
+                        and self._vanish_row_key(candidate) == row_key):
+                    ev = candidate
+                    break
             on_funded = bool(meta.get("on_funded"))
             field = "Status" if on_funded else "Status P1"
             current = self._cell(ev.get(field)).lower()
             if any(kw in current for kw in self._INACTIVE_KEYWORDS):
+                to_remove.append(acct_key)
+                continue
+            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
                 to_remove.append(acct_key)
                 continue
             tier = str(meta.get("tier") or "trade").upper()
@@ -9284,14 +9306,16 @@ class TradeOpssAIApp:
         return rows_by_firm, affordable, skipped, free, required_total
 
     def _eval_has_payout(self, ev):
-        """Check if any hedge cell contains 'payout' text."""
+        """True when a hedge cell is awaiting payout — skip scan, Fail, and alerts."""
+        if self._payout_marker_field(ev):
+            return True
         if not ev:
             return False
         for key, val in ev.items():
-            if not isinstance(key, str) or not isinstance(val, str):
+            if not isinstance(key, str):
                 continue
             k = key.lower()
-            if ("hedge result" in k or "hedge day" in k) and "payout" in val.lower():
+            if ("hedge result" in k or "hedge day" in k) and "payout" in self._cell(val).lower():
                 return True
         return False
 
