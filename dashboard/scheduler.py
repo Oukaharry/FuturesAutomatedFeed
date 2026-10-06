@@ -604,8 +604,16 @@ def _build_daily_summary_text():
 
 def flush_queued_purchase_alerts():
     """Queue today's Fail buys and send them — every client, not only pending queues."""
-    from dashboard.app import _flush_batched_breach_alerts, _queue_fail_rows_as_purchase_alerts
+    from dashboard.app import (
+        BREACH_SLACK_NOTIFICATIONS_PAUSED,
+        _flush_batched_breach_alerts,
+        _queue_fail_rows_as_purchase_alerts,
+    )
     from dashboard.database import get_all_clients, list_pending_breach_alert_clients
+
+    if BREACH_SLACK_NOTIFICATIONS_PAUSED:
+        logging.info("Purchase alert flush skipped — BREACH_SLACK_PAUSED is on")
+        return 0
 
     all_data = get_all_clients() or {}
     queued = list(list_pending_breach_alert_clients() or [])

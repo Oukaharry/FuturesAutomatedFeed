@@ -1725,12 +1725,12 @@ def _admin_slack_id_for_client(client_id):
     return admin, slack_id
 
 
-# Ops kill switch: purchase/breach Slack alerts run by default.
-# Set BREACH_SLACK_PAUSED=1 in .env to pause them without a deploy.
-# Detection and dashboard updates always continue.
+# Ops kill switch: purchase/breach Slack alerts (paused until logic is verified).
+# Set BREACH_SLACK_PAUSED=0 in .env to resume without a code change.
+# Detection and dashboard updates always continue; alerts stay queued while paused.
 BREACH_SLACK_NOTIFICATIONS_PAUSED = (
-    str(os.environ.get('BREACH_SLACK_PAUSED', '0')).strip().lower()
-    in ('1', 'true', 'yes')
+    str(os.environ.get('BREACH_SLACK_PAUSED', '1')).strip().lower()
+    not in ('0', 'false', 'no')
 )
 
 # Coalesce companion pushes into one Slack line per firm (e.g. Purchase 5, not 5× Purchase 1).
@@ -1915,7 +1915,7 @@ def _run_purchase_alert_flush(client_id):
 
 def _schedule_purchase_alert_flush(client_id):
     """Defer Slack so multiple breaches in one session batch into one message."""
-    if not client_id:
+    if not client_id or BREACH_SLACK_NOTIFICATIONS_PAUSED:
         return
 
     def _fire():
@@ -2193,6 +2193,8 @@ def _flush_batched_breach_alerts(client_id, evaluations):
 
     pending = get_breach_alert_pending(client_id)
     if not pending:
+        return 0
+    if BREACH_SLACK_NOTIFICATIONS_PAUSED:
         return 0
     for ev in evaluations or []:
         if isinstance(ev, dict) and not ev.get('_deleted'):
