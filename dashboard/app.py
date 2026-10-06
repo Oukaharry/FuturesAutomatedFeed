@@ -1733,6 +1733,11 @@ BREACH_SLACK_NOTIFICATIONS_PAUSED = (
     in ('1', 'true', 'yes')
 )
 
+# Coalesce companion pushes into one Slack line per firm (e.g. Purchase 5, not 5× Purchase 1).
+_PURCHASE_ALERT_FLUSH_DELAY_SEC = 90
+_purchase_flush_lock = threading.Lock()
+_purchase_flush_timers = {}
+
 # Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
 _BREACH_FIRM_SHORT_NAMES = (
     ('my funded futures', 'MFFU'),
@@ -1895,6 +1900,43 @@ def _firm_has_active_trades(evaluations, firm_family):
         if _eval_row_has_active_trade(ev):
             return True
     return False
+
+
+def _run_purchase_alert_flush(client_id):
+    """Load latest sheet data, queue Fail rows, send batched Slack purchase lines."""
+    from dashboard.database import get_client_data
+    if not client_id:
+        return 0
+    data = get_client_data(client_id) or {}
+    evaluations = data.get('evaluations') or []
+    _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
+    return _flush_batched_breach_alerts(client_id, evaluations)
+
+
+def _schedule_purchase_alert_flush(client_id):
+    """Defer Slack so multiple breaches in one session batch into one message."""
+    if not client_id:
+        return
+
+    def _fire():
+        with _purchase_flush_lock:
+            _purchase_flush_timers.pop(client_id, None)
+        try:
+            announced = _run_purchase_alert_flush(client_id)
+            if announced:
+                app.logger.warning(
+                    f"🚨 {client_id}: announced {announced} batched breach alert(s) to the admin")
+        except Exception as exc:
+            app.logger.error(f"Deferred purchase alert flush failed for {client_id}: {exc}")
+
+    with _purchase_flush_lock:
+        existing = _purchase_flush_timers.pop(client_id, None)
+        if existing:
+            existing.cancel()
+        timer = threading.Timer(_PURCHASE_ALERT_FLUSH_DELAY_SEC, _fire)
+        _purchase_flush_timers[client_id] = timer
+        timer.daemon = True
+        timer.start()
 
 
 def _queue_breach_alerts(client_id, breaches):
@@ -2185,10 +2227,6 @@ def _flush_batched_breach_alerts(client_id, evaluations):
                 f"row is Pass/Completed/PAYOUT, not a buy")
         if hold:
             still_pending.extend(hold)
-            if not session_over:
-                app.logger.info(
-                    f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
-                    f"waiting for Fail on those rows; sending {len(sendable)} Fail buy(s) now")
         if not sendable:
             continue
         firm_breaches = sendable
@@ -2224,6 +2262,14 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         announced += count
         app.logger.warning(
             f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(to_announce)} account(s))")
+        if len(to_announce) < len(firm_breaches):
+            announced_accts = {
+                str(b.get('account') or '').strip().lower() for b in to_announce if isinstance(b, dict)
+            }
+            for breach in firm_breaches:
+                acct = str((breach or {}).get('account') or '').strip().lower()
+                if acct and acct not in announced_accts:
+                    still_pending.append(breach)
 
     set_breach_alert_pending(client_id, still_pending)
     return announced
@@ -2687,18 +2733,23 @@ def _send_admin_breach_alert(client_id, breaches):
         app.logger.warning(
             f"🚨 {client_id}: suppressed {len(breaches)} breach Slack notification(s) (paused)")
         return 0
-    from collections import Counter
+    from collections import defaultdict
     from dashboard.scheduler import send_slack_message
 
     admin, slack_id, channel_id = _admin_slack_route_for_client(client_id)
-    counts = Counter(
-        _breach_firm_short_name(breach.get('prop_firm'))
-        for breach in breaches if isinstance(breach, dict)
-    )
+    by_firm = defaultdict(list)
+    for breach in breaches:
+        if isinstance(breach, dict):
+            by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
     mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
     client_label = str(client_id or '').strip()
     sent = 0
-    for firm, n in counts.items():
+    for firm_key, firm_breaches in by_firm.items():
+        firm = _breach_firm_short_name(
+            (firm_breaches[0] or {}).get('prop_firm') if firm_breaches else '')
+        n = len(_unique_breach_accounts(firm_breaches))
+        if n <= 0:
+            continue
         purchase = f"Purchase {n} {firm} account{'s' if n > 1 else ''}"
         line = f"{mention} {purchase} for {client_label}" if client_label else f"{mention} {purchase}"
         delivered = False
@@ -7861,6 +7912,7 @@ def api_client_push():
             ]
             if breach_alerts:
                 _queue_breach_alerts(client_id, breach_alerts)
+                _schedule_purchase_alert_flush(client_id)
         except Exception as exc:
             app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
 
@@ -8209,10 +8261,7 @@ def api_client_push():
         if filled:
             app.logger.warning(
                 f"🚨 {client_id}: queued {filled} purchase alert(s) from today's Fail rows")
-        announced = _flush_batched_breach_alerts(client_id, evaluations)
-        if announced:
-            app.logger.warning(
-                f"🚨 {client_id}: announced {announced} batched breach alert(s) to the admin")
+        _schedule_purchase_alert_flush(client_id)
     except Exception as exc:
         app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
 
@@ -15558,7 +15607,7 @@ def update_data():
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
                     _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
-                    _flush_batched_breach_alerts(client_id, evaluations)
+                    _schedule_purchase_alert_flush(client_id)
                 except Exception as exc:
                     app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
 
