@@ -89,3 +89,22 @@ def test_firm_display_names():
     assert firm_display('Topstep') == 'TopStep'
     assert firm_display('Funded Next Flex') == 'Funded Next'
     assert firm_display('Lucid') == 'Lucid'
+
+
+def test_payout_eligible_scans_prop_day_and_skips_finished_rows():
+    from dashboard.auto_daily_summary import payout_eligible
+
+    # Tradeify farming keeps the marker in a Prop Day cell
+    assert payout_eligible({'Prop Firm': 'Tradeify', 'Status': 'Pass',
+                            'Prop Day 11': 'PAYOUT'}) is True
+    # Completed/Failed rows keep stale markers — history, not eligibility
+    assert payout_eligible({'Prop Firm': 'My Funded Futures', 'Status': 'Completed',
+                            'Hedge Day 28': 'PAYOUT'}) is False
+    assert payout_eligible({'Prop Firm': 'Tradeify', 'Status': 'Fail',
+                            'Prop Day 30': 'PAYOUT'}) is False
+    # Live funded rows with Hedge Day markers still count
+    assert payout_eligible({'Prop Firm': 'My Funded Futures', 'Status': 'Pass',
+                            'Hedge Day 2': 'PAYOUT'}) is True
+    assert payout_eligible({'Prop Firm': 'MFFU', 'Status': 'Pass'}) is False
+    assert payout_eligible({'Prop Firm': 'MFFU', '_deleted': True,
+                            'Hedge Day 2': 'PAYOUT'}) is False

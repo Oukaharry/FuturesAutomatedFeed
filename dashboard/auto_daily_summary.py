@@ -52,6 +52,26 @@ def _row_live(ev):
     return isinstance(ev, dict) and not ev.get('_deleted')
 
 
+def payout_eligible(ev):
+    """A PAYOUT marker on a row that is still running.
+
+    Markers live in Hedge Day, Hedge Result AND Prop Day cells (Tradeify
+    farming uses Prop Day). A Completed or Failed row keeps its old marker
+    forever — that is history, not an eligible payout.
+    """
+    if not _row_live(ev):
+        return False
+    funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
+    if 'complete' in funded or 'fail' in funded:
+        return False
+    for key, val in ev.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if isinstance(val, str) and val.strip().upper() == 'PAYOUT':
+            return True
+    return False
+
+
 def _client_firms(evaluations):
     """Display names of firms the client runs, in row order."""
     seen = []
@@ -143,7 +163,7 @@ def build_client_summary_text(client_id, *, trader='', admin='', admin_slack_id=
     """The exact manual-format summary, every section filled from evidence."""
     now = now or eat_now()
     firms = _client_firms(evaluations)
-    payouts = _payout_pending_counts(evaluations, has_payout_pending or (lambda ev: False))
+    payouts = _payout_pending_counts(evaluations, has_payout_pending or payout_eligible)
     purchases = _purchase_counts(events)
     statuses = _status_change_lines(events)
     trades = _trade_count_lines(ledger_rows)
@@ -246,10 +266,7 @@ def post_auto_daily_summaries(log=print):
         log("Auto daily summary: no slack_daily_summaries_webhook_url configured")
         return 0
 
-    from dashboard.app import (
-        _evaluation_has_payout_pending,
-        _should_skip_daily_summary_tracking,
-    )
+    from dashboard.app import _should_skip_daily_summary_tracking
     now = eat_now()
     if _should_skip_daily_summary_tracking(now):
         log("Auto daily summary: weekend/no-session — skipped")
@@ -292,13 +309,13 @@ def post_auto_daily_summaries(log=print):
                 evaluations=evaluations,
                 ledger_rows=ledger_rows,
                 events=events,
-                has_payout_pending=_evaluation_has_payout_pending,
+                has_payout_pending=payout_eligible,
                 now=now,
             )
             if not send_slack_to_webhook(webhook, text):
                 log(f"Auto daily summary: Slack send failed for {client_id}")
                 continue
-            payouts = _payout_pending_counts(evaluations, _evaluation_has_payout_pending)
+            payouts = _payout_pending_counts(evaluations, payout_eligible)
             save_daily_checklist(
                 today, 'auto_summary_bot', 'system', 'daily_summary',
                 build_checklist_items(events=events, ledger_rows=ledger_rows,
