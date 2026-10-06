@@ -5035,8 +5035,6 @@ class TradeOpssAIApp:
                 return []
         if not status:
             return []
-        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
-            return []
         field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
         current = self._cell(ev.get(field)).strip().lower()
         if current in ("fail", "completed") and status not in ("Fail", "Completed"):
@@ -5244,9 +5242,6 @@ class TradeOpssAIApp:
         the second hit (or any loss without a DLL) breaches the account.
         """
         traded_field, _traded_phase, placeholder = self._locate_progression_cells(ev)
-        if not traded_field and placeholder:
-            # First trade on the row: the weekday is the trade, not a follow-up.
-            traded_field = placeholder
         if not traded_field or not placeholder:
             return None, None
         account = self._primary_trade_account(ev)
@@ -5369,9 +5364,7 @@ class TradeOpssAIApp:
             self._last_dashboard_evaluations = list(evaluations)
             self._sync_dashboard_vanish_registry(evaluations)
             if force_history or any(
-                    (self._outcome_history_needed(ev)
-                     or self._weekday_awaiting_outcome(ev))
-                    for ev in evaluations
+                    self._outcome_history_needed(ev) for ev in evaluations
                     if not ev.get("_deleted")):
                 self._trade_outcome_history(force=True)
 
@@ -5458,17 +5451,6 @@ class TradeOpssAIApp:
         except ValueError:
             return False
         return True
-
-    def _weekday_awaiting_outcome(self, evaluation):
-        """True when a live row still shows a weekday instead of a resolved P&L."""
-        if not isinstance(evaluation, dict):
-            return False
-        field = "Status" if self._on_funded_leg(evaluation) else "Status P1"
-        current = self._cell(evaluation.get(field)).lower()
-        if any(kw in current for kw in self._INACTIVE_KEYWORDS) or "pass" in current:
-            return False
-        _traded, _phase, placeholder = self._locate_progression_cells(evaluation)
-        return bool(placeholder)
 
     def _account_has_open_position(self, evaluation):
         """Whether a connected broker reports an open position for this row."""
@@ -6323,8 +6305,6 @@ class TradeOpssAIApp:
         firm_code = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
         if not firm_code:
             return None, None
-        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
-            return None, None
         rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
 
         # A row carrying only Account #.1 is still funded, so the phase test
@@ -6393,8 +6373,6 @@ class TradeOpssAIApp:
     def _record_breach_alert(self, ev, firm_code, phase, balance, floor, *,
                              reason_code=None):
         """Queue a breach for the dashboard to announce to the client's admin."""
-        if self._eval_has_payout(ev) or self._payout_marker_field(ev):
-            return
         if not hasattr(self, "_breach_alerts_sent"):
             self._breach_alerts_sent = set()
         if not hasattr(self, "_pending_breach_alerts"):
@@ -6413,10 +6391,17 @@ class TradeOpssAIApp:
         }
         if reason_code:
             payload["reason_code"] = reason_code
-        # Push immediately. The dashboard holds the firm batch until remaining
-        # live rows are Fail or the session ends. Holding here kept Chucho's
-        # MFFU buys in RAM while a surviving sibling still showed TUESDAY.
-        self._pending_breach_alerts.append(payload)
+        if str(phase) == "Challenge":
+            # One ping per firm once every challenge account has closed — not
+            # one per breach as they land.
+            if not hasattr(self, "_held_challenge_breaches"):
+                self._held_challenge_breaches = {}
+            family = self._breach_hold_family(payload["prop_firm"])
+            self._held_challenge_breaches.setdefault(family, []).append(payload)
+            self.log(f"\U0001f6a8 {account}: challenge breach held \u2014 waiting for all "
+                     f"{payload['prop_firm']} challenge accounts to close", "WARN")
+        else:
+            self._pending_breach_alerts.append(payload)
         if reason_code == "dashboard_vanish":
             self.log(f"🚨 {account}: {phase} breach — account removed from "
                      f"dashboard after trading", "ERROR")
@@ -7543,12 +7528,6 @@ class TradeOpssAIApp:
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
-            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
-                for field in ("Account #", "Account #.1"):
-                    acct = self._cell_account(ev.get(field))
-                    if acct:
-                        self._dashboard_vanish_registry.pop(acct.lower(), None)
-                continue
             firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
             if not self._on_funded_leg(ev):
                 ch = self._cell_account(ev.get("Account #"))
@@ -7588,8 +7567,6 @@ class TradeOpssAIApp:
             return force_fields
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
-                continue
-            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
                 continue
             firm_key = self._broker_connection_key(self._cell(ev.get("Prop Firm")))
             if firm_key not in fresh_firms:
@@ -7634,18 +7611,10 @@ class TradeOpssAIApp:
                 to_remove.append(acct_key)
                 continue
             ev = dict(meta["ev_snapshot"])
-            for candidate in evaluations or []:
-                if (isinstance(candidate, dict) and not candidate.get("_deleted")
-                        and self._vanish_row_key(candidate) == row_key):
-                    ev = candidate
-                    break
             on_funded = bool(meta.get("on_funded"))
             field = "Status" if on_funded else "Status P1"
             current = self._cell(ev.get(field)).lower()
             if any(kw in current for kw in self._INACTIVE_KEYWORDS):
-                to_remove.append(acct_key)
-                continue
-            if self._eval_has_payout(ev) or self._payout_marker_field(ev):
                 to_remove.append(acct_key)
                 continue
             tier = str(meta.get("tier") or "trade").upper()
@@ -9315,16 +9284,14 @@ class TradeOpssAIApp:
         return rows_by_firm, affordable, skipped, free, required_total
 
     def _eval_has_payout(self, ev):
-        """True when a hedge cell is awaiting payout — skip scan, Fail, and alerts."""
-        if self._payout_marker_field(ev):
-            return True
+        """Check if any hedge cell contains 'payout' text."""
         if not ev:
             return False
         for key, val in ev.items():
-            if not isinstance(key, str):
+            if not isinstance(key, str) or not isinstance(val, str):
                 continue
             k = key.lower()
-            if ("hedge result" in k or "hedge day" in k) and "payout" in self._cell(val).lower():
+            if ("hedge result" in k or "hedge day" in k) and "payout" in val.lower():
                 return True
         return False
 
