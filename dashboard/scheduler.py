@@ -603,29 +603,35 @@ def _build_daily_summary_text():
 
 
 def flush_queued_purchase_alerts():
-    """Send purchase alerts still queued once the EAT session is over."""
+    """Queue today's Fail buys and send them — every client, not only pending queues."""
     from dashboard.app import _flush_batched_breach_alerts, _queue_fail_rows_as_purchase_alerts
-    from dashboard.database import get_all_clients, get_client_data, list_pending_breach_alert_clients
+    from dashboard.database import get_all_clients, list_pending_breach_alert_clients
 
+    all_data = get_all_clients() or {}
     queued = list(list_pending_breach_alert_clients() or [])
-    all_ids = list((get_all_clients() or {}).keys())
-    clients = list(dict.fromkeys(queued + all_ids))
+    clients = list(dict.fromkeys(queued + list(all_data.keys())))
     logging.info(
-        "Session-end purchase alert flush: %s pending queue(s), %s client(s) scanned",
+        "Purchase alert flush: %s pending queue(s), %s client(s) scanned",
         len(queued), len(clients),
     )
+    sent_total = 0
     for client_id in clients:
         try:
-            data = get_client_data(client_id) or {}
+            data = all_data.get(client_id)
+            if data is None:
+                from dashboard.database import get_client_data
+                data = get_client_data(client_id) or {}
             evaluations = data.get('evaluations') or []
             filled = _queue_fail_rows_as_purchase_alerts(client_id, evaluations)
             if filled:
                 logging.warning(
                     "Queued %s purchase alert(s) from today's Fail rows for %s",
                     filled, client_id)
-            _flush_batched_breach_alerts(client_id, evaluations)
+            sent_total += int(_flush_batched_breach_alerts(client_id, evaluations) or 0)
         except Exception as exc:
             logging.error("Purchase alert flush failed for %s: %s", client_id, exc)
+    logging.info("Purchase alert flush finished — announced %s batch(es)", sent_total)
+    return sent_total
 
 
 def post_slack_summary():

@@ -1855,8 +1855,21 @@ def _breach_alert_disposition(breach, evaluations):
     phase = str(breach.get('phase') or '').strip().lower()
     if phase.startswith('fund'):
         status = ev.get('Status') or ev.get('Status Funded') or ''
+        status_field = 'Status'
     else:
         status = ev.get('Status P1') or ''
+        status_field = 'Status P1'
+    reason = str(breach.get('reason_code') or 'balance').strip().lower()
+    if reason in _BREACH_VANISH_REASON_CODES or reason == 'balance':
+        if _evaluation_has_payout_pending(ev):
+            return 'discard'
+        _promote_breach_evidence_to_fail(ev)
+        return 'send'
+    if _derived_note_implies_breach(ev, status_field):
+        if _evaluation_has_payout_pending(ev):
+            return 'discard'
+        _promote_breach_evidence_to_fail(ev)
+        return 'send'
     if is_eval_phase_failed(status):
         if _evaluation_has_payout_pending(ev):
             return 'discard'
@@ -1914,43 +1927,87 @@ def _fail_row_ended_today(ev, ended_field):
     return ended[:10] == today or ended.replace('/', '-')[:10] == today
 
 
-def _fail_row_needs_purchase(ev, ended_field, status_field):
-    """True for a Fail that should buy today — every client, every firm.
+def _derived_note_implies_breach(ev, status_field):
+    """True when the companion left a floor/vanish note on this status field."""
+    note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
+    if any(marker in note for marker in _VANISH_DERIVED_MARKERS):
+        return True
+    return bool(_DERIVED_FLOOR_FAIL_RE.search(note or ''))
 
-    Date Ended today is the usual gate so old Fails are not re-bought.
-    Vanish/floor notes still buy when Date Ended was never stamped.
+
+def _promote_breach_evidence_to_fail(ev):
+    """Write Fail + Date Ended when _derived_* already records a breach.
+
+    Slack and purchases must not wait on Hit TP / In Progress while the
+    companion has already decided the account blew.
     """
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return
+    if _evaluation_has_payout_pending(ev):
+        return
+    manual = set(ev.get('_manual_push_fields') or [])
+    for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
+        if field in manual or not _derived_note_implies_breach(ev, field):
+            continue
+        current = ev.get(field)
+        if field == 'Status' and is_funded_phase_ended(current):
+            continue
+        if _status_is_fail(current):
+            pass
+        elif is_hit_tp_sl_status(current) or str(current or '').strip().lower() in (
+                '', '-', 'in progress', 'not started', 'live'):
+            ev[field] = 'Fail'
+        else:
+            continue
+        if _date_ended_blank(ev.get(ended)) and ended not in manual:
+            ev[ended] = _kenya_today_str()
+
+
+def _fail_row_needs_purchase(ev, ended_field, status_field):
+    """True for a breach that should buy today — every client, every firm."""
     if _fail_row_ended_today(ev, ended_field):
         return True
     ended = str((ev or {}).get(ended_field) or '').strip()
     if ended:
         return False
-    note = str((ev or {}).get(f'_derived_{status_field}') or '').lower()
-    if any(marker in note for marker in _VANISH_DERIVED_MARKERS):
-        return True
-    if _DERIVED_FLOOR_FAIL_RE.search(note or ''):
+    status = ev.get(status_field)
+    if is_eval_phase_failed(status) or _derived_note_implies_breach(ev, status_field):
         return True
     return False
 
 
-def _synthetic_breach_from_fail_row(ev):
-    """Purchase payload for a row that is already Fail on the sheet.
+def _row_has_today_weekday_placeholder(ev):
+    """True when a hedge/day cell still shows today's weekday (EAT)."""
+    if not isinstance(ev, dict):
+        return False
+    label = _kenya_now().strftime('%A').upper()
+    for key, val in ev.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if not (key.startswith('Hedge Result') or key.startswith('Hedge Day')
+                or key.startswith('Prop Day')):
+            continue
+        if str(val or '').strip().upper() == label:
+            return True
+    return False
 
-    Companion used to hold challenge alerts in RAM until every sibling
-    closed, so Fail could land for any client with no Slack buy behind it.
-    """
+
+def _synthetic_breach_from_fail_row(ev):
+    """Purchase payload for a breached row (Fail or companion breach evidence)."""
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return None
     if _evaluation_has_payout_pending(ev):
         return None
+    _promote_breach_evidence_to_fail(ev)
     funded = ev.get('Status') or ev.get('Status Funded') or ''
     p1 = ev.get('Status P1') or ''
-    if _eval_on_funded_leg(ev) and is_eval_phase_failed(funded):
+    if _eval_on_funded_leg(ev) and (
+            is_eval_phase_failed(funded) or _derived_note_implies_breach(ev, 'Status')):
         if not _fail_row_needs_purchase(ev, 'Date Ended.1', 'Status'):
             return None
         account = str(ev.get('Account #.1') or ev.get('Account #') or '').strip()
         phase = 'Funded'
-    elif is_eval_phase_failed(p1):
+    elif is_eval_phase_failed(p1) or _derived_note_implies_breach(ev, 'Status P1'):
         if not _fail_row_needs_purchase(ev, 'Date Ended', 'Status P1'):
             return None
         account = str(ev.get('Account #') or '').strip()
@@ -1993,6 +2050,7 @@ def _queue_fail_rows_as_purchase_alerts(client_id, evaluations):
     sent = get_breach_alert_sent_batches(client_id)
     to_queue = []
     for ev in evaluations or []:
+        _promote_breach_evidence_to_fail(ev)
         breach = _synthetic_breach_from_fail_row(ev)
         if not breach:
             continue
@@ -2096,6 +2154,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         return 0
     for ev in evaluations or []:
         if isinstance(ev, dict) and not ev.get('_deleted'):
+            _promote_breach_evidence_to_fail(ev)
             _heal_hit_marker_after_floor_fail(ev)
     if _purchase_alerts_held_for_weekend():
         app.logger.info(
@@ -3441,6 +3500,7 @@ def _apply_server_eval_guards(evaluations):
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
+        _promote_breach_evidence_to_fail(ev)
         _clear_date_ended_unless_pass_or_fail(ev)
         _heal_hit_marker_after_floor_fail(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
@@ -16342,6 +16402,23 @@ def run_dashboard():
     print(f"\nClients in database: {get_clients_count()}")
     print(f"{'='*60}\n")
     app.run(host='0.0.0.0', port=5001, debug=True)
+
+def _kick_startup_purchase_backfill():
+    """Reload must send today's Fail buys without waiting for the 10-minute tick."""
+    def _run():
+        time.sleep(2)
+        try:
+            from dashboard.scheduler import flush_queued_purchase_alerts
+            logging.info("Startup purchase alert backfill...")
+            n = flush_queued_purchase_alerts()
+            logging.info("Startup purchase alert backfill done (announced %s)", n)
+        except Exception as exc:
+            logging.error("Startup purchase alert backfill failed: %s", exc)
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_kick_startup_purchase_backfill()
+
 
 if __name__ == '__main__':
     run_dashboard()
