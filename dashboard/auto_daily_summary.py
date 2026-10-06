@@ -245,8 +245,9 @@ def build_checklist_items(events=None, ledger_rows=None, payouts=None):
 def post_auto_daily_summaries(log=print):
     """20:00 EAT: build and deliver every client's summary from the day's events."""
     import os
-    if str(os.environ.get('AUTO_DAILY_SUMMARY_PAUSED', '0')).strip().lower() in (
-            '1', 'true', 'yes'):
+    # Paused until ops enables: set AUTO_DAILY_SUMMARY_PAUSED=0 to go live.
+    if str(os.environ.get('AUTO_DAILY_SUMMARY_PAUSED', '1')).strip().lower() not in (
+            '0', 'false', 'no'):
         log("Auto daily summary paused via AUTO_DAILY_SUMMARY_PAUSED")
         return 0
 
