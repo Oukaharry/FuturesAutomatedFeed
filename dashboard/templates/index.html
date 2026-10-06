@@ -3247,12 +3247,16 @@
                         #kyc-payouts-body .kyc-field:disabled { cursor:not-allowed; background-image:none !important; }
                         #kyc-payouts-body .kyc-field.kyc-status { min-width:160px; }
                         #kyc-payouts-body .kyc-field.kyc-person { min-width:110px; }
+                        #kyc-payouts-body .kyc-field.kyc-assignor { min-width:100px; }
+                        .kyc-payouts-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+                        .kyc-payouts-scroll .data-table { min-width:1080px; }
                         #kyc-payouts-body .is-saving { opacity:.6; }
                         #kyc-payouts-body .kyc-field.is-saved { border-color:rgba(148,163,184,0.5) !important; }
                         #kyc-payouts-body .is-error { border-color:#f87171 !important; }
                         #kyc-payouts-body tr.is-processed td:not(.kyc-proc-cell) { opacity:.55; }
                     </style>
                     <div id="kyc-payouts-section" style="display:none;">
+                        <div class="kyc-payouts-scroll">
                         <table class="data-table" style="width:100%;">
                             <thead>
                                 <tr>
@@ -3264,10 +3268,12 @@
                                     <th class="kyc-proc-col" style="text-align:center;">Processed</th>
                                     <th class="kyc-proc-col" style="text-align:left; padding-left:20px;">Status</th>
                                     <th class="kyc-proc-col" style="text-align:left; padding-left:20px;">Who Has to Process</th>
+                                    <th class="kyc-proc-col" style="text-align:left; padding-left:20px;">Assignor</th>
                                 </tr>
                             </thead>
                             <tbody id="kyc-payouts-body"></tbody>
                         </table>
+                        </div>
                         <datalist id="kyc-payout-status-presets">
                             <option value="MetaMask is not set up on Rise"></option>
                             <option value="Rise is not set up"></option>
@@ -3284,6 +3290,13 @@
                             <option value="Adam"></option>
                             <option value="Linet"></option>
                             <option value="Need Passkey &amp; Process (Tyler)"></option>
+                        </datalist>
+                        <datalist id="kyc-payout-assignor-presets">
+                            <option value="Joe"></option>
+                            <option value="Tyler"></option>
+                            <option value="Adam"></option>
+                            <option value="Chris"></option>
+                            <option value="Linet"></option>
                         </datalist>
                     </div>
                 </div>
@@ -3727,10 +3740,13 @@
                                 <td class="kyc-proc-cell" style="cursor:default;" onclick="event.stopPropagation()">
                                     <input type="text" class="kyc-field kyc-person" list="kyc-payout-people-presets" ${key} data-field="assigned_to" value="${_kycEsc(p.assigned_to)}" placeholder="Assign" ${ro} onchange="saveKycPayoutProcessing(this)" autocomplete="off">
                                 </td>
+                                <td class="kyc-proc-cell" style="cursor:default;" onclick="event.stopPropagation()">
+                                    <input type="text" class="kyc-field kyc-assignor" list="kyc-payout-assignor-presets" ${key} data-field="assignor" value="${_kycEsc(p.assignor)}" placeholder="Assignor" ${ro} onchange="saveKycPayoutProcessing(this)" autocomplete="off">
+                                </td>
                             </tr>
                         `}).join('');
                     } else {
-                        payoutsBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
+                        payoutsBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
                     }
                 })
                 .catch(() => {});

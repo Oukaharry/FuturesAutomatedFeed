@@ -3686,7 +3686,7 @@ def purge_daily_events() -> int:
 
 # ============ Payout processing (KYC portfolio withdrawals via Rise) ============
 
-PAYOUT_PROCESSING_FIELDS = ('processed', 'status', 'assigned_to', 'processed_by')
+PAYOUT_PROCESSING_FIELDS = ('processed', 'status', 'assigned_to', 'assignor', 'processed_by')
 
 
 def _ensure_payout_processing_table():
@@ -3701,12 +3701,16 @@ def _ensure_payout_processing_table():
                 processed     INTEGER NOT NULL DEFAULT 0,
                 status        TEXT DEFAULT '',
                 assigned_to   TEXT DEFAULT '',
+                assignor      TEXT DEFAULT '',
                 processed_by  TEXT DEFAULT '',
                 updated_by    TEXT DEFAULT '',
                 updated_at    TEXT,
                 PRIMARY KEY (client_id, account, payout_num)
             )
             '''
+        )
+        cursor.execute(
+            "ALTER TABLE payout_processing ADD COLUMN IF NOT EXISTS assignor TEXT DEFAULT ''"
         )
         conn.commit()
 
@@ -3746,6 +3750,7 @@ def save_payout_processing(client_id: str, account: str, payout_num: int,
         'processed': 1 if current.get('processed') else 0,
         'status': current.get('status') or '',
         'assigned_to': current.get('assigned_to') or '',
+        'assignor': current.get('assignor') or '',
         'processed_by': current.get('processed_by') or '',
     }
     for key in PAYOUT_PROCESSING_FIELDS:
@@ -3762,18 +3767,20 @@ def save_payout_processing(client_id: str, account: str, payout_num: int,
             '''
             INSERT INTO payout_processing
                 (client_id, account, payout_num, processed, status, assigned_to,
-                 processed_by, updated_by, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 assignor, processed_by, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(client_id, account, payout_num) DO UPDATE SET
                 processed = excluded.processed,
                 status = excluded.status,
                 assigned_to = excluded.assigned_to,
+                assignor = excluded.assignor,
                 processed_by = excluded.processed_by,
                 updated_by = excluded.updated_by,
                 updated_at = excluded.updated_at
             ''',
             (client_id, account, payout_num, row['processed'], row['status'],
-             row['assigned_to'], row['processed_by'], str(updated_by or ''), now),
+             row['assigned_to'], row['assignor'], row['processed_by'],
+             str(updated_by or ''), now),
         )
         conn.commit()
     return {**row, 'updated_by': updated_by or '', 'updated_at': now}

@@ -9761,6 +9761,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         p["processed"] = bool(proc.get("processed"))
         p["processing_status"] = proc.get("status") or ''
         p["assigned_to"] = proc.get("assigned_to") or ''
+        p["assignor"] = proc.get("assignor") or ''
         p["processed_by"] = proc.get("processed_by") or ''
 
     all_fees.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
@@ -9830,7 +9831,7 @@ def api_kyc_portfolio():
 @app.route('/api/kyc/portfolio/payout_processing', methods=['POST'])
 @require_session
 def api_kyc_payout_processing():
-    """Save Processed / Status / Who Has to Process / Processed By for one KYC payout."""
+    """Save Processed / Status / Who Has to Process / Assignor / Processed By for one KYC payout."""
     from dashboard.database import save_payout_processing, PAYOUT_PROCESSING_FIELDS
     session_user = request.session_user
     if session_user.get('user_type') == 'kwok_admin':
