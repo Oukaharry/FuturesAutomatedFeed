@@ -3554,6 +3554,25 @@ def get_trade_ledger_rows(days: int = 30) -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_trade_ledger_rows_for_date(entry_date: str, client_id: str = None) -> list:
+    """One day's ledger rows, optionally for a single client."""
+    try:
+        _ensure_trade_ledger_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            if client_id:
+                cursor.execute(
+                    'SELECT * FROM trade_ledger WHERE entry_date = ? AND client_id = ?',
+                    (entry_date, client_id))
+            else:
+                cursor.execute(
+                    'SELECT * FROM trade_ledger WHERE entry_date = ?', (entry_date,))
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as exc:
+        print(f"[LEDGER] day rows lookup failed for {entry_date}: {exc}")
+        return []
+
+
 def get_client_recent_ledger_firms(client_id: str, days: int = 7) -> set:
     """Prop firms this client actually traded in the last `days` (ledger truth)."""
     cutoff = (datetime.now() - timedelta(days=int(days))).strftime('%Y-%m-%d')
@@ -3574,6 +3593,95 @@ def get_client_recent_ledger_firms(client_id: str, days: int = 7) -> set:
     except Exception as exc:
         print(f"[LEDGER] recent firms lookup failed for {client_id}: {exc}")
         return set()
+
+
+# ============ Daily events (feed the automated daily summary) ============
+# Every server-observed activity of the day lands here; the 20:00 EAT summary
+# bot reads it back per client. The whole table is discarded Saturday 20:00.
+
+def _ensure_daily_events_table():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS daily_events (
+                id          SERIAL PRIMARY KEY,
+                event_date  TEXT NOT NULL,
+                client_id   TEXT NOT NULL,
+                kind        TEXT NOT NULL,
+                prop_firm   TEXT,
+                account     TEXT,
+                detail      TEXT,
+                created_at  TEXT NOT NULL
+            )
+            '''
+        )
+        cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_daily_events_date_client '
+            'ON daily_events (event_date, client_id)'
+        )
+        conn.commit()
+
+
+def record_daily_event(client_id: str, kind: str, prop_firm: str = '',
+                       account: str = '', detail: str = '',
+                       event_date: str = None):
+    """Append one activity record for today's automated summary."""
+    try:
+        _ensure_daily_events_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO daily_events '
+                '(event_date, client_id, kind, prop_firm, account, detail, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (
+                    event_date or datetime.now().strftime('%Y-%m-%d'),
+                    str(client_id or '').strip(),
+                    str(kind or '').strip(),
+                    str(prop_firm or '').strip(),
+                    str(account or '').strip(),
+                    str(detail or '').strip(),
+                    datetime.now().isoformat(timespec='seconds'),
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        print(f"[EVENTS] record failed ({kind} for {client_id}): {exc}")
+
+
+def get_daily_events(event_date: str, client_id: str = None) -> list:
+    try:
+        _ensure_daily_events_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            if client_id:
+                cursor.execute(
+                    'SELECT * FROM daily_events WHERE event_date = ? AND client_id = ? '
+                    'ORDER BY id', (event_date, client_id))
+            else:
+                cursor.execute(
+                    'SELECT * FROM daily_events WHERE event_date = ? ORDER BY id',
+                    (event_date,))
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as exc:
+        print(f"[EVENTS] read failed for {event_date}: {exc}")
+        return []
+
+
+def purge_daily_events() -> int:
+    """Weekly reset (Saturday 20:00 EAT): the events table starts over."""
+    try:
+        _ensure_daily_events_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM daily_events')
+            purged = cursor.rowcount or 0
+            conn.commit()
+            return purged
+    except Exception as exc:
+        print(f"[EVENTS] purge failed: {exc}")
+        return 0
 
 
 # Schema/connectivity checks run from app startup (background thread), not on import.

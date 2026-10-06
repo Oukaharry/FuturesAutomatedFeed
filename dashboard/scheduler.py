@@ -77,6 +77,31 @@ def run_scheduler():
                 _mark_ran('purchase_alerts', today)
                 time.sleep(60)
 
+            # 17:05 UTC (20:05 EAT) — Automated trader daily summaries, right
+            # after the purchase flush so its announcements are in the events.
+            if now.hour == 17 and now.minute == 5 and ran.get('auto_daily_summary') != today:
+                logging.info("Posting automated daily summaries (20:05 EAT)...")
+                try:
+                    from dashboard.auto_daily_summary import post_auto_daily_summaries
+                    post_auto_daily_summaries(log=logging.info)
+                except Exception as exc:
+                    logging.error(f"Auto daily summary job failed: {exc}")
+                _mark_ran('auto_daily_summary', today)
+                time.sleep(60)
+
+            # Saturday 17:10 UTC (20:10 EAT) — weekly daily_events reset.
+            if (now.weekday() == 5 and now.hour == 17 and now.minute == 10
+                    and ran.get('daily_events_purge') != today):
+                logging.info("Purging daily events table (Saturday 20:10 EAT)...")
+                try:
+                    from dashboard.database import purge_daily_events
+                    purged = purge_daily_events()
+                    logging.info(f"Daily events purged: {purged} row(s)")
+                except Exception as exc:
+                    logging.error(f"Daily events purge failed: {exc}")
+                _mark_ran('daily_events_purge', today)
+                time.sleep(60)
+
             # 23:10 UTC (02:10 EAT) — Quality scan before daily Slack summary (~20 min buffer)
             if now.hour == 23 and now.minute == 10 and ran.get('quality_scan') != today:
                 logging.info("Running scheduled quality scan (02:10 EAT)...")

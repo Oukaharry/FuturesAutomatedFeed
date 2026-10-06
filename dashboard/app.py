@@ -1918,6 +1918,18 @@ def _queue_breach_alerts(client_id, breaches):
         added += 1
     if added:
         set_breach_alert_pending(client_id, pending)
+        try:
+            from dashboard.database import record_daily_event
+            for breach in breaches or []:
+                if isinstance(breach, dict):
+                    record_daily_event(
+                        client_id, 'breach_queued',
+                        prop_firm=breach.get('prop_firm', ''),
+                        account=breach.get('account', ''),
+                        detail=str(breach.get('phase') or ''),
+                        event_date=_kenya_today_str())
+        except Exception:
+            pass
         app.logger.warning(
             f"🚨 {client_id}: queued {added} breach alert(s) ({len(pending)} pending total)")
     return added
@@ -2102,6 +2114,15 @@ def _flush_batched_breach_alerts(client_id, evaluations):
 
         mark_breach_alert_batch_sent(client_id, batch_key)
         announced += count
+        try:
+            from dashboard.database import record_daily_event
+            record_daily_event(
+                client_id, 'purchase_sent',
+                prop_firm=(to_announce[0] or {}).get('prop_firm', firm_key),
+                detail=str(len(to_announce)),
+                event_date=_kenya_today_str())
+        except Exception:
+            pass
         app.logger.warning(
             f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(to_announce)} account(s))")
 
@@ -2839,6 +2860,32 @@ def merge_dashboard_update_evaluations(
         out[idx] = merged
 
     return out
+
+
+def _record_status_change_events(client_id, existing_evals, merged_evals):
+    """Log today's status flips so the 20:00 summary can report them."""
+    try:
+        from dashboard.database import record_daily_event
+        existing_by_key = _index_existing_evaluations(existing_evals)
+        for ev in merged_evals or []:
+            if not isinstance(ev, dict) or ev.get('_deleted'):
+                continue
+            mk = _evaluation_row_merge_key(ev)
+            before = existing_by_key.get(mk) if mk else None
+            if not isinstance(before, dict):
+                continue
+            for field in ('Status P1', 'Status'):
+                new = str(ev.get(field) or '').strip()
+                old = str(before.get(field) or '').strip()
+                if new and new.lower() != old.lower():
+                    record_daily_event(
+                        client_id, 'status_change',
+                        prop_firm=ev.get('Prop Firm', ''),
+                        account=(_eval_broker_account_numbers(ev) or [''])[0],
+                        detail=new,
+                        event_date=_kenya_today_str())
+    except Exception as exc:
+        app.logger.warning(f"Status-change event log failed for {client_id}: {exc}")
 
 
 def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
@@ -7700,6 +7747,7 @@ def api_client_push():
         force_fields = set(data.get('force_fields', []))
         evaluations = merge_evaluation_push_with_existing(
             existing_evals_push, incoming_evals, force_fields)
+        _record_status_change_events(client_id, existing_evals_push, evaluations)
         app.logger.info(
             f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
             f"into {len(evaluations)} total (was {len(existing_evals_push)} in DB)")
