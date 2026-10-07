@@ -5026,6 +5026,8 @@ class TradeOpssAIApp:
 
     def _apply_status_update(self, ev):
         """Advance the lifecycle status from resolved broker activity."""
+        if self._eval_has_payout(ev):
+            return []
         try:
             status, reason = self._derive_account_status(ev)
         except Exception:
@@ -6312,6 +6314,8 @@ class TradeOpssAIApp:
         SOP 7b: Tradovate balance is the final source of truth; 7c: Completed
         needs every payout processed AND the account blown.
         """
+        if self._eval_has_payout(ev):
+            return None, None
         mgr = self.prop_firm_mgr
         if not mgr:
             return None, None
@@ -6386,6 +6390,8 @@ class TradeOpssAIApp:
     def _record_breach_alert(self, ev, firm_code, phase, balance, floor, *,
                              reason_code=None):
         """Queue a breach for the dashboard to announce to the client's admin."""
+        if self._eval_has_payout(ev):
+            return
         if not hasattr(self, "_breach_alerts_sent"):
             self._breach_alerts_sent = set()
         if not hasattr(self, "_pending_breach_alerts"):
@@ -7089,12 +7095,16 @@ class TradeOpssAIApp:
             firm_code, phase_key, acct_size, funded_payout_count=payouts)
 
     _PAYOUT_MARKER = "PAYOUT"
-    _PAYOUT_MARKER_PREFIXES = ("Hedge Result", "Hedge Day")
+    _PAYOUT_MARKER_PREFIXES = ("Hedge Result", "Hedge Day", "Prop Day")
 
     def _payout_marker_field(self, ev):
-        """Hedge cell holding a bare PAYOUT marker, if any."""
+        """Hedge/prop day cell holding a bare PAYOUT marker, if any."""
         for key, val in (ev or {}).items():
-            if not isinstance(key, str) or not key.startswith(self._PAYOUT_MARKER_PREFIXES):
+            if not isinstance(key, str) or key.startswith("_"):
+                continue
+            if "Progress" in key:
+                continue
+            if not key.startswith(self._PAYOUT_MARKER_PREFIXES):
                 continue
             if self._cell(val).strip().upper() == self._PAYOUT_MARKER:
                 return key
@@ -7775,6 +7785,8 @@ class TradeOpssAIApp:
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
+            if self._eval_has_payout(ev):
+                continue
             firm_key = self._broker_connection_key(self._cell(ev.get("Prop Firm")))
             if firm_key not in fresh_firms:
                 continue
@@ -7819,6 +7831,9 @@ class TradeOpssAIApp:
                 continue
             ev = dict(meta["ev_snapshot"])
             on_funded = bool(meta.get("on_funded"))
+            if self._eval_has_payout(ev):
+                to_remove.append(acct_key)
+                continue
             field = "Status" if on_funded else "Status P1"
             current = self._cell(ev.get(field)).lower()
             if any(kw in current for kw in self._INACTIVE_KEYWORDS):
@@ -8863,6 +8878,9 @@ class TradeOpssAIApp:
             self._sync_prop_firm_from_account(ev)
             connect_evals.append(ev)
 
+            if self._eval_has_payout(ev):
+                continue
+
             # Dashboard _is_active ignores weekday + funded completion nuance
             if self._on_funded_leg(ev) and not self._funded_leg_tradeable(ev, today_wd):
                 skipped["funded_done"] += 1
@@ -9493,14 +9511,20 @@ class TradeOpssAIApp:
         return rows_by_firm, affordable, skipped, free, required_total
 
     def _eval_has_payout(self, ev):
-        """Check if any hedge cell contains 'payout' text."""
+        """True when a hedge/prop day cell holds PAYOUT — trading is paused."""
         if not ev:
             return False
         for key, val in ev.items():
             if not isinstance(key, str) or not isinstance(val, str):
                 continue
+            if key.startswith("_") or "progress" in key.lower():
+                continue
             k = key.lower()
-            if ("hedge result" in k or "hedge day" in k) and "payout" in val.lower():
+            if not (k.startswith("hedge result") or k.startswith("hedge day")
+                    or k.startswith("prop day")):
+                continue
+            text = val.strip()
+            if text.upper() == self._PAYOUT_MARKER or "payout" in text.lower():
                 return True
         return False
 

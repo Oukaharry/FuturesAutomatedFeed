@@ -2565,6 +2565,13 @@ def _sanitize_companion_breach_push(incoming_evals, breach_alerts, existing_eval
             if reported is not None:
                 ev_out['_last_broker_balance'] = round(reported, 2)
                 break
+        if _evaluation_has_payout_pending(ev_in) or _evaluation_has_payout_pending(existing_ev or {}):
+            for breach in matched:
+                suppressed.add(id(breach))
+            for field in _incoming_fail_fields(ev_in):
+                _hold_fail_field_at_stored_value(ev_out, ev_in, existing_ev, field)
+            sanitized_evals.append(ev_out)
+            continue
         for field in _incoming_fail_fields(ev_in):
             if _lucid_farming_fail_disproved(ev_in, existing_ev, matched):
                 balance = _lucid_farming_known_balance(ev_in, existing_ev, matched)
@@ -3439,6 +3446,7 @@ def _apply_server_eval_guards(evaluations):
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
+        _heal_fail_during_payout_pending(ev)
         _clear_date_ended_unless_pass_or_fail(ev)
         _heal_hit_marker_after_floor_fail(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
@@ -3453,30 +3461,67 @@ def _cell_is_payout_marker(raw):
     return str(raw or '').strip().upper() == 'PAYOUT'
 
 
+def _eval_field_is_payout_pause_column(key):
+    """Hedge/prop day columns that can hold a PAYOUT trading pause."""
+    if not isinstance(key, str) or key.startswith('_'):
+        return False
+    if 'Progress' in key:
+        return False
+    return (key.startswith('Hedge Result') or key.startswith('Hedge Day')
+            or key.startswith('Prop Day'))
+
+
+def _cell_implies_payout_pause(raw):
+    """True when a day cell says payout (marker or text)."""
+    text = str(raw or '').strip()
+    if not text:
+        return False
+    if _cell_is_payout_marker(text):
+        return True
+    return 'payout' in text.lower()
+
+
 def _evaluation_has_payout_pending(evaluation):
-    """True when any Hedge Result / Hedge Day cell on the row holds PAYOUT."""
+    """True when any hedge/prop day cell on the row holds PAYOUT."""
     if not isinstance(evaluation, dict):
         return False
     for key, val in evaluation.items():
-        if not isinstance(key, str) or key.startswith('_'):
+        if not _eval_field_is_payout_pause_column(key):
             continue
-        if not (key.startswith('Hedge Result') or key.startswith('Hedge Day')):
-            continue
-        if _cell_is_payout_marker(val):
+        if _cell_implies_payout_pause(val):
             return True
     return False
 
 
+def _heal_fail_during_payout_pending(ev):
+    """Payout pause is not a breach — undo companion Fail while PAYOUT remains."""
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return
+    if not _evaluation_has_payout_pending(ev):
+        return
+    manual = set(ev.get('_manual_push_fields') or [])
+    for field, ended in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
+        if field in manual:
+            continue
+        st = ev.get(field)
+        if not _status_is_fail(st) and 'fail' not in str(st or '').lower():
+            continue
+        ev[field] = 'In Progress'
+        ev.pop(f'_derived_{field}', None)
+        if ended not in manual:
+            ev[ended] = ''
+
+
 def _pending_payout_field(evaluation):
-    """First hedge cell holding a PAYOUT prompt, if the row has one."""
+    """First hedge/prop day cell holding a PAYOUT prompt, if the row has one."""
     if not isinstance(evaluation, dict):
         return None
     for slot in range(1, 61):
-        field = f'Hedge Day {slot}'
-        if _cell_is_payout_marker(evaluation.get(field)):
-            return field
+        for field in (f'Hedge Day {slot}', f'Prop Day {slot}'):
+            if _cell_implies_payout_pause(evaluation.get(field)):
+                return field
     for field in _FUNDED_HEDGE_FIELDS:
-        if _cell_is_payout_marker(evaluation.get(field)):
+        if _cell_implies_payout_pause(evaluation.get(field)):
             return field
     return None
 
@@ -7519,9 +7564,8 @@ def api_client_data():
             is_funded_completed = 'complete' in str(status_funded).strip().lower()
             is_funded_ended = is_funded_fail or is_funded_completed
             payout_pending = _evaluation_has_payout_pending(ev)
-            ev["_is_active"] = (
-                not is_p1_fail and not is_funded_ended and not payout_pending
-            )
+            # Active = not Fail/Completed (PAYOUT pause still counts as active).
+            ev["_is_active"] = not is_p1_fail and not is_funded_ended
             if payout_pending:
                 ev["_payout_pending"] = True
 
@@ -7782,6 +7826,7 @@ def api_client_push():
         force_fields = set(data.get('force_fields', []))
         evaluations = merge_evaluation_push_with_existing(
             existing_evals_push, incoming_evals, force_fields)
+        _apply_server_eval_guards(evaluations)
         _record_status_change_events(client_id, existing_evals_push, evaluations)
         app.logger.info(
             f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
