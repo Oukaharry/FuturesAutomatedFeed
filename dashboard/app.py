@@ -9498,6 +9498,21 @@ def _kyc_payout_auto_assignee(account_name):
     return ''
 
 
+def _kyc_eval_outcome(ev):
+    """'failed' / 'passed' / 'active', matching calculate_statistics exactly:
+    active = P1 not failed and funded not ended (a funded Pass is still
+    collecting payouts). The old keyword list ('running', 'ongoing'...)
+    matched no real status, so the ACTIVE column always showed 0.
+    """
+    sp1 = str(ev.get('Status P1') or '').strip().lower()
+    sf = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
+    if is_eval_phase_failed(sp1):
+        return 'failed'
+    if is_funded_phase_ended(sf):
+        return 'passed' if 'complete' in sf else 'failed'
+    return 'active'
+
+
 def _get_kyc_portfolio_team_filters(client_id):
     """Team filter buttons for a primary KYC portfolio."""
     filters = []
@@ -9680,13 +9695,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                          "net": 0.0, "active": 0, "passed": 0, "failed": 0}
 
             for ev in period_evals:
-                status = str(ev.get('Status') or '').lower()
-                if any(s in status for s in ['passed', 'funded']):
-                    acc_stats["passed"] += 1
-                elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
-                    acc_stats["failed"] += 1
-                elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
-                    acc_stats["active"] += 1
+                acc_stats[_kyc_eval_outcome(ev)] += 1
 
                 acc_stats["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
 
@@ -9775,10 +9784,10 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                 })
                 pf["evals"] += 1
 
-                status = str(ev.get('Status') or '').lower()
                 status_p1_raw = str(ev.get('Status P1') or '').strip()
                 status_funded_raw = str(ev.get('Status') or '').strip()
                 pf["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
+                pf[_kyc_eval_outcome(ev)] += 1
 
                 if status_p1_raw:
                     for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
@@ -9788,13 +9797,6 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                         pf["hedge"] += parse_currency(ev.get(col))
                     for di in range(1, 61):
                         pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
-
-                if any(s in status for s in ['passed', 'funded']):
-                    pf["passed"] += 1
-                elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
-                    pf["failed"] += 1
-                elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
-                    pf["active"] += 1
 
             for j in range(1, 10):
                 pval = parse_currency(ev.get(f'Payout {j}'))
