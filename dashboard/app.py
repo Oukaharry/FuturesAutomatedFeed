@@ -9624,6 +9624,8 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         "total_payouts": 0.0, "total_deposits": 0.0, "total_fees": 0.0,
         "total_net_profit": 0.0, "total_hedge": 0.0, "total_farming": 0.0,
         "total_net_complete": 0.0, "total_net_inprogress": 0.0,
+        "complete_payouts": 0.0, "complete_hedge": 0.0, "complete_fees": 0.0,
+        "inprog_payouts": 0.0, "inprog_hedge": 0.0, "inprog_fees": 0.0,
         "active_accounts": 0, "passed_accounts": 0, "failed_accounts": 0,
         "total_evaluations": 0
     }
@@ -9686,12 +9688,24 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                 "payouts": round(s_payouts, 2), "fees": round(s_fees, 2),
                 "hedge": round(s_hedge, 2), "farming": round(s_farming, 2),
                 "net": round(s_net, 2),
-                # Stats-tab split: completed slice from stored stats, the rest
-                # of the total is still in progress.
-                "net_complete": round(
-                    (stats.get('profitability_completed', {}) or {}).get('net_profit', 0.0) or 0.0, 2),
                 "active": s_active, "passed": s_passed, "failed": s_failed
             }
+            # Stats-tab split: completed components from stored stats; the
+            # remainder of each total is still in progress.
+            comp = stats.get('profitability_completed', {}) or {}
+            c_payouts = comp.get('payouts', 0.0) or 0.0
+            c_hedge = ((comp.get('hedging_results', 0.0) or 0.0)
+                       + (comp.get('farming_results', 0.0) or 0.0))
+            c_fees = ((comp.get('challenge_fees', 0.0) or 0.0)
+                      + (comp.get('activation_fee', 0.0) or 0.0))
+            acc_stats["c_payouts"] = round(c_payouts, 2)
+            acc_stats["c_hedge"] = round(c_hedge, 2)
+            acc_stats["c_fees"] = round(c_fees, 2)
+            acc_stats["p_payouts"] = round(s_payouts - c_payouts, 2)
+            acc_stats["p_hedge"] = round((s_hedge + s_farming) - c_hedge, 2)
+            acc_stats["p_fees"] = round(s_fees - c_fees, 2)
+            acc_stats["net_complete"] = round(
+                comp.get('net_profit', 0.0) or 0.0, 2)
             acc_stats["net_inprogress"] = round(acc_stats["net"] - acc_stats["net_complete"], 2)
         else:
             # ── Date filter active: recalculate from evaluations in period ──
@@ -9699,17 +9713,19 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
             acc_stats = {"name": name, "eval_count": len(period_evals),
                          "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0,
                          "net": 0.0, "net_complete": 0.0, "net_inprogress": 0.0,
+                         "c_payouts": 0.0, "c_hedge": 0.0, "c_fees": 0.0,
+                         "p_payouts": 0.0, "p_hedge": 0.0, "p_fees": 0.0,
                          "active": 0, "passed": 0, "failed": 0}
 
-            def _net_bucket(ev):
-                return "net_inprogress" if _kyc_eval_outcome(ev) == "active" else "net_complete"
+            def _pfx(ev):
+                return "p_" if _kyc_eval_outcome(ev) == "active" else "c_"
 
             for ev in period_evals:
                 acc_stats[_kyc_eval_outcome(ev)] += 1
 
                 row_fee = parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
                 acc_stats["fees"] += row_fee
-                acc_stats[_net_bucket(ev)] -= row_fee
+                acc_stats[_pfx(ev) + "fees"] += row_fee
 
                 # Only count hedge/farming for rows with a populated status
                 ev_status_p1 = str(ev.get('Status P1') or '').strip()
@@ -9718,16 +9734,16 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
                         v = parse_currency(ev.get(col))
                         acc_stats["hedge"] += v
-                        acc_stats[_net_bucket(ev)] += v
+                        acc_stats[_pfx(ev) + "hedge"] += v
                 if ev_status_funded:
                     for col in FUNDED_HEDGE_COLS:
                         v = parse_currency(ev.get(col))
                         acc_stats["hedge"] += v
-                        acc_stats[_net_bucket(ev)] += v
+                        acc_stats[_pfx(ev) + "hedge"] += v
                     for di in range(1, 61):
                         v = parse_currency(ev.get(f'Hedge Day {di}'))
                         acc_stats["farming"] += v
-                        acc_stats[_net_bucket(ev)] += v
+                        acc_stats[_pfx(ev) + "hedge"] += v
 
             # Payouts from ALL evals filtered by individual payout date
             for ev in all_evals:
@@ -9737,11 +9753,16 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                         pdate = str(ev.get(f'Date {i}') or '-').strip()
                         if date_in_period(pdate):
                             acc_stats["payouts"] += pval
-                            acc_stats[_net_bucket(ev)] += pval
+                            acc_stats[_pfx(ev) + "payouts"] += pval
 
             acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
-            acc_stats["net_complete"] = round(acc_stats["net_complete"], 2)
-            acc_stats["net_inprogress"] = round(acc_stats["net_inprogress"], 2)
+            for b in ("c_", "p_"):
+                for k in ("payouts", "hedge", "fees"):
+                    acc_stats[b + k] = round(acc_stats[b + k], 2)
+            acc_stats["net_complete"] = round(
+                acc_stats["c_payouts"] - acc_stats["c_fees"] + acc_stats["c_hedge"], 2)
+            acc_stats["net_inprogress"] = round(
+                acc_stats["p_payouts"] - acc_stats["p_fees"] + acc_stats["p_hedge"], 2)
             acc_stats["payouts"] = round(acc_stats["payouts"], 2)
             acc_stats["fees"] = round(acc_stats["fees"], 2)
             acc_stats["hedge"] = round(acc_stats["hedge"], 2)
@@ -9755,6 +9776,12 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         totals["total_net_profit"] += acc_stats["net"]
         totals["total_net_complete"] += acc_stats.get("net_complete", 0)
         totals["total_net_inprogress"] += acc_stats.get("net_inprogress", 0)
+        totals["complete_payouts"] += acc_stats.get("c_payouts", 0)
+        totals["complete_hedge"] += acc_stats.get("c_hedge", 0)
+        totals["complete_fees"] += acc_stats.get("c_fees", 0)
+        totals["inprog_payouts"] += acc_stats.get("p_payouts", 0)
+        totals["inprog_hedge"] += acc_stats.get("p_hedge", 0)
+        totals["inprog_fees"] += acc_stats.get("p_fees", 0)
         totals["active_accounts"] += acc_stats["active"]
         totals["passed_accounts"] += acc_stats["passed"]
         totals["failed_accounts"] += acc_stats["failed"]
@@ -9831,7 +9858,9 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
 
     # Round totals
     for k in ["total_payouts", "total_fees", "total_hedge", "total_farming",
-              "total_net_profit", "total_net_complete", "total_net_inprogress"]:
+              "total_net_profit", "total_net_complete", "total_net_inprogress",
+              "complete_payouts", "complete_hedge", "complete_fees",
+              "inprog_payouts", "inprog_hedge", "inprog_fees"]:
         totals[k] = round(totals[k], 2)
 
     # Round prop firm breakdown

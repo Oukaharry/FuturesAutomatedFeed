@@ -3126,15 +3126,6 @@
                     <div id="kyc-net-card" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
                         <div style="font-size:0.75rem; color:#d8b4fe; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">NET PROFIT</div>
                         <div id="kyc-total-net" style="font-size:1.8rem; font-weight:800; color:#c084fc;">$0.00</div>
-                        <div id="kyc-net-split" style="margin-top:10px; display:none;">
-                            <div style="display:flex; justify-content:space-between; gap:10px; font-size:0.72rem; font-weight:600; margin-bottom:5px;">
-                                <span style="color:#6ee7b7; white-space:nowrap;">✓ Complete <b id="kyc-net-complete">$0.00</b></span>
-                                <span style="color:#fbbf24; white-space:nowrap;">⏳ In Progress <b id="kyc-net-inprogress">$0.00</b></span>
-                            </div>
-                            <div style="height:5px; border-radius:3px; background:rgba(251,191,36,0.3); overflow:hidden;">
-                                <div id="kyc-net-split-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#34d399,#10b981); border-radius:3px; transition:width 0.4s ease;"></div>
-                            </div>
-                        </div>
                     </div>
                     <!-- Hedging Results (includes farming) -->
                     <div id="kyc-hedge-card" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
@@ -3156,6 +3147,48 @@
                     <div style="display:flex; gap:8px; align-items:center;">
                         <span style="color:#94a3b8;">Failed</span>
                         <span id="kyc-failed" style="font-weight:700; color:#f87171;">0</span>
+                    </div>
+                </div>
+
+                <!-- Completed vs In Progress breakdown (mirrors the client Stats tab) -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:16px; margin-bottom:24px;">
+                    <div style="background:linear-gradient(135deg, #060a14 0%, #04060e 100%); border:1px solid #162040; border-top:2px solid rgba(52,211,153,0.55); border-radius:14px; padding:20px 24px; box-shadow:0 4px 16px rgba(1,3,10,0.5);">
+                        <div style="font-size:1.05rem; font-weight:700; color:#e8eeff; padding-bottom:12px; border-bottom:1px solid #162040;">Profitability – Completed</div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:1px solid #10182e;">
+                            <span style="color:#cbd5e1;">Payouts</span>
+                            <span id="kyc-comp-payouts" style="font-weight:700; color:#34d399;">$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:1px solid #10182e;">
+                            <span style="color:#cbd5e1;">Hedging Results</span>
+                            <span id="kyc-comp-hedge" style="font-weight:700; color:#34d399;">$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:2px solid #334155;">
+                            <span style="color:#cbd5e1;">Challenge Fees</span>
+                            <span id="kyc-comp-fees" style="font-weight:700; color:#f87171;">-$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:14px 2px 2px;">
+                            <span style="color:#e8eeff; font-weight:700;">Net Profit</span>
+                            <span id="kyc-comp-net" style="font-weight:800; font-size:1.05rem; color:#34d399;">$0.00</span>
+                        </div>
+                    </div>
+                    <div style="background:linear-gradient(135deg, #060a14 0%, #04060e 100%); border:1px solid #162040; border-top:2px solid rgba(251,191,36,0.55); border-radius:14px; padding:20px 24px; box-shadow:0 4px 16px rgba(1,3,10,0.5);">
+                        <div style="font-size:1.05rem; font-weight:700; color:#e8eeff; padding-bottom:12px; border-bottom:1px solid #162040;">Net Profit In Progress</div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:1px solid #10182e;">
+                            <span style="color:#cbd5e1;">Payouts</span>
+                            <span id="kyc-prog-payouts" style="font-weight:700; color:#34d399;">$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:1px solid #10182e;">
+                            <span style="color:#cbd5e1;">Hedging Results</span>
+                            <span id="kyc-prog-hedge" style="font-weight:700; color:#34d399;">$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:12px 2px; border-bottom:2px solid #334155;">
+                            <span style="color:#cbd5e1;">Challenge Fees</span>
+                            <span id="kyc-prog-fees" style="font-weight:700; color:#f87171;">-$0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:14px 2px 2px;">
+                            <span style="color:#e8eeff; font-weight:700;">Net Profit</span>
+                            <span id="kyc-prog-net" style="font-weight:800; font-size:1.05rem; color:#34d399;">$0.00</span>
+                        </div>
                     </div>
                 </div>
 
@@ -3643,18 +3676,21 @@
                     document.getElementById('kyc-total-fees').textContent = fmt(t.total_fees);
                     document.getElementById('kyc-total-net').textContent = fmt(t.total_net_profit);
                     document.getElementById('kyc-total-hedge').textContent = fmt((t.total_hedge || 0) + (t.total_farming || 0));
-                    // Complete vs In Progress split inside the Net Profit card
-                    const netC = t.total_net_complete || 0, netP = t.total_net_inprogress || 0;
-                    const splitEl = document.getElementById('kyc-net-split');
-                    if (splitEl) {
-                        splitEl.style.display = (netC || netP) ? 'block' : 'none';
-                        document.getElementById('kyc-net-complete').textContent = fmt(netC);
-                        document.getElementById('kyc-net-complete').style.color = netC >= 0 ? '#6ee7b7' : '#f87171';
-                        document.getElementById('kyc-net-inprogress').textContent = fmt(netP);
-                        const share = (Math.abs(netC) + Math.abs(netP)) > 0
-                            ? (Math.abs(netC) / (Math.abs(netC) + Math.abs(netP))) * 100 : 0;
-                        document.getElementById('kyc-net-split-bar').style.width = share.toFixed(1) + '%';
-                    }
+                    // Completed vs In Progress breakdown cards
+                    const _setMoney = (id, v, negAsFee) => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.textContent = negAsFee ? ('-' + fmt(Math.abs(v || 0))) : fmt(v || 0);
+                        if (!negAsFee) el.style.color = (v || 0) >= 0 ? '#34d399' : '#f87171';
+                    };
+                    _setMoney('kyc-comp-payouts', t.complete_payouts);
+                    _setMoney('kyc-comp-hedge', t.complete_hedge);
+                    _setMoney('kyc-comp-fees', t.complete_fees, true);
+                    _setMoney('kyc-comp-net', t.total_net_complete);
+                    _setMoney('kyc-prog-payouts', t.inprog_payouts);
+                    _setMoney('kyc-prog-hedge', t.inprog_hedge);
+                    _setMoney('kyc-prog-fees', t.inprog_fees, true);
+                    _setMoney('kyc-prog-net', t.total_net_inprogress);
                     document.getElementById('kyc-active').textContent = t.active_accounts;
                     document.getElementById('kyc-passed').textContent = t.passed_accounts;
                     document.getElementById('kyc-failed').textContent = t.failed_accounts;
