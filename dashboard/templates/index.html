@@ -3758,6 +3758,25 @@
                                 <td style="text-align:left; font-weight:700; color:${pf.net >= 0 ? '#34d399' : '#f87171'};">${fmt(pf.net)}</td>
                             </tr>
                         `).join('');
+                        // Totals row across all firms
+                        const pfT = data.by_prop_firm.reduce((s, pf) => ({
+                            evals: s.evals + (pf.evals || 0),
+                            active: s.active + (pf.active || 0),
+                            payouts: s.payouts + (pf.payouts || 0),
+                            fees: s.fees + (pf.fees || 0),
+                            hedge: s.hedge + (pf.hedge || 0) + (pf.farming || 0),
+                            net: s.net + (pf.net || 0),
+                        }), {evals: 0, active: 0, payouts: 0, fees: 0, hedge: 0, net: 0});
+                        pfBody.innerHTML += `
+                            <tr style="border-top:2px solid #334155; background:linear-gradient(90deg, rgba(30,48,96,0.25) 0%, rgba(15,23,42,0.4) 100%);">
+                                <td style="padding:12px 16px; font-weight:800; color:#e8eeff; text-transform:uppercase; letter-spacing:0.04em;">Total</td>
+                                <td style="text-align:left; font-weight:700; color:#e8eeff;">${pfT.evals}</td>
+                                <td style="text-align:left; font-weight:700; color:#fff;">${pfT.active}</td>
+                                <td style="text-align:left; font-weight:700; color:#34d399;">${fmt(pfT.payouts)}</td>
+                                <td style="text-align:left; font-weight:700; color:#f87171;">${fmt(pfT.fees)}</td>
+                                <td style="text-align:left; font-weight:700; color:${pfT.hedge >= 0 ? '#34d399' : '#f87171'};">${fmt(pfT.hedge)}</td>
+                                <td style="text-align:left; font-weight:800; color:${pfT.net >= 0 ? '#34d399' : '#f87171'};">${fmt(pfT.net)}</td>
+                            </tr>`;
                     } else {
                         pfBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">No prop firm data.</td></tr>';
                     }
