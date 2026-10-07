@@ -3206,12 +3206,11 @@
                             <th style="text-align:left;">Fees</th>
                             <th style="text-align:left;">Hedging Results</th>
                             <th style="text-align:left;">Net ✓ Complete</th>
-                            <th style="text-align:left;">Net ⏳ In Progress</th>
                             <th style="text-align:left;">Net Profit</th>
                         </tr>
                     </thead>
                     <tbody id="kyc-portfolio-body">
-                        <tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
+                        <tr><td colspan="8" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
                     </tbody>
                 </table>
 
@@ -3687,10 +3686,12 @@
                     _setMoney('kyc-comp-hedge', t.complete_hedge);
                     _setMoney('kyc-comp-fees', t.complete_fees, true);
                     _setMoney('kyc-comp-net', t.total_net_complete);
-                    _setMoney('kyc-prog-payouts', t.inprog_payouts);
-                    _setMoney('kyc-prog-hedge', t.inprog_hedge);
-                    _setMoney('kyc-prog-fees', t.inprog_fees, true);
-                    _setMoney('kyc-prog-net', t.total_net_inprogress);
+                    // "In Progress" mirrors the Stats tab: the full running
+                    // cashflow, so its net equals the NET PROFIT card above.
+                    _setMoney('kyc-prog-payouts', t.total_payouts);
+                    _setMoney('kyc-prog-hedge', (t.total_hedge || 0) + (t.total_farming || 0));
+                    _setMoney('kyc-prog-fees', t.total_fees, true);
+                    _setMoney('kyc-prog-net', t.total_net_profit);
                     document.getElementById('kyc-active').textContent = t.active_accounts;
                     document.getElementById('kyc-passed').textContent = t.passed_accounts;
                     document.getElementById('kyc-failed').textContent = t.failed_accounts;
@@ -3736,12 +3737,11 @@
                                 <td style="text-align:left; color:#f87171;">${fmt(a.fees)}</td>
                                 <td style="text-align:left; color:${(a.hedge + a.farming) >= 0 ? '#34d399' : '#f87171'};">${fmt(a.hedge + a.farming)}</td>
                                 <td style="text-align:left; font-weight:600; color:${(a.net_complete || 0) >= 0 ? '#34d399' : '#f87171'};">${fmt(a.net_complete || 0)}</td>
-                                <td style="text-align:left; font-weight:600; color:${(a.net_inprogress || 0) >= 0 ? '#fbbf24' : '#fb923c'};">${fmt(a.net_inprogress || 0)}</td>
                                 <td style="text-align:left; font-weight:700; color:${a.net >= 0 ? '#34d399' : '#f87171'};">${fmt(a.net)}</td>
                             </tr>
                         `).join('');
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
                     }
                     
                     // Prop firm breakdown table
