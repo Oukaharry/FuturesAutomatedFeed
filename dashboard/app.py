@@ -9476,6 +9476,28 @@ def _get_kyc_portfolio_team_admins(client_id):
     return sorted(admins.values(), key=lambda s: s.lower())
 
 
+# KYC payout processing: the client's admin team decides the supervisor who
+# receives the assignment (assignee). Matching is by admin-name token.
+_KYC_PAYOUT_SUPERVISORS = (
+    ('bari', 'Chris'),
+    ('kellen', 'Joe'),
+    ('annah', 'Tyler'),
+    ('shalline', 'Adam'),
+)
+
+
+def _kyc_payout_auto_assignee(account_name):
+    """Supervisor linked to this KYC client's admin, or '' when unmapped."""
+    try:
+        admin = str(_get_kyc_client_admin_name(account_name) or '').lower()
+    except Exception:
+        return ''
+    for token, supervisor in _KYC_PAYOUT_SUPERVISORS:
+        if token in admin:
+            return supervisor
+    return ''
+
+
 def _get_kyc_portfolio_team_filters(client_id):
     """Team filter buttons for a primary KYC portfolio."""
     filters = []
@@ -9805,7 +9827,8 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         proc = processing.get((p["client"], str(p["account"] or '').strip(), p["payout_num"])) or {}
         p["processed"] = bool(proc.get("processed"))
         p["processing_status"] = proc.get("status") or ''
-        p["assigned_to"] = proc.get("assigned_to") or ''
+        # Assignee defaults to the supervisor linked to the client's admin.
+        p["assigned_to"] = proc.get("assigned_to") or _kyc_payout_auto_assignee(p["client"])
         p["assignor"] = proc.get("assignor") or ''
         p["processed_by"] = proc.get("processed_by") or ''
 
