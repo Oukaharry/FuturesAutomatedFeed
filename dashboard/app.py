@@ -9623,6 +9623,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
     totals = {
         "total_payouts": 0.0, "total_deposits": 0.0, "total_fees": 0.0,
         "total_net_profit": 0.0, "total_hedge": 0.0, "total_farming": 0.0,
+        "total_net_complete": 0.0, "total_net_inprogress": 0.0,
         "active_accounts": 0, "passed_accounts": 0, "failed_accounts": 0,
         "total_evaluations": 0
     }
@@ -9637,7 +9638,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
             if is_bef:
                 if _gcp(name, {}) != 'BEF':
                     continue
-            per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
+            per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "net_complete": 0, "net_inprogress": 0, "active": 0, "passed": 0, "failed": 0})
             continue
         # BEF admin: skip clients whose profile is not BEF (with hierarchy fallback)
         if is_bef:
@@ -9685,31 +9686,48 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                 "payouts": round(s_payouts, 2), "fees": round(s_fees, 2),
                 "hedge": round(s_hedge, 2), "farming": round(s_farming, 2),
                 "net": round(s_net, 2),
+                # Stats-tab split: completed slice from stored stats, the rest
+                # of the total is still in progress.
+                "net_complete": round(
+                    (stats.get('profitability_completed', {}) or {}).get('net_profit', 0.0) or 0.0, 2),
                 "active": s_active, "passed": s_passed, "failed": s_failed
             }
+            acc_stats["net_inprogress"] = round(acc_stats["net"] - acc_stats["net_complete"], 2)
         else:
             # ── Date filter active: recalculate from evaluations in period ──
             period_evals = [ev for ev in all_evals if eval_in_period(ev)]
             acc_stats = {"name": name, "eval_count": len(period_evals),
                          "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0,
-                         "net": 0.0, "active": 0, "passed": 0, "failed": 0}
+                         "net": 0.0, "net_complete": 0.0, "net_inprogress": 0.0,
+                         "active": 0, "passed": 0, "failed": 0}
+
+            def _net_bucket(ev):
+                return "net_inprogress" if _kyc_eval_outcome(ev) == "active" else "net_complete"
 
             for ev in period_evals:
                 acc_stats[_kyc_eval_outcome(ev)] += 1
 
-                acc_stats["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
+                row_fee = parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
+                acc_stats["fees"] += row_fee
+                acc_stats[_net_bucket(ev)] -= row_fee
 
                 # Only count hedge/farming for rows with a populated status
                 ev_status_p1 = str(ev.get('Status P1') or '').strip()
                 ev_status_funded = str(ev.get('Status') or '').strip()
                 if ev_status_p1:
                     for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
-                        acc_stats["hedge"] += parse_currency(ev.get(col))
+                        v = parse_currency(ev.get(col))
+                        acc_stats["hedge"] += v
+                        acc_stats[_net_bucket(ev)] += v
                 if ev_status_funded:
                     for col in FUNDED_HEDGE_COLS:
-                        acc_stats["hedge"] += parse_currency(ev.get(col))
+                        v = parse_currency(ev.get(col))
+                        acc_stats["hedge"] += v
+                        acc_stats[_net_bucket(ev)] += v
                     for di in range(1, 61):
-                        acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
+                        v = parse_currency(ev.get(f'Hedge Day {di}'))
+                        acc_stats["farming"] += v
+                        acc_stats[_net_bucket(ev)] += v
 
             # Payouts from ALL evals filtered by individual payout date
             for ev in all_evals:
@@ -9719,8 +9737,11 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                         pdate = str(ev.get(f'Date {i}') or '-').strip()
                         if date_in_period(pdate):
                             acc_stats["payouts"] += pval
+                            acc_stats[_net_bucket(ev)] += pval
 
             acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
+            acc_stats["net_complete"] = round(acc_stats["net_complete"], 2)
+            acc_stats["net_inprogress"] = round(acc_stats["net_inprogress"], 2)
             acc_stats["payouts"] = round(acc_stats["payouts"], 2)
             acc_stats["fees"] = round(acc_stats["fees"], 2)
             acc_stats["hedge"] = round(acc_stats["hedge"], 2)
@@ -9732,6 +9753,8 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         totals["total_hedge"] += acc_stats["hedge"]
         totals["total_farming"] += acc_stats["farming"]
         totals["total_net_profit"] += acc_stats["net"]
+        totals["total_net_complete"] += acc_stats.get("net_complete", 0)
+        totals["total_net_inprogress"] += acc_stats.get("net_inprogress", 0)
         totals["active_accounts"] += acc_stats["active"]
         totals["passed_accounts"] += acc_stats["passed"]
         totals["failed_accounts"] += acc_stats["failed"]
@@ -9807,7 +9830,8 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     })["payouts"] += pval
 
     # Round totals
-    for k in ["total_payouts", "total_fees", "total_hedge", "total_farming", "total_net_profit"]:
+    for k in ["total_payouts", "total_fees", "total_hedge", "total_farming",
+              "total_net_profit", "total_net_complete", "total_net_inprogress"]:
         totals[k] = round(totals[k], 2)
 
     # Round prop firm breakdown

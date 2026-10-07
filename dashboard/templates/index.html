@@ -3126,6 +3126,15 @@
                     <div id="kyc-net-card" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
                         <div style="font-size:0.75rem; color:#d8b4fe; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">NET PROFIT</div>
                         <div id="kyc-total-net" style="font-size:1.8rem; font-weight:800; color:#c084fc;">$0.00</div>
+                        <div id="kyc-net-split" style="margin-top:10px; display:none;">
+                            <div style="display:flex; justify-content:space-between; gap:10px; font-size:0.72rem; font-weight:600; margin-bottom:5px;">
+                                <span style="color:#6ee7b7; white-space:nowrap;">✓ Complete <b id="kyc-net-complete">$0.00</b></span>
+                                <span style="color:#fbbf24; white-space:nowrap;">⏳ In Progress <b id="kyc-net-inprogress">$0.00</b></span>
+                            </div>
+                            <div style="height:5px; border-radius:3px; background:rgba(251,191,36,0.3); overflow:hidden;">
+                                <div id="kyc-net-split-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#34d399,#10b981); border-radius:3px; transition:width 0.4s ease;"></div>
+                            </div>
+                        </div>
                     </div>
                     <!-- Hedging Results (includes farming) -->
                     <div id="kyc-hedge-card" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
@@ -3163,11 +3172,13 @@
                             <th style="text-align:left;">Payouts</th>
                             <th style="text-align:left;">Fees</th>
                             <th style="text-align:left;">Hedging Results</th>
+                            <th style="text-align:left;">Net ✓ Complete</th>
+                            <th style="text-align:left;">Net ⏳ In Progress</th>
                             <th style="text-align:left;">Net Profit</th>
                         </tr>
                     </thead>
                     <tbody id="kyc-portfolio-body">
-                        <tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
+                        <tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
                     </tbody>
                 </table>
 
@@ -3632,6 +3643,18 @@
                     document.getElementById('kyc-total-fees').textContent = fmt(t.total_fees);
                     document.getElementById('kyc-total-net').textContent = fmt(t.total_net_profit);
                     document.getElementById('kyc-total-hedge').textContent = fmt((t.total_hedge || 0) + (t.total_farming || 0));
+                    // Complete vs In Progress split inside the Net Profit card
+                    const netC = t.total_net_complete || 0, netP = t.total_net_inprogress || 0;
+                    const splitEl = document.getElementById('kyc-net-split');
+                    if (splitEl) {
+                        splitEl.style.display = (netC || netP) ? 'block' : 'none';
+                        document.getElementById('kyc-net-complete').textContent = fmt(netC);
+                        document.getElementById('kyc-net-complete').style.color = netC >= 0 ? '#6ee7b7' : '#f87171';
+                        document.getElementById('kyc-net-inprogress').textContent = fmt(netP);
+                        const share = (Math.abs(netC) + Math.abs(netP)) > 0
+                            ? (Math.abs(netC) / (Math.abs(netC) + Math.abs(netP))) * 100 : 0;
+                        document.getElementById('kyc-net-split-bar').style.width = share.toFixed(1) + '%';
+                    }
                     document.getElementById('kyc-active').textContent = t.active_accounts;
                     document.getElementById('kyc-passed').textContent = t.passed_accounts;
                     document.getElementById('kyc-failed').textContent = t.failed_accounts;
@@ -3676,11 +3699,13 @@
                                 <td style="text-align:left; color:#34d399;">${fmt(a.payouts)}</td>
                                 <td style="text-align:left; color:#f87171;">${fmt(a.fees)}</td>
                                 <td style="text-align:left; color:${(a.hedge + a.farming) >= 0 ? '#34d399' : '#f87171'};">${fmt(a.hedge + a.farming)}</td>
+                                <td style="text-align:left; font-weight:600; color:${(a.net_complete || 0) >= 0 ? '#34d399' : '#f87171'};">${fmt(a.net_complete || 0)}</td>
+                                <td style="text-align:left; font-weight:600; color:${(a.net_inprogress || 0) >= 0 ? '#fbbf24' : '#fb923c'};">${fmt(a.net_inprogress || 0)}</td>
                                 <td style="text-align:left; font-weight:700; color:${a.net >= 0 ? '#34d399' : '#f87171'};">${fmt(a.net)}</td>
                             </tr>
                         `).join('');
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
                     }
                     
                     // Prop firm breakdown table
