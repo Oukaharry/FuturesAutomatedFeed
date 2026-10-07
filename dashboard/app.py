@@ -1970,8 +1970,9 @@ def _queue_breach_alerts(client_id, breaches):
     return added
 
 
-# Slot caps shared with the admin max-out check. A purchase alert refills
-# open slots; it never asks for more accounts than the firm allows.
+# Slot caps shared with the admin max-out check. Purchase Slack only fires when
+# fewer than this many live rows occupy slots for the firm. At cap, queued
+# breach alerts are dropped as false — max-out overrides replacement math.
 ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
     'mffu': 3,
     'tradeday': 3,
@@ -2026,26 +2027,30 @@ def _unique_breach_accounts(breaches):
     return kept
 
 
-def _breaches_within_firm_max_out(firm_family, breaches, evaluations):
-    """Breaches to announce, capped at the slots still open under max-out.
-
-    Accounts in this batch are being replaced, so they do not occupy a slot
-    even if the row has not flipped to Fail yet. Everything else still live
-    for the firm does, and the purchase is only the room left up to the cap.
-    """
-    unique = _unique_breach_accounts(breaches)
-    replacing = {str(b.get('account') or '').strip().lower() for b in unique}
+def _count_firm_max_out_slots(firm_family, evaluations):
+    """Live rows that occupy a slot for this firm (Pass, Hit TP/SL, in progress, …)."""
     occupied = 0
     for ev in evaluations or []:
         if not _eval_row_occupies_max_out_slot(ev):
             continue
         if _breach_firm_family(ev.get('Prop Firm')) != firm_family:
             continue
-        ids = {a.lower() for a in _eval_broker_account_numbers(ev)}
-        if ids & replacing:
-            continue
         occupied += 1
-    room = max(0, _firm_max_out(firm_family) - occupied)
+    return occupied
+
+
+def _breaches_within_firm_max_out(firm_family, breaches, evaluations):
+    """Breaches to announce only when the firm is below max-out on live rows.
+
+    Every occupying row counts, including the account in the breach batch if
+    its sheet status still looks live. At cap, return nothing — alerts are false.
+    """
+    unique = _unique_breach_accounts(breaches)
+    cap = _firm_max_out(firm_family)
+    occupied = _count_firm_max_out_slots(firm_family, evaluations)
+    if occupied >= cap:
+        return []
+    room = cap - occupied
     return unique[:room]
 
 
@@ -2124,17 +2129,23 @@ def _flush_batched_breach_alerts(client_id, evaluations):
                 f"🚨 {client_id}: skipping duplicate {firm_key} breach batch ({batch_key})")
             continue
 
+        cap = _firm_max_out(firm_key)
+        occupied = _count_firm_max_out_slots(firm_key, evaluations)
         to_announce = _breaches_within_firm_max_out(firm_key, firm_breaches, evaluations)
-        if len(to_announce) < len(firm_breaches):
+        if len(to_announce) < len(firm_breaches) and to_announce:
             app.logger.warning(
                 f"🚨 {client_id}: {firm_key} purchase capped at {len(to_announce)} "
-                f"(max-out {_firm_max_out(firm_key)}, {len(firm_breaches)} breach alert(s))")
+                f"(max-out {cap}, {len(firm_breaches)} breach alert(s))")
         if not to_announce:
-            # Every slot is occupied right now — keep the batch queued and
-            # re-check on the next push; slots open as sibling rows turn Fail.
-            still_pending.extend(firm_breaches)
-            app.logger.info(
-                f"🚨 {client_id}: {firm_key} at max-out — purchase alert waits for a free slot")
+            if occupied >= cap:
+                app.logger.info(
+                    f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
+                    f"alert(s) — false alert, firm already at max-out "
+                    f"({occupied}/{cap} slots)")
+            else:
+                still_pending.extend(firm_breaches)
+                app.logger.info(
+                    f"🚨 {client_id}: {firm_key} at max-out — purchase alert waits for a free slot")
             continue
 
         count = _send_admin_breach_alert(client_id, to_announce)
