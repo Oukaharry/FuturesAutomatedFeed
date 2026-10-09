@@ -2910,6 +2910,20 @@
                 </div>
             </div>
 
+            <!-- MyFundedPerps API Key -->
+            <div style="background:#0d1117; border:1px solid #1e2a3a; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+                <h4 style="margin:0 0 8px 0; font-size:13px; color:#38bdf8;">🔑 MyFundedPerps API</h4>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:12px; color:#94a3b8;">API Key:</label>
+                        <input type="password" id="mfp-api-key" class="cell-input" style="width:320px;"
+                               placeholder="fp_live_... (Read And Trade)"
+                               onchange="updateMFPApiKey(this.value)">
+                    </div>
+                    <span style="font-size:11px; color:#4a5568; margin-left:auto;">One key covers all the client's perps accounts — trading, balances &amp; risk sync</span>
+                </div>
+            </div>
+
             <div class="section-header">
                 <h3>Prop Firm Configuration</h3>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -5988,6 +6002,7 @@
                         'ftmofuturespro': 'FTMO Futures Pro',
                         'blueguardianreserve': 'Blue Guardian Reserve',
                         'alphafutures': 'Alpha Futures', 'lucid': 'Lucid', 'lucidmaxx': 'LucidMaxx',
+                        'myfundedperps': 'MyFundedPerps', 'myfundedperpetuals': 'MyFundedPerps',
                         'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
                         'fundedfuturesfamily': 'Funded Futures Family', 'fff': 'Funded Futures Family',
                         'goatfunded': 'Goat Funded Futures', 'goatfundedfutures': 'Goat Funded Futures', 'gff': 'Goat Funded Futures',
@@ -6704,7 +6719,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'
+                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6858,6 +6873,16 @@
             if (loginEl) loginEl.value = creds.login || '';
             if (passEl) passEl.value = creds.password || '';
             if (serverEl) serverEl.value = creds.server || '';
+            const mfpEl = document.getElementById('mfp-api-key');
+            if (mfpEl) mfpEl.value = data.mfp_api_key || '';
+        }
+
+        function updateMFPApiKey(value) {
+            isEditing = true;
+            currentData.mfp_api_key = (value || '').trim();
+            showPropSaveStatus('saving');
+            _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
+            saveData('UPDATE', 'Updated MyFundedPerps API key');
         }
 
         function updateMT5Credentials(field, value) {
@@ -7855,7 +7880,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -10176,7 +10201,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};
