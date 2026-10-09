@@ -27,10 +27,22 @@ class MFPError(RuntimeError):
 
     def __init__(self, status, payload, message=None):
         self.status = status
-        self.payload = payload if isinstance(payload, dict) else {"raw": payload}
-        code = self.payload.get("error") or self.payload.get("code") or ""
-        detail = self.payload.get("message") or self.payload.get("detail") or ""
+        body = payload if isinstance(payload, dict) else {"raw": payload}
+        if isinstance(body.get("error"), dict):  # errors arrive wrapped
+            body = body["error"]
+        self.payload = body
+        code = body.get("code") or body.get("error") or ""
+        detail = body.get("message") or body.get("detail") or ""
+        if body.get("details"):
+            detail = f"{detail} {body['details']}".strip()
         super().__init__(message or f"MFP API {status} {code}: {detail}".strip())
+
+
+def unwrap(resp):
+    """Successful responses arrive wrapped in a data envelope."""
+    if isinstance(resp, dict) and "data" in resp:
+        return resp["data"]
+    return resp
 
 
 def base_url_for_key(api_key: str) -> str:
@@ -115,11 +127,13 @@ class MFPClient:
     def cancel_all_orders(self, account_id: str, idempotency_key: str = None):
         return self._request(
             "POST", f"/accounts/{quote(str(account_id), safe='')}/cancel-all-orders",
+            json={},
             idempotency_key=idempotency_key or f"cancel-all-{uuid.uuid4().hex}")
 
     def close_all_positions(self, account_id: str, idempotency_key: str = None):
         return self._request(
             "POST", f"/accounts/{quote(str(account_id), safe='')}/close-all-positions",
+            json={},
             idempotency_key=idempotency_key or f"close-all-{uuid.uuid4().hex}")
 
     # ── positions ────────────────────────────────────────────────────────
@@ -131,14 +145,24 @@ class MFPClient:
         return self._get(f"/positions/{quote(str(position_id), safe='')}")
 
     def close_position(self, position_id: str, size: float = None,
+                       expected_price: float = None,
                        idempotency_key: str = None):
-        """Reduce-only close; omit size to close the whole position."""
-        body = {}
+        """Reduce-only market close; omit size to close the whole position.
+
+        expected_price is required by the API; when omitted we quote the
+        closing side ourselves and use the observed mid."""
+        if expected_price is None:
+            pos = unwrap(self.get_position(position_id))
+            closing_side = "sell" if str(pos.get("side")) == "long" else "buy"
+            q = unwrap(self.get_quote(pos["market_id"], side=closing_side,
+                                      size=size or pos.get("size")))
+            expected_price = q.get("mid")
+        body = {"expected_price": expected_price}
         if size is not None:
             body["size"] = size
         return self._request(
             "POST", f"/positions/{quote(str(position_id), safe='')}/close",
-            json=body or None,
+            json=body,
             idempotency_key=idempotency_key or f"close-{uuid.uuid4().hex}")
 
     def update_position_tpsl(self, position_id: str, operations: list,
@@ -153,7 +177,7 @@ class MFPClient:
     def place_order(self, *, account_id: str, market_id: str, side: str,
                     size: float, expected_price: float = None,
                     order_type: str = None, price: float = None,
-                    leverage: float = None, margin_mode: str = None,
+                    leverage: float = 1, margin_mode: str = None,
                     take_profit: float = None, stop_loss: float = None,
                     client_order_id: str = None, idempotency_key: str = None,
                     **extra):
@@ -215,23 +239,23 @@ class MFPClient:
                        poll_sec: float = 0.5):
         """Poll until the order leaves pending (filled/rejected/cancelled)."""
         deadline = time.time() + timeout_sec
-        order = self.get_order(order_id)
+        order = unwrap(self.get_order(order_id))
         while time.time() < deadline:
             status = str(order.get("status") or "").lower()
             if status and status not in ("pending", "working", "new", "accepted"):
                 return order
             time.sleep(poll_sec)
-            order = self.get_order(order_id)
+            order = unwrap(self.get_order(order_id))
         return order
 
     def market_order_with_quote(self, *, account_id: str, market_id: str,
-                                side: str, size: float, leverage: float = None,
+                                side: str, size: float, leverage: float = 1,
                                 margin_mode: str = "cross",
                                 take_profit: float = None, stop_loss: float = None):
         """Quote first (server-observed price recorded), then market order."""
-        q = self.get_quote(market_id, side=side, size=size)
-        return self.place_order(
+        q = unwrap(self.get_quote(market_id, side=side, size=size))
+        return unwrap(self.place_order(
             account_id=account_id, market_id=market_id, side=side, size=size,
             expected_price=q.get("mid"), leverage=leverage,
             margin_mode=margin_mode, take_profit=take_profit,
-            stop_loss=stop_loss), q
+            stop_loss=stop_loss)), q

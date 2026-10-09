@@ -80,3 +80,19 @@ def test_wait_for_order_polls_until_terminal(monkeypatch):
     monkeypatch.setattr("time.sleep", lambda s: None)
     order = c.wait_for_order("o1", timeout_sec=5, poll_sec=0)
     assert order["status"] == "filled"
+
+
+def test_close_position_auto_quotes_expected_price():
+    c, session = _client()
+    session.request.side_effect = [
+        _resp(payload={"data": {"id": "p1", "side": "long", "size": 0.001,
+                                "market_id": "binance|BTCUSDT"}}),
+        _resp(payload={"data": {"mid": 82500.0}}),
+        _resp(payload={"data": {"id": "o2", "status": "filled"}}),
+    ]
+    c.close_position("p1")
+    quote_call = session.request.call_args_list[1]
+    assert quote_call.kwargs["params"]["side"] == "sell"
+    close_call = session.request.call_args_list[2]
+    assert close_call.kwargs["json"] == {"expected_price": 82500.0}
+    assert close_call.kwargs["headers"]["Idempotency-Key"].startswith("close-")
