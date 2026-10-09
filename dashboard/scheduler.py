@@ -142,6 +142,18 @@ def run_scheduler():
                 _mark_ran('trade_attribution', today)
                 time.sleep(60)
 
+            # Every 10 minutes — mirror MyFundedPerps accounts into dashboards
+            minute_key = now.strftime('%Y-%m-%d %H:%M')
+            if now.minute % 10 == 0 and ran.get('perps_sync') != minute_key:
+                try:
+                    from dashboard.perps_sync import sync_all_clients_perps
+                    totals = sync_all_clients_perps()
+                    if totals.get('added') or totals.get('updated'):
+                        logging.info(f"Perps sync: {totals}")
+                except Exception as exc:
+                    logging.error(f"Perps sync job failed: {exc}")
+                _mark_ran('perps_sync', minute_key)
+
             time.sleep(30)  # Check every 30s
 
         except Exception as e:

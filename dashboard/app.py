@@ -15505,6 +15505,32 @@ def delete_note():
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Database error"}), 500
 
+@app.route('/api/client/sync_perps', methods=['POST'])
+@limiter.limit("12 per minute")
+def sync_perps_accounts():
+    """Mirror a client's MyFundedPerps accounts into evaluation rows now."""
+    session_token = request.cookies.get('session_token')
+    session_info = validate_session(session_token) if session_token else None
+    if not session_info:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    user_type = session_info.get('user_type')
+    user_identifier = session_info.get('user_identifier')
+    if user_type == 'kwok_admin':
+        return jsonify({"status": "error", "message": "View-only account"}), 403
+
+    client_id = (request.json or {}).get('client_id')
+    if not client_id:
+        return jsonify({"status": "error", "message": "Client ID required"}), 400
+    if not can_access_client(user_type, user_identifier, client_id):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    from dashboard.perps_sync import sync_client_perps_accounts
+    result = sync_client_perps_accounts(client_id, changed_by=user_identifier,
+                                        force=True)
+    status_code = 200 if result.get("status") in ("success", "cooldown") else 502
+    return jsonify(result), status_code
+
+
 @app.route('/api/update_data', methods=['POST'])
 @limiter.limit("60 per minute")
 def update_data():

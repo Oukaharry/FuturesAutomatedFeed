@@ -6842,8 +6842,38 @@
             }
             if (key === 'prop_firm') renderPropAccounts(currentData); // swap Tradovate/API-key cells
             showPropSaveStatus('saving');
-            _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
+            if (key === 'api_key' && (value || '').trim()) {
+                _pendingSaveCallback = (ok) => {
+                    showPropSaveStatus(ok ? 'saved' : 'failed');
+                    if (ok) syncPerpsAccounts();
+                };
+            } else {
+                _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
+            }
             saveData();
+        }
+
+        function syncPerpsAccounts() {
+            if (!CLIENT_ID) return;
+            fetch('/api/client/sync_perps', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ client_id: CLIENT_ID })
+            }).then(r => r.json()).then(res => {
+                if (!res || res.status !== 'success' || (!res.added && !res.updated)) return;
+                // Pull the server-created rows into the table without losing local edits
+                fetch(`/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`)
+                    .then(r => r.json())
+                    .then(freshData => {
+                        if (freshData && freshData.evaluations) {
+                            const pending = _collectPendingNewRows(currentData.evaluations);
+                            currentData.evaluations = _reappendPendingNewRows(freshData.evaluations, pending);
+                            if (freshData._version != null) currentData._version = freshData._version;
+                            renderEvaluationsTable();
+                        }
+                    }).catch(() => {});
+            }).catch(() => {});
         }
 
         function addPropAccount() {
