@@ -6861,6 +6861,10 @@
                 credentials: 'same-origin',
                 body: JSON.stringify({ client_id: CLIENT_ID })
             }).then(r => r.json()).then(res => {
+                if (res && res.status === 'sandbox_key') {
+                    alert(res.message || 'Sandbox keys are for testing only — use the fp_live_ key.');
+                    return;
+                }
                 if (!res || res.status !== 'success' || (!res.added && !res.updated)) return;
                 // Pull the server-created rows into the table without losing local edits
                 fetch(`/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`)

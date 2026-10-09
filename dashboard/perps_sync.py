@@ -9,6 +9,7 @@ tagged with the MFP account id and get status refreshes on later runs.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -20,6 +21,12 @@ PERPS_FIRM = "MyFundedPerps"
 _SYNC_COOLDOWN_SEC = 30
 _last_sync: dict = {}
 _sync_lock = threading.Lock()
+
+
+def _sandbox_allowed() -> bool:
+    """Sandbox keys are for testing only; set PERPS_SYNC_ALLOW_SANDBOX=1 locally."""
+    return str(os.environ.get("PERPS_SYNC_ALLOW_SANDBOX", "0")).strip().lower() in (
+        "1", "true", "yes")
 
 
 def client_perps_api_key(client_data: dict) -> str:
@@ -99,6 +106,12 @@ def sync_client_perps_accounts(client_id: str, changed_by: str = "perps_sync",
     api_key = client_perps_api_key(client_data)
     if not api_key:
         return {"status": "no_key", "added": 0, "updated": 0}
+    if api_key.startswith("fp_test_") and not _sandbox_allowed():
+        logger.info("[PerpsSync] %s: sandbox key ignored — live keys only", client_id)
+        return {"status": "sandbox_key",
+                "message": "Sandbox (fp_test_) keys are for testing only — "
+                           "enter the client's fp_live_ key to sync real accounts.",
+                "added": 0, "updated": 0}
 
     from trader_companion.perps_connector import MFPClient, MFPError, unwrap
     try:
