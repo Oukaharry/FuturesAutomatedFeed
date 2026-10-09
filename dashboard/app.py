@@ -5672,6 +5672,19 @@ def api_clear_pending_breach_alerts():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/trade_attribution/backfill_outcomes', methods=['POST'])
+@require_role('super_admin')
+def api_backfill_ledger_outcomes():
+    """One-time repair: resolve old ledger rows from visible Hit TP/SL markers."""
+    try:
+        from dashboard.database import backfill_ledger_outcomes_from_markers
+        totals = backfill_ledger_outcomes_from_markers()
+        app.logger.warning(f"📒 Ledger outcome backfill from markers: {totals}")
+        return jsonify({'status': 'success', **totals})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/trade_attribution')
 @require_role('super_admin')
 def api_trade_attribution():

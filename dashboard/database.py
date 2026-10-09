@@ -3529,6 +3529,51 @@ def apply_ledger_outcome_for_marker(client_id: str, account: str,
     return bool(updated)
 
 
+def backfill_ledger_outcomes_from_markers() -> dict:
+    """One-time repair: resolve historical ledger rows from current markers.
+
+    A visible 'Hit TPn' / 'Hit SLn' on an eval row means that account has n
+    resolved trades of that kind in its current cycle, so up to n of its
+    newest outcome-less ledger rows get that outcome. Companion-recorded
+    outcomes are never touched.
+    """
+    import re
+    marker_re = re.compile(r'^hit\s*(tp|sl)\s*(\d+)$', re.IGNORECASE)
+    totals = {'clients': 0, 'resolved': 0}
+    for client_id in get_all_clients():
+        try:
+            data = get_client_data(client_id) or {}
+        except Exception:
+            continue
+        resolved_here = 0
+        for ev in data.get('evaluations') or []:
+            if not isinstance(ev, dict) or ev.get('_deleted'):
+                continue
+            for field, acct_fields in (
+                    ('Status P1', ('Account #', 'Account #.1')),
+                    ('Status', ('Account #.1', 'Account #'))):
+                m = marker_re.match(str(ev.get(field) or '').strip())
+                if not m:
+                    continue
+                outcome = m.group(1).lower()
+                n = min(int(m.group(2)), 10)
+                for acct_field in acct_fields:
+                    acct = str(ev.get(acct_field) or '').strip()
+                    if not acct:
+                        continue
+                    k = 0
+                    while k < n and apply_ledger_outcome_for_marker(
+                            client_id, acct, outcome):
+                        k += 1
+                    if k:
+                        resolved_here += k
+                        break
+        if resolved_here:
+            totals['clients'] += 1
+            totals['resolved'] += resolved_here
+    return totals
+
+
 def apply_trade_ledger_outcome(client_id: str, event: dict) -> bool:
     """Attach the resolved outcome to its ledger row (matched by account+date)."""
     if not isinstance(event, dict):
