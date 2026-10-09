@@ -110,18 +110,29 @@ def build_ml_compliance(rows, offender_limit=200):
     }
 
 
+def _effective_outcome(row):
+    """Outcome for stats. A farming breach is the planned end of a milking
+    cycle, not a lost trade — it would otherwise poison the farming win rate
+    (farming TPs are smaller than SLs, so W/L must skew heavily to wins)."""
+    outcome = str(row.get('outcome') or '').strip().lower()
+    if outcome == 'breach' and 'farm' in str(row.get('phase_key') or '').lower():
+        return 'cycle_end'
+    return outcome
+
+
 def _stats(rows):
     """(n, wins, win_rate, net_pnl, pending) over ledger rows."""
     wins = losses = pending = 0
     net = 0.0
     for row in rows:
-        outcome = str(row.get('outcome') or '').strip().lower()
+        outcome = _effective_outcome(row)
         if outcome in _WIN_OUTCOMES:
             wins += 1
         elif outcome in _LOSS_OUTCOMES:
             losses += 1
         else:
-            pending += 1
+            if outcome != 'cycle_end':
+                pending += 1
             continue
         try:
             net += float(row.get('net_pnl'))

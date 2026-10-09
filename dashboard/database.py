@@ -3574,6 +3574,37 @@ def backfill_ledger_outcomes_from_markers() -> dict:
     return totals
 
 
+def repair_contradictory_ledger_outcomes() -> dict:
+    """Fix outcomes that contradict their own recorded prop-side net P/L.
+
+    An 'sl' with positive net (or 'tp' with negative) is impossible — those
+    came from the status-guess path attaching the wrong day's verdict. Flip
+    them to match the dollars. Farming rows resolved as tp/sl WITHOUT a net
+    are unverifiable guesses (farming never flips a status, so no honest path
+    produced them) — send them back to pending. Breaches are never touched.
+    """
+    _ensure_trade_ledger_table()
+    out = {}
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute(
+            "UPDATE trade_ledger SET outcome = 'tp', updated_at = ? "
+            "WHERE outcome = 'sl' AND net_pnl > 0", (now,))
+        out['sl_flipped_to_tp'] = cursor.rowcount
+        cursor.execute(
+            "UPDATE trade_ledger SET outcome = 'sl', updated_at = ? "
+            "WHERE outcome = 'tp' AND net_pnl < 0", (now,))
+        out['tp_flipped_to_sl'] = cursor.rowcount
+        cursor.execute(
+            "UPDATE trade_ledger SET outcome = NULL, closed_at = NULL, updated_at = ? "
+            "WHERE outcome IN ('tp', 'sl') AND net_pnl IS NULL "
+            "AND LOWER(phase_key) LIKE ?", (now, '%farm%'))
+        out['farming_guesses_reverted'] = cursor.rowcount
+        conn.commit()
+    return out
+
+
 def apply_trade_ledger_outcome(client_id: str, event: dict) -> bool:
     """Attach the resolved outcome to its ledger row (matched by account+date)."""
     if not isinstance(event, dict):

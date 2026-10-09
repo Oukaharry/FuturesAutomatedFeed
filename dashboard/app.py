@@ -5677,10 +5677,13 @@ def api_clear_pending_breach_alerts():
 def api_backfill_ledger_outcomes():
     """One-time repair: resolve old ledger rows from visible Hit TP/SL markers."""
     try:
-        from dashboard.database import backfill_ledger_outcomes_from_markers
+        from dashboard.database import (backfill_ledger_outcomes_from_markers,
+                                        repair_contradictory_ledger_outcomes)
+        repairs = repair_contradictory_ledger_outcomes()
         totals = backfill_ledger_outcomes_from_markers()
-        app.logger.warning(f"📒 Ledger outcome backfill from markers: {totals}")
-        return jsonify({'status': 'success', **totals})
+        app.logger.warning(
+            f"📒 Ledger repair: {repairs} | marker backfill: {totals}")
+        return jsonify({'status': 'success', **totals, 'repairs': repairs})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
