@@ -14030,6 +14030,7 @@ class TradeOpssAIApp:
 
                     ev[status_field] = "Fail"
                     changes.append(f"{status_field}='Fail'")
+                    changes.extend(self._stamp_stage_end_date(ev, status_field, "Fail"))
                     breached_count += 1
                     self.root.after(0, lambda a=acct_display, c=", ".join(changes):
                         self.log(f"   🚫 BREACHED: {a} → {c}"))
@@ -14082,6 +14083,7 @@ class TradeOpssAIApp:
                                 if computed == "Pass":
                                     ev[status_field] = "Pass"
                                     changes.append(f"{status_field}='Pass'")
+                                    changes.extend(self._stamp_stage_end_date(ev, status_field, "Pass"))
                                     self.root.after(0, lambda a=acct_display, b=bal, s=start:
                                         self.log(f"   ✅ PASS: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
                                 elif computed == "In Progress":
@@ -14092,6 +14094,7 @@ class TradeOpssAIApp:
                                 elif computed == "Fail":
                                     ev[status_field] = "Fail"
                                     changes.append(f"{status_field}='Fail'")
+                                    changes.extend(self._stamp_stage_end_date(ev, status_field, "Fail"))
                                     breached_count += 1
                                     self.root.after(0, lambda a=acct_display, b=bal, s=start:
                                         self.log(f"   🚫 FAIL: {a} — balance=${b:,.2f} (start=${s:,.0f})"))

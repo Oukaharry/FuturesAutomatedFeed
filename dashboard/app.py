@@ -1994,6 +1994,9 @@ def _eval_row_occupies_max_out_slot(ev):
     Hit TP / Hit SL / In Progress still occupy the slot. Substring 'sl'
     used to treat Hit SL as ended, so the purchase count went over the cap.
     A row without a broker account number is a placeholder, not a slot.
+    A passed challenge with no funded account has left the firm. Counting
+    that row as a seat shrinks the purchase batch and the extra fails are
+    dropped.
     """
     if not isinstance(ev, dict) or ev.get('_deleted'):
         return False
@@ -2008,6 +2011,8 @@ def _eval_row_occupies_max_out_slot(ev):
     if any(tok in sp1_l for tok in _MAX_OUT_INACTIVE_P1):
         return False
     if any(tok in funded_l for tok in _MAX_OUT_INACTIVE_FUNDED):
+        return False
+    if sp1_l.startswith('pass') and not _eval_on_funded_leg(ev):
         return False
     return True
 
@@ -2028,7 +2033,7 @@ def _unique_breach_accounts(breaches):
 
 
 def _count_firm_max_out_slots(firm_family, evaluations):
-    """Live rows that occupy a slot for this firm (Pass, Hit TP/SL, in progress, …)."""
+    """Live rows that occupy a slot for this firm (funded Pass, Hit TP/SL, in progress, …)."""
     occupied = 0
     for ev in evaluations or []:
         if not _eval_row_occupies_max_out_slot(ev):
@@ -3381,7 +3386,7 @@ def _date_ended_blank(val):
 
 
 def _stamp_fail_end_date(ev, status_field, ended_field):
-    """Fill Date Ended with today when this phase is Fail and the cell is empty.
+    """Fill Date Ended with today when this phase is Pass or Fail and the cell is empty.
 
     A date already stored, including one the trader typed, is left as it is.
     """
@@ -3391,7 +3396,7 @@ def _stamp_fail_end_date(ev, status_field, ended_field):
     status = ev.get(status_field)
     if status_field == 'Status' and not str(status or '').strip():
         status = ev.get('Status Funded')
-    if not _status_is_fail(status):
+    if not _status_is_pass_or_fail(status):
         return
     if not _date_ended_blank(ev.get(ended_field)):
         return
@@ -3450,7 +3455,7 @@ def _apply_server_eval_guards(evaluations):
     """Correct companion writes the dashboard should not keep.
 
     Date Ended only survives a Pass or Fail, except a date typed by hand.
-    An eval or funded Fail with an empty Date Ended is filled with today (Kenya).
+    An eval or funded Pass or Fail with an empty Date Ended is filled with today (Kenya).
     A row keeps one weekday placeholder per phase. A Lucid farming Fail
     above $48,000 is put back to In Progress.
     """
