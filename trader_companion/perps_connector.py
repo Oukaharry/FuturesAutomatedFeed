@@ -177,7 +177,7 @@ class MFPClient:
     def place_order(self, *, account_id: str, market_id: str, side: str,
                     size: float, expected_price: float = None,
                     order_type: str = None, price: float = None,
-                    leverage: float = 1, margin_mode: str = None,
+                    leverage: float = 1, margin_mode: str = "cross",
                     take_profit: float = None, stop_loss: float = None,
                     client_order_id: str = None, idempotency_key: str = None,
                     **extra):
