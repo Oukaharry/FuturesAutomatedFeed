@@ -7630,7 +7630,11 @@ def api_client_data():
             "prop_accounts": client_data.get("prop_accounts", []),
             "hedge_accounts": client_data.get("hedge_accounts", []),
             "mt5_credentials": mt5_credentials,
-            "mfp_api_key": client_data.get("mfp_api_key", ""),
+            "mfp_api_key": next(
+                (str(a.get("api_key") or "").strip()
+                 for a in client_data.get("prop_accounts", [])
+                 if a.get("prop_firm") == "MyFundedPerps" and str(a.get("api_key") or "").strip()),
+                client_data.get("mfp_api_key", "")),
             "identity": {
                 "client": client_info['client'],
                 "trader": client_info['trader'],

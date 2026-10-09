@@ -2910,20 +2910,6 @@
                 </div>
             </div>
 
-            <!-- MyFundedPerps API Key -->
-            <div style="background:#0d1117; border:1px solid #1e2a3a; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
-                <h4 style="margin:0 0 8px 0; font-size:13px; color:#38bdf8;">🔑 MyFundedPerps API</h4>
-                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <label style="font-size:12px; color:#94a3b8;">API Key:</label>
-                        <input type="password" id="mfp-api-key" class="cell-input" style="width:320px;"
-                               placeholder="fp_live_... (Read And Trade)"
-                               onchange="updateMFPApiKey(this.value)">
-                    </div>
-                    <span style="font-size:11px; color:#4a5568; margin-left:auto;">One key covers all the client's perps accounts — trading, balances &amp; risk sync</span>
-                </div>
-            </div>
-
             <div class="section-header">
                 <h3>Prop Firm Configuration</h3>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -6736,6 +6722,28 @@
                         `<option value="${f}" ${selectedFirm === f ? 'selected' : ''}>${f}</option>`
                     ).join('');
 
+                    // API-executed firm: one key replaces the Tradovate credentials
+                    const isPerpsFirm = (acc.prop_firm || '') === 'MyFundedPerps';
+                    const credentialCells = isPerpsFirm ? `
+                        <td colspan="2">
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${escapeHtmlAttr(acc.api_key || '')}" 
+                                   placeholder="API Key fp_live_... (Read And Trade)"
+                                   onchange="updatePropAccount(${index}, 'api_key', this.value)">
+                        </td>` : `
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${escapeHtmlAttr(acc.tradovate_username || '')}" 
+                                   placeholder="Username"
+                                   onchange="updatePropAccount(${index}, 'tradovate_username', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${escapeHtmlAttr(acc.tradovate_password || '')}" 
+                                   placeholder="Password"
+                                   onchange="updatePropAccount(${index}, 'tradovate_password', this.value)">
+                        </td>`;
+
                     row.innerHTML = `
                         <td>
                             <select class="cell-input" style="width:100%" onchange="updatePropAccount(${index}, 'prop_firm', this.value)">
@@ -6766,18 +6774,7 @@
                                    placeholder="Codes"
                                    onchange="updatePropAccount(${index}, 'discount_codes', this.value)">
                         </td>
-                        <td>
-                            <input type="text" class="cell-input" style="width:100%" 
-                                   value="${escapeHtmlAttr(acc.tradovate_username || '')}" 
-                                   placeholder="Username"
-                                   onchange="updatePropAccount(${index}, 'tradovate_username', this.value)">
-                        </td>
-                        <td>
-                            <input type="text" class="cell-input" style="width:100%" 
-                                   value="${escapeHtmlAttr(acc.tradovate_password || '')}" 
-                                   placeholder="Password"
-                                   onchange="updatePropAccount(${index}, 'tradovate_password', this.value)">
-                        </td>
+                        ${credentialCells}
                         <td style="text-align:center;">
                             <button onclick="deletePropAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
                         </td>
@@ -6843,6 +6840,7 @@
             if (['prop_firm', 'login', 'password', 'tradovate_username', 'tradovate_password'].includes(key)) {
                 syncSharedPropCredentials(index);
             }
+            if (key === 'prop_firm') renderPropAccounts(currentData); // swap Tradovate/API-key cells
             showPropSaveStatus('saving');
             _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
             saveData();
@@ -6873,16 +6871,6 @@
             if (loginEl) loginEl.value = creds.login || '';
             if (passEl) passEl.value = creds.password || '';
             if (serverEl) serverEl.value = creds.server || '';
-            const mfpEl = document.getElementById('mfp-api-key');
-            if (mfpEl) mfpEl.value = data.mfp_api_key || '';
-        }
-
-        function updateMFPApiKey(value) {
-            isEditing = true;
-            currentData.mfp_api_key = (value || '').trim();
-            showPropSaveStatus('saving');
-            _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
-            saveData('UPDATE', 'Updated MyFundedPerps API key');
         }
 
         function updateMT5Credentials(field, value) {
