@@ -9556,6 +9556,12 @@ class TradeOpssAIApp:
             messagebox.showwarning("Direction Lock", "Direction is set to Sell Only")
             return
 
+        # ── MyFundedPerps: API bracket — no Tradovate/MT5/day placeholders ──
+        if self._is_perps_firm(row_data.get("firm_code")) or self._is_perps_firm(
+                (row_data.get("eval") or {}).get("Prop Firm")):
+            self._execute_perps_row_trade(side, row_data)
+            return
+
         firm_code = row_data["firm_code"]
         phase_key = row_data["phase_key"]
         acct_size = row_data["acct_size"]
@@ -12288,6 +12294,25 @@ class TradeOpssAIApp:
             old_conn = old_connections.get(firm, {})
             existing_account = old_conn.get("account")
 
+            # ── MyFundedPerps: API-executed — one key, no browser login ──
+            if self._is_perps_firm(display_firm):
+                perps_key = (pa.get("api_key") or "").strip()
+                self._broker_connections[firm] = {
+                    "account": existing_account,
+                    "row_frame": None,
+                    "creds_source": "dashboard" if perps_key else "missing",
+                }
+                if existing_account:
+                    auto_count += 1
+                elif perps_key:
+                    auto_count += 1
+                    threading.Thread(target=self._connect_perps_broker,
+                                     args=(firm, perps_key), daemon=True).start()
+                else:
+                    self.log(f"🔑 {display_firm}: add the API key on the dashboard "
+                             f"Prop Firm Accounts tab to connect", "WARN")
+                continue
+
             if CTK_AVAILABLE:
                 row = ctk.CTkFrame(self._broker_rows_frame, fg_color="#0A1220",
                                    corner_radius=4, height=36,
@@ -14250,6 +14275,149 @@ class TradeOpssAIApp:
         if platform == "TopStepX" and self.topstepx_account:
             return self.topstepx_account
         return None
+
+    # ── MyFundedPerps (API-executed perps) ──────────────────────────────
+
+    PERPS_DEFAULT_MARKET = "hyperliquid|xyz:XYZ100"  # Nasdaq-100 perp (USTECH)
+
+    def _is_perps_firm(self, name) -> bool:
+        compact = str(name or "").lower().replace(" ", "").replace("_", "")
+        return "myfundedperp" in compact
+
+    def _perps_client(self):
+        for f, c in (getattr(self, "_broker_connections", {}) or {}).items():
+            if self._is_perps_firm(f) and c.get("account"):
+                return c["account"]
+        return None
+
+    def _connect_perps_broker(self, firm, api_key):
+        """Verify the API key and store the client as this firm's broker."""
+        try:
+            from trader_companion.perps_connector import MFPClient, unwrap
+        except ImportError:
+            from perps_connector import MFPClient, unwrap
+        try:
+            client = MFPClient(api_key)
+            accounts = unwrap(client.list_accounts()) or []
+            conn = self._broker_connections.setdefault(firm, {})
+            conn["account"] = client
+            nums = ", ".join(str(a.get("account_number") or "?") for a in accounts) or "none"
+            env = "sandbox" if client.is_sandbox else "live"
+            self.log(f"🔑 {firm} connected via API ({env}) — account(s): {nums}")
+        except Exception as exc:
+            self.log(f"❌ {firm} API connection failed: {exc}", "ERROR")
+
+    def _execute_perps_row_trade(self, side, row_data):
+        """Max-size bracket on the perps API: TP = remaining target, SL = room."""
+        try:
+            from trader_companion.perps_connector import unwrap
+            from trader_companion.perps_executor import PerpsTradeExecutor
+        except ImportError:
+            from perps_connector import unwrap
+            from perps_executor import PerpsTradeExecutor
+
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        client = self._perps_client()
+        if client is None:
+            messagebox.showerror(
+                "Error", "MyFundedPerps API not connected.\n"
+                "Add the API key on the dashboard Prop Firm Accounts tab and reload.")
+            return
+        try:
+            accounts = unwrap(client.list_accounts()) or []
+        except Exception as exc:
+            messagebox.showerror("Error", f"MyFundedPerps account lookup failed: {exc}")
+            return
+        digits = "".join(ch for ch in acct_num if ch.isdigit())
+        acct = next(
+            (a for a in accounts if digits and digits in
+             "".join(ch for ch in str(a.get("account_number") or "") if ch.isdigit())),
+            None)
+        if acct is None and len(accounts) == 1:
+            acct = accounts[0]
+        if acct is None:
+            messagebox.showerror("Error", f"No MyFundedPerps account matching {acct_num}")
+            return
+
+        market = os.environ.get("PERPS_MARKET", self.PERPS_DEFAULT_MARKET)
+        executor = PerpsTradeExecutor(client, account_id=acct["id"])
+        try:
+            snap = unwrap(client.get_account(acct["id"]))
+            risk = snap.get("risk") or {}
+            tp_usd = float(risk.get("remaining_profit") or 0) or \
+                float(snap.get("starting_balance") or 0) * 0.08
+            plan = executor.plan_bracket(market, side, tp_usd=tp_usd)
+        except Exception as exc:
+            messagebox.showerror("Error", f"MyFundedPerps trade plan failed: {exc}")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirm Trade",
+            f"{side.upper()} {plan['size']} {market}\n"
+            f"Account:  {acct.get('account_number')} (equity ${plan['equity']:,.2f})\n"
+            f"Leverage: {plan['leverage']:g}x\n"
+            f"TP {plan['tp_price']} (+{plan['tp_pts']} pts = +${plan['tp_usd']:,.0f})\n"
+            f"SL {plan['sl_price']} (-{plan['sl_pts']} pts = -${plan['sl_usd']:,.0f})\n\nProceed?")
+        if not confirm:
+            return
+
+        for btn_key in ("buy_btn", "sell_btn"):
+            try:
+                row_data[btn_key].configure(state='disabled', text="...")
+            except Exception:
+                pass
+        self.log(f"⚡ {side.upper()} {plan['size']} {market} → MyFundedPerps "
+                 f"{acct.get('account_number')} (TP +${plan['tp_usd']:,.0f} / "
+                 f"SL -${plan['sl_usd']:,.0f})")
+
+        def _do_perps_trade():
+            try:
+                # enter_bracket re-plans and shrinks on exposure_cap rejections
+                order, final_plan = executor.enter_bracket(
+                    market, side, tp_usd=plan["tp_usd"], sl_usd=plan["sl_usd"])
+                status = str(order.get("status") or "").lower()
+                if status == "rejected":
+                    raise RuntimeError(
+                        f"order rejected: {order.get('reject_reason') or 'unknown'}")
+                self.log(f"✅ MyFundedPerps {side.upper()} filled @ "
+                         f"{order.get('fill_price')} — bracket live "
+                         f"(TP {final_plan['tp_price']} / SL {final_plan['sl_price']})")
+                _ev = row_data.get("eval")
+                if _ev:
+                    _cur = self._cell(_ev.get("Status P1")).lower()
+                    if not _cur or _cur in ("not started", "in progress"):
+                        _ev["Status P1"] = "In Progress"
+
+                def _remove():
+                    try:
+                        row_data["frame"].destroy()
+                    except Exception:
+                        pass
+                    if row_data in self._active_trade_rows:
+                        self._active_trade_rows.remove(row_data)
+                    remaining = len(self._active_trade_rows)
+                    try:
+                        self.trades_count_var.set(
+                            f"{remaining} active trade{'s' if remaining != 1 else ''}"
+                            if remaining > 0 else "All trades complete ✓")
+                        self._stat_queue_var.set(f"Queue: {remaining}")
+                        cur = self._stat_trades_var.get()
+                        n = int(cur.split(":")[1].strip()) + 1 if ":" in cur else 1
+                        self._stat_trades_var.set(f"Trades: {n}")
+                    except Exception:
+                        pass
+                self.root.after(0, _remove)
+            except Exception as exc:
+                self.log(f"❌ MyFundedPerps trade failed: {exc}", "ERROR")
+                def _reenable():
+                    for bk, label in (("buy_btn", "BUY"), ("sell_btn", "SELL")):
+                        try:
+                            row_data[bk].configure(state='normal', text=label)
+                        except Exception:
+                            pass
+                self.root.after(0, _reenable)
+
+        threading.Thread(target=_do_perps_trade, daemon=True).start()
 
     def _get_trade_config(self):
         """Get current trade configuration from blueprint."""
