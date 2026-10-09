@@ -53,7 +53,7 @@ class PerpsTradeExecutor:
         mid = float(quote["mid"])
 
         notional = equity * lev * SIZE_SAFETY
-        cap = self._notional_caps.get(market_id)
+        cap = self._notional_caps.get((self.account_id, market_id))
         if cap:
             notional = min(notional, cap)
         step = float(market["size_step"])
@@ -97,7 +97,9 @@ class PerpsTradeExecutor:
                 return order, plan
             if order.get("reject_reason") != "exposure_cap":
                 return order, plan
-            self._notional_caps[market_id] = plan["size"] * plan["mid"] * EXPOSURE_SHRINK
+            # caps vary by challenge product and account size
+            self._notional_caps[(self.account_id, market_id)] = (
+                plan["size"] * plan["mid"] * EXPOSURE_SHRINK)
             time.sleep(ORDER_COOLDOWN_SEC)
         return order, plan
 
