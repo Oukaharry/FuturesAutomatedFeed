@@ -3595,6 +3595,7 @@ def apply_trade_ledger_outcome(client_id: str, event: dict) -> bool:
             UPDATE trade_ledger
             SET outcome = ?, net_pnl = ?, closed_at = ?, updated_at = ?
             WHERE client_id = ? AND account = ? AND entry_date = ?
+              AND (outcome IS NULL OR outcome = '' OR outcome != 'breach')
             ''',
             (outcome, net_pnl,
              str(event.get('closed_at') or '').strip() or datetime.now().isoformat(),

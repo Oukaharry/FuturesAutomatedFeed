@@ -5411,6 +5411,7 @@ class TradeOpssAIApp:
 
             self._stamp_balance_snapshots(evaluations)
             self._stamp_open_positions(evaluations)
+            self._queue_daily_history_outcomes(evaluations)
             breaches = list(self._pending_breach_alerts)
             ledger_events = self._drain_ledger_events()
             if not force_fields and not breaches and not ledger_events:
@@ -5450,6 +5451,61 @@ class TradeOpssAIApp:
                 self.log(f"📤 Outcome correction persisted ({len(set(force_fields))} field(s))")
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+
+    # Farming (and any phase) outcomes flow from broker truth: statuses never
+    # flip during a farm cycle, so resolved days are shipped directly.
+    _DAILY_OUTCOME_LOOKBACK_DAYS = 5
+
+    def _queue_daily_history_outcomes(self, evaluations):
+        """Ledger outcomes for every resolved broker day, independent of status.
+
+        Farming rows keep 'Pass' statuses for weeks, so the status-flip path
+        never resolves their daily trades. The broker's own daily P&L is the
+        source of record: each day with trades becomes a tp/sl outcome event
+        with the real prop-side net. Idempotent server-side; deduped per run.
+        """
+        if not hasattr(self, "_daily_outcomes_sent"):
+            self._daily_outcomes_sent = set()
+        cutoff = (kenya_today() - timedelta(days=self._DAILY_OUTCOME_LOOKBACK_DAYS)
+                  ).strftime("%Y-%m-%d")
+        today = kenya_today().strftime("%Y-%m-%d")
+        history = self._trade_outcome_history()
+        seen_accounts = set()
+        queued = 0
+        for ev in evaluations or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            accounts = {self._cell_account(ev.get("Account #")),
+                        self._cell_account(ev.get("Account #.1"))}
+            open_today = self._account_has_open_position(ev)
+            for account in accounts:
+                key = str(account or "").strip().lower()
+                if not key or key in seen_accounts:
+                    continue
+                seen_accounts.add(key)
+                entry = history.get(key)
+                if not entry:
+                    continue
+                for day in entry.get("daily_pnl") or []:
+                    date = str(day.get("date") or "")
+                    if not day.get("trades") or date < cutoff:
+                        continue
+                    if date == today and open_today:
+                        continue  # day not final while a position is open
+                    try:
+                        net = float(day.get("net_pnl"))
+                    except (TypeError, ValueError):
+                        continue
+                    dedupe = (key, date)
+                    if dedupe in self._daily_outcomes_sent:
+                        continue
+                    self._daily_outcomes_sent.add(dedupe)
+                    self._queue_ledger_event(self._build_ledger_outcome_event(
+                        account=account, outcome=("tp" if net > 0 else "sl"),
+                        entry_date=date, net_pnl=net))
+                    queued += 1
+        if queued:
+            self.log(f"📒 Queued {queued} broker-day outcome(s) for the ledger")
 
     def _outcome_history_needed(self, evaluation):
         """True when the row shows a completed trade awaiting a resolved outcome."""
