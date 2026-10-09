@@ -16,6 +16,99 @@ FLAG_WIN_RATE = 0.40
 _WIN_OUTCOMES = ('tp',)
 _LOSS_OUTCOMES = ('sl', 'breach')
 
+# signal_source values that mean the ML signal was NOT the trade's source
+_NON_ML_SOURCES = ('', 'none', 'random', 'fallback', 'manual')
+
+
+def _signal_compliance(row):
+    """'ml' | 'against_ml' | 'no_ml' for one ledger row.
+
+    against_ml: a signal existed and the trade went the other way (or the
+    companion recorded an explicit override). no_ml: no usable signal backed
+    the entry (none/random/fallback/manual).
+    """
+    source = str(row.get('signal_source') or '').strip().lower()
+    sig = str(row.get('signal_direction') or '').strip().lower()
+    side = str(row.get('side') or '').strip().lower()
+    if source.startswith('override'):
+        return 'against_ml'
+    if not sig or source in _NON_ML_SOURCES:
+        return 'no_ml'
+    if sig in ('buy', 'sell') and side and sig != side:
+        return 'against_ml'
+    return 'ml'
+
+
+_trader_cache: dict = {}
+
+
+def _trader_for_client(client_id):
+    """(trader, admin) responsible for a client, from the hierarchy."""
+    key = str(client_id or '').strip()
+    if not key:
+        return ('?', '?')
+    if key not in _trader_cache:
+        trader = admin = '?'
+        try:
+            from config.hierarchy import get_client_profile
+            profile = get_client_profile(key) or {}
+            trader = profile.get('trader') or '?'
+            admin = profile.get('admin') or '?'
+        except Exception:
+            pass
+        _trader_cache[key] = (trader, admin)
+    return _trader_cache[key]
+
+
+def build_ml_compliance(rows, offender_limit=200):
+    """Which trades were not taken via the ML signal, and who took them."""
+    rows = [r for r in rows or [] if isinstance(r, dict)]
+    buckets = {'ml': [], 'against_ml': [], 'no_ml': []}
+    for row in rows:
+        buckets[_signal_compliance(row)].append(row)
+
+    offenders = []
+    by_trader = defaultdict(lambda: {'n': 0, 'against': 0, 'no_signal': 0,
+                                     'net': 0.0, 'clients': set()})
+    for kind in ('against_ml', 'no_ml'):
+        for row in buckets[kind]:
+            client = str(row.get('client_id') or '?')
+            trader, admin = _trader_for_client(client)
+            entry = by_trader[trader]
+            entry['n'] += 1
+            entry['against' if kind == 'against_ml' else 'no_signal'] += 1
+            entry['clients'].add(client)
+            try:
+                entry['net'] += float(row.get('net_pnl'))
+            except (TypeError, ValueError):
+                pass
+            offenders.append({
+                'entry_date': row.get('entry_date'),
+                'entry_time': row.get('entry_time'),
+                'trader': trader, 'admin': admin, 'client': client,
+                'account': row.get('account'), 'prop_firm': row.get('prop_firm'),
+                'side': row.get('side'),
+                'signal_direction': row.get('signal_direction'),
+                'signal_source': row.get('signal_source'),
+                'kind': 'against signal' if kind == 'against_ml' else 'no signal',
+                'outcome': row.get('outcome'), 'net_pnl': row.get('net_pnl'),
+            })
+    offenders.sort(key=lambda r: str(r.get('entry_time') or r.get('entry_date') or ''),
+                   reverse=True)
+
+    traders = [
+        dict(trader=t, n=e['n'], against=e['against'], no_signal=e['no_signal'],
+             net=round(e['net'], 2), clients=sorted(e['clients']))
+        for t, e in by_trader.items()]
+    traders.sort(key=lambda e: -e['n'])
+
+    return {
+        'summary': {kind: _stats_dict(group) for kind, group in buckets.items()},
+        'non_ml_total': len(buckets['against_ml']) + len(buckets['no_ml']),
+        'by_trader': traders,
+        'offenders': offenders[:offender_limit],
+    }
+
 
 def _stats(rows):
     """(n, wins, win_rate, net_pnl, pending) over ledger rows."""
@@ -123,6 +216,21 @@ def build_attribution_report(rows, today=None):
     lines += _section("By signal source", _group(rows, lambda r: str(r.get('signal_source') or '').strip() or None))
     lines += _section("By model", _group(rows, lambda r: str(r.get('signal_model') or '').strip() or None))
 
+    compliance = build_ml_compliance(rows)
+    if compliance['non_ml_total']:
+        ml_s = compliance['summary']['ml']
+        lines.append("*ML compliance*")
+        if ml_s['n']:
+            lines.append(f"• Followed ML: {ml_s['wins']}W/{ml_s['losses']}L "
+                         f"({ml_s['win_rate']:.0%})  net ${ml_s['net']:,.0f}")
+        lines.append(f"• NOT taken via ML: {compliance['non_ml_total']} trade(s)")
+        for t in compliance['by_trader'][:8]:
+            lines.append(
+                f"   🚨 {t['trader']}: {t['n']} "
+                f"({t['against']} against signal, {t['no_signal']} no signal) "
+                f"net ${t['net']:,.0f} — clients: {', '.join(t['clients'][:5])}")
+        lines.append("")
+
     flags = []
     for title, groups in (
         ("firm", _group(rows, lambda r: str(r.get('prop_firm') or '').strip() or None)),
@@ -198,6 +306,7 @@ def build_attribution_data(rows, today=None, recent_limit=100):
         'breakdowns': breakdowns,
         'flags': flags,
         'recent': recent,
+        'ml_compliance': build_ml_compliance(rows),
         'min_breakdown_n': MIN_BREAKDOWN_N,
         'min_flag_n': MIN_FLAG_N,
         'flag_win_rate': FLAG_WIN_RATE,

@@ -160,6 +160,43 @@
                     `</div>`;
             }
 
+            const mc = d.ml_compliance;
+            if (mc) {
+                const s = mc.summary;
+                const card = (label, e, color) => `<div class="summary-card"><div class="label">${label}</div>
+                    <div class="value" style="color:${color}">${e.n + e.pending}</div>
+                    <div class="sub">${e.wins}W / ${e.losses}L${e.n ? ' · ' + pct(e.win_rate) : ''} · net ${fmt$(e.net)}</div></div>`;
+                html += `<div class="section-title"><i class="fas fa-robot" style="color:#38bdf8;"></i> ML Discipline
+                    <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">every trade is checked against the signal recorded at entry</span></div>
+                    <div class="summary-row">` +
+                    card('Followed ML', s.ml, '#4ade80') +
+                    card('Against Signal', s.against_ml, '#f87171') +
+                    card('No Signal Used', s.no_ml, '#fbbf24') +
+                    `</div>`;
+                if (mc.non_ml_total) {
+                    html += `<div class="flags-box" style="border-color:rgba(251,191,36,0.3); background:rgba(251,191,36,0.05);">
+                        <div style="font-weight:700; color:#fbbf24; margin-bottom:6px; font-family:'Plus Jakarta Sans',sans-serif;">
+                            <i class="fas fa-user-xmark"></i> Trades NOT taken via ML — by trader (${mc.non_ml_total} total)</div>` +
+                        mc.by_trader.map(t => `<div class="flag-line" style="color:#fcd34d;">🚨 ${esc(t.trader)}: ${t.n} trade(s) — ${t.against} against signal, ${t.no_signal} without signal · net ${fmt$(t.net)} · clients: ${esc(t.clients.join(', '))}</div>`).join('') +
+                        `</div>`;
+                    html += `<div class="section-title"><i class="fas fa-magnifying-glass" style="color:#fbbf24;"></i> Non-ML Trades
+                        <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">latest ${mc.offenders.length}</span></div>
+                        <div class="recent-table-wrap" style="max-height:380px; margin-bottom:22px;"><table class="recent-table">
+                        <tr><th>Date</th><th>Trader</th><th>Client</th><th>Account</th><th>Firm</th><th>Side</th><th>Signal</th><th>Why Non-ML</th><th>Source</th><th>Outcome</th><th>Net P/L</th></tr>` +
+                        mc.offenders.map(r => {
+                            const oc = (r.outcome || '').toLowerCase();
+                            const badge = oc === 'tp' ? 'badge-tp' : oc === 'sl' ? 'badge-sl' : oc === 'breach' ? 'badge-breach' : 'badge-open';
+                            const pnl = r.net_pnl == null ? '—' : `<span class="${r.net_pnl >= 0 ? 'green' : 'red'}">${fmt$(+r.net_pnl)}</span>`;
+                            return `<tr><td>${esc(r.entry_date)}</td><td style="color:#fbbf24;">${esc(r.trader)}</td><td>${esc(r.client)}</td>
+                                <td>${esc(r.account)}</td><td>${esc(r.prop_firm)}</td>
+                                <td class="${r.side === 'buy' ? 'green' : 'red'}">${esc(r.side || '—')}</td>
+                                <td>${esc(r.signal_direction || '—')}</td>
+                                <td>${esc(r.kind)}</td><td>${esc(r.signal_source || '—')}</td>
+                                <td><span class="badge ${badge}">${esc(r.outcome || 'open')}</span></td><td>${pnl}</td></tr>`;
+                        }).join('') + `</table></div>`;
+                }
+            }
+
             html += `<div class="section-title"><i class="fas fa-chart-pie" style="color:#a78bfa;"></i> Breakdowns
                 <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">rows under n=${d.min_breakdown_n} resolved trades are dimmed — not enough sample to trust</span></div>
                 <div class="breakdown-grid">`;
