@@ -5908,6 +5908,9 @@ class TradeOpssAIApp:
         "FFF": "Funded Futures Family",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
+        "MyFundedPerps": "MyFundedPerps",
+        "My Funded Perps": "MyFundedPerps",
+        "MyFundedPerpetuals": "MyFundedPerps",
     }
 
     # ── Broker login sharing ──────────────────────────────────────────

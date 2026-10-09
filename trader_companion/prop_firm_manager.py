@@ -83,6 +83,9 @@ class PropFirmManager:
         "FundedNext Rapid Daily": "FundedNext Rapid Daily",
         "Tradeify Select": "Tradeify Select",
         "Blue Guardian Reserve": "Blue Guardian Reserve",
+        "MyFundedPerps": "MyFundedPerps",
+        "My Funded Perps": "MyFundedPerps",
+        "MFP": "MyFundedPerps",
     }
 
     def __init__(self):
@@ -2430,6 +2433,24 @@ class PropFirmManager:
                             float(scaled_config["mt5_volume"]) * multiplier, 2)
 
         self._wire_topstep_rtp_p2_hedge_configs()
+
+        # API-executed perps firm — added after the futures size-scaling loop
+        # so its sizes and configs are not rewritten. Risk numbers mirror the
+        # live GET /accounts/{id} risk snapshot (1-step eval).
+        self.firm_blueprints["MyFundedPerps"] = {
+            "name": "MyFundedPerps",
+            "account_sizes": ["$10,000", "$25,000", "$50,000", "$100,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "asset_class": "perps",
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "profit_target_pct": 8,
+                "daily_loss_pct": 4,
+                "max_drawdown_pct": 6,
+            },
+            "strategy_configs": {},
+        }
 
     _TOPSTEP_RTP_PAYOUT2_PHASE_MAP = {
         "funded_trade1": "funded_trade1_p2",

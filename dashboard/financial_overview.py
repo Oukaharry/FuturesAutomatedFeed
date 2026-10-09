@@ -762,6 +762,8 @@ def normalize_prop_firm_name(name):
     MAPPING = {
         "myfundedfutures": "My Funded Futures",
         "myfundedfx": "My Funded Futures",
+        "myfundedperps": "MyFundedPerps",
+        "myfundedperpetuals": "MyFundedPerps",
         "fundednext": "FundedNext",
         "fundednextflex": "FundedNext",
         "fundednextrapiddaily": "FundedNext Rapid Daily",

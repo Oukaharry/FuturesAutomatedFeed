@@ -1727,6 +1727,9 @@ BREACH_SLACK_NOTIFICATIONS_PAUSED = (
 _BREACH_FIRM_SHORT_NAMES = (
     ('my funded futures', 'MFFU'),
     ('mffu', 'MFFU'),
+    ('my funded perps', 'MyFundedPerps'),
+    ('myfundedperps', 'MyFundedPerps'),
+    ('my funded perpetuals', 'MyFundedPerps'),
     ('funded next', 'Funded Next'),
     ('fundednext', 'Funded Next'),
     ('tradeify', 'Tradeify'),
