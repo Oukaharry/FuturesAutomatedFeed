@@ -1,5 +1,6 @@
 """Breach Slack alerts: channel routing, purchase message format, fallbacks."""
 
+from datetime import date, datetime
 from unittest.mock import patch
 
 import dashboard.app as dapp
@@ -215,3 +216,28 @@ def test_placeholder_rows_do_not_occupy_max_out_slots():
     ]
     assert dapp._eval_row_occupies_max_out_slot(rows[0]) is True
     assert dapp._eval_row_occupies_max_out_slot(rows[1]) is False
+
+
+def test_firms_idle_beyond_30_days_are_not_active(monkeypatch):
+    # Luiger's case: Lucid rows from July must not buy Lucid in October.
+    monkeypatch.setattr('dashboard.database.get_client_recent_ledger_firms',
+                        lambda c, days=30: set())
+    evaluations = [
+        {'Prop Firm': 'Lucid', 'Account #': 'LFE1', 'Status P1': 'Pass',
+         'Date Started': '21/07/2026', 'Date Ended': '22/07/2026'},
+        {'Prop Firm': 'Topstep', 'Account #': 'TS1', 'Status P1': 'Fail',
+         'Date Started': '01/10/2026', 'Date Ended': '02/10/2026'},
+        {'Prop Firm': 'Tradeify', 'Account #': 'T1', 'Status P1': 'In Progress'},
+    ]
+    with patch.object(dapp, '_kenya_now') as now:
+        now.return_value = datetime(2026, 10, 6, 12, 0)
+        active = dapp._client_active_firm_families('Luiger Orozco', evaluations)
+    assert active == {'topstep', 'tradeify'}  # recent date + live undated row
+    assert 'lucid' not in active
+
+
+def test_row_date_parsing_is_day_first():
+    assert dapp._parse_row_date('21/07/2026') == date(2026, 7, 21)
+    assert dapp._parse_row_date('2026-10-01') == date(2026, 10, 1)
+    assert dapp._parse_row_date('') is None
+    assert dapp._parse_row_date('-') is None
