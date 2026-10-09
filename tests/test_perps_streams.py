@@ -88,3 +88,18 @@ def test_feed_ingest_produces_mt5_rates():
     rates = feed.get_rates_minutes(1, 10)
     assert list(rates["time"]) == [60, 120]
     assert rates[-1]["close"] == 2.0
+
+
+def test_ml_fetch_rates_falls_back_to_perps_feed(monkeypatch):
+    import trader_companion.perps_md_feed as pmf
+    from trader_companion.signals.ml_direction import _fetch_rates
+
+    monkeypatch.setattr("trader_companion.tradovate_md_feed._feed_singleton",
+                        None, raising=False)
+    feed = PerpsMDFeed()
+    feed._ingest([{"interval": "1m", "openTime": i * 60000, "open": "1",
+                   "high": "2", "low": "0.5", "close": "1.5", "volume": "1",
+                   "isFinal": True} for i in range(5)])
+    monkeypatch.setattr(pmf, "_feed_singleton", feed)
+    rates = _fetch_rates("USTECH", 1, 10)
+    assert rates is not None and len(rates) == 5

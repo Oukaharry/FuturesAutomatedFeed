@@ -687,20 +687,31 @@ def _fetch_rates(
     mt5_server: Optional[str] = None,
     mt5_broker: Optional[str] = None,
 ):
-    """Bars come exclusively from the Tradovate NQ feed — the single signal source.
+    """Bars come from the live feeds only — Tradovate NQ first, and the
+    MyFundedPerps Nasdaq-100 perp stream when Tradovate has no bars (perps
+    setups trade 24/7 without a Tradovate login).
 
-    MT5 is never consulted: the model trains and scores on the exact contract
-    the system trades. Returns None until the feed has streamed bars.
+    MT5 is never consulted: the model trains and scores on the index the
+    system trades. Returns None until a feed has streamed bars.
     """
+    tf = int(timeframe_minutes) if int(timeframe_minutes) in (1, 5) else 5
     try:
         from trader_companion.tradovate_md_feed import get_tradovate_md_feed
         feed = get_tradovate_md_feed()
     except Exception:
+        feed = None
+    if feed is not None:
+        rates = feed.get_rates_minutes(tf, count)
+        if rates is not None and len(rates):
+            return rates
+    try:
+        from trader_companion.perps_md_feed import get_perps_md_feed
+        perps_feed = get_perps_md_feed()
+    except Exception:
         return None
-    if feed is None:
+    if perps_feed is None:
         return None
-    tf = int(timeframe_minutes) if int(timeframe_minutes) in (1, 5) else 5
-    return feed.get_rates_minutes(tf, count)
+    return perps_feed.get_rates_minutes(tf, count)
 
 
 def fetch_recent_ticks(

@@ -12329,6 +12329,7 @@ class TradeOpssAIApp:
                     "row_frame": None,
                     "creds_source": "dashboard" if perps_key else "missing",
                 }
+                self._start_perps_md_feed()
                 if existing_account:
                     auto_count += 1
                 elif perps_key:
@@ -14649,6 +14650,21 @@ class TradeOpssAIApp:
                 log_fn=lambda m: self.root.after(0, lambda msg=m: self.log(msg)))
         except Exception as exc:
             self.log(f"⚠ Tradovate data feed not started: {exc}", "WARN")
+
+    def _start_perps_md_feed(self):
+        """Start the public perps Nasdaq-100 candle stream (no credentials).
+        Signals fall back to it when the Tradovate feed has no bars."""
+        try:
+            from trader_companion.perps_md_feed import get_perps_md_feed, start_perps_md_feed
+            if get_perps_md_feed() and get_perps_md_feed().is_running:
+                return
+            symbol = self.PERPS_DEFAULT_MARKET.split("|", 1)[1]
+            start_perps_md_feed(
+                symbol=symbol, provider=self.PERPS_DEFAULT_MARKET.split("|", 1)[0],
+                log_fn=lambda m: self.root.after(0, lambda msg=m: self.log(msg)))
+            self.log(f"📈 Perps market feed started — {symbol} M1+M5 (24/7 signal data)")
+        except Exception as exc:
+            self.log(f"⚠ Perps market feed not started: {exc}", "WARN")
 
     def _tradovate_feed_bars_ready(self, minimum=200):
         try:
