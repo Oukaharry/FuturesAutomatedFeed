@@ -3494,6 +3494,41 @@ def upsert_trade_ledger_entry(client_id: str, event: dict) -> bool:
     return True
 
 
+def apply_ledger_outcome_for_marker(client_id: str, account: str,
+                                    outcome: str) -> bool:
+    """Set the outcome on the account's newest outcome-less ledger row.
+
+    Used when a dashboard save flips a status to Hit TP/SL — markers typed by
+    traders never produce a companion outcome event, which left farming rows
+    unresolved forever. Never overwrites an outcome the companion recorded.
+    """
+    account = str(account or '').strip()
+    outcome = str(outcome or '').strip().lower()
+    if not client_id or not account or outcome not in ('tp', 'sl'):
+        return False
+    _ensure_trade_ledger_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute(
+            '''
+            UPDATE trade_ledger
+            SET outcome = ?, closed_at = ?, updated_at = ?
+            WHERE id = (
+                SELECT id FROM trade_ledger
+                WHERE client_id = ? AND account = ?
+                  AND (outcome IS NULL OR outcome = '')
+                ORDER BY entry_date DESC, id DESC
+                LIMIT 1
+            )
+            ''',
+            (outcome, now, now, str(client_id).strip(), account),
+        )
+        updated = cursor.rowcount
+        conn.commit()
+    return bool(updated)
+
+
 def apply_trade_ledger_outcome(client_id: str, event: dict) -> bool:
     """Attach the resolved outcome to its ledger row (matched by account+date)."""
     if not isinstance(event, dict):

@@ -2951,10 +2951,19 @@ def merge_dashboard_update_evaluations(
     return out
 
 
+_HIT_MARKER_RE = re.compile(r'^hit\s*(tp|sl)\s*\d+$', re.IGNORECASE)
+
+
+def _ledger_outcome_for_marker(status):
+    """'tp' / 'sl' when the status is a Hit TP/SL marker, else None."""
+    m = _HIT_MARKER_RE.match(str(status or '').strip())
+    return m.group(1).lower() if m else None
+
+
 def _record_status_change_events(client_id, existing_evals, merged_evals):
     """Log today's status flips so the 20:00 summary can report them."""
     try:
-        from dashboard.database import record_daily_event
+        from dashboard.database import apply_ledger_outcome_for_marker, record_daily_event
         existing_by_key = _index_existing_evaluations(existing_evals)
         for ev in merged_evals or []:
             if not isinstance(ev, dict) or ev.get('_deleted'):
@@ -2973,6 +2982,20 @@ def _record_status_change_events(client_id, existing_evals, merged_evals):
                         account=(_eval_broker_account_numbers(ev) or [''])[0],
                         detail=new,
                         event_date=_kenya_today_str())
+                    # Hit TP/SL markers resolve the account's open ledger row.
+                    # Traders type these by hand, so the companion never sends
+                    # an outcome event for them (farming showed 1W/27L because
+                    # only breaches ever resolved).
+                    outcome = _ledger_outcome_for_marker(new)
+                    if outcome:
+                        acct_field = 'Account #.1' if field == 'Status' else 'Account #'
+                        accounts = [str(ev.get(acct_field) or '').strip(),
+                                    str(ev.get('Account #.1' if acct_field == 'Account #'
+                                               else 'Account #') or '').strip()]
+                        for acct in accounts:
+                            if acct and apply_ledger_outcome_for_marker(
+                                    client_id, acct, outcome):
+                                break
     except Exception as exc:
         app.logger.warning(f"Status-change event log failed for {client_id}: {exc}")
 
