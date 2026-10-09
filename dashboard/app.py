@@ -2059,6 +2059,29 @@ def _breaches_within_firm_max_out(firm_family, breaches, evaluations):
     return unique[:room]
 
 
+def _account_text_says_live_account(raw):
+    """True when an eval Account # is the Live Account label, not a broker id."""
+    text = re.sub(r'[^a-z0-9]+', ' ', str(raw or '').strip().lower())
+    text = re.sub(r'\s+', ' ', text).strip()
+    return 'live account' in text
+
+
+def _firm_eval_marked_live_account(firm_family, evaluations):
+    """True when this firm has a real-money row (eval Account # says Live Account).
+
+    A Fail on that firm is not a replacement buy. Joe Hicken's Apex rows are
+    Live Account, so an Apex purchase alert for him is a false buy.
+    """
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        if _breach_firm_family(ev.get('Prop Firm')) != firm_family:
+            continue
+        if _account_text_says_live_account(ev.get('Account #')):
+            return True
+    return False
+
+
 def _flush_batched_breach_alerts(client_id, evaluations):
     """Send queued firm batches once all trades for that firm have closed."""
     from collections import defaultdict
@@ -2092,6 +2115,11 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     still_pending = []
     announced = 0
     for firm_key, firm_breaches in by_firm.items():
+        if _firm_eval_marked_live_account(firm_key, evaluations):
+            app.logger.info(
+                f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
+                f"alert(s) — eval Account # is Live Account")
+            continue
         if active_families and firm_key not in active_families:
             app.logger.warning(
                 f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase alert(s) — "
