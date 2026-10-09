@@ -29,6 +29,24 @@ def _sandbox_allowed() -> bool:
         "1", "true", "yes")
 
 
+# The API has no billing endpoints, so the fee comes from the published
+# challenge pricing (Select tier, PERPS code) keyed by starting balance.
+# Only stamped at row creation — edits for other tiers/promos are kept.
+_CHALLENGE_FEE_BY_SIZE = {
+    10000: "28",
+    25000: "70",
+    50000: "133",
+    100000: "252",
+}
+
+
+def _challenge_fee(starting_balance) -> str:
+    try:
+        return _CHALLENGE_FEE_BY_SIZE.get(int(round(float(starting_balance))), "0")
+    except (TypeError, ValueError):
+        return "0"
+
+
 def client_perps_api_key(client_data: dict) -> str:
     for acc in client_data.get("prop_accounts") or []:
         if (acc.get("prop_firm") == PERPS_FIRM
@@ -61,7 +79,7 @@ def _row_for_account(acct: dict) -> dict:
         "Account Size": _fmt_size(acct.get("starting_balance")),
         "Date Purchased": _fmt_date(acct.get("created_at")),
         "Date Started": _fmt_date(acct.get("created_at")),
-        "Fee": "0",
+        "Fee": _challenge_fee(acct.get("starting_balance")),
         "Status P1": ("Fail" if failed else ("Pass" if funded else "In Progress")),
         "Status": "-",
         "_perps_account_id": acct.get("id") or "",
