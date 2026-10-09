@@ -11478,7 +11478,16 @@ class TradeOpssAIApp:
                 # Read all accounts from this firm's Tradovate dropdown
                 import re as _re
                 try:
-                    trado_accounts = broker_account.get_all_accounts()
+                    if self._is_perps_firm(firm_name):
+                        try:
+                            from trader_companion.perps_connector import unwrap as _unwrap
+                        except ImportError:
+                            from perps_connector import unwrap as _unwrap
+                        trado_accounts = [
+                            str(a.get("account_number") or "")
+                            for a in (_unwrap(broker_account.list_accounts()) or [])]
+                    else:
+                        trado_accounts = broker_account.get_all_accounts()
                 except Exception as e:
                     self.log(f"⚠ Could not read accounts for {firm_name}: {e}")
                     trado_accounts = []
@@ -11638,6 +11647,24 @@ class TradeOpssAIApp:
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
+
+                # ── MyFundedPerps: API bracket — no day placeholders / Tradovate ──
+                if self._is_perps_firm(firm_code) or self._is_perps_firm(firm_name):
+                    p_side = locked_side if locked_side in ("buy", "sell") else None
+                    if p_side is None and use_signal:
+                        sig = self._get_signal_direction("USTECH")
+                        if sig in ("buy", "sell"):
+                            p_side = sig
+                    if p_side is None:
+                        p_side = random.choice(["buy", "sell"])
+                        self.root.after(0, lambda an=acct_num, s=p_side: self.log(
+                            f"🎲 {an}: ML unavailable — implicit fallback {s.upper()}", "WARN"))
+                    with firm_sides_lock:
+                        firm_sides.setdefault(family_key, p_side)
+                    ok = self._auto_execute_perps_row(row_data, p_side)
+                    with total_success:
+                        counters["success" if ok else "fail"] += 1
+                    continue
 
                 # For AlphaTrader, auto-detect account size from live balance when
                 # eval row doesn't have a size value.
@@ -14418,6 +14445,65 @@ class TradeOpssAIApp:
                 self.root.after(0, _reenable)
 
         threading.Thread(target=_do_perps_trade, daemon=True).start()
+
+    def _auto_execute_perps_row(self, row_data, side) -> bool:
+        """Headless perps bracket for auto-trade; returns True when filled."""
+        try:
+            from trader_companion.perps_connector import unwrap
+            from trader_companion.perps_executor import PerpsTradeExecutor
+        except ImportError:
+            from perps_connector import unwrap
+            from perps_executor import PerpsTradeExecutor
+
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        def _ulog(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, l=level: self.log(m, l))
+        client = self._perps_client()
+        if client is None:
+            _ulog(f"❌ {acct_num}: MyFundedPerps API not connected", "ERROR")
+            return False
+        try:
+            accounts = unwrap(client.list_accounts()) or []
+            digits = "".join(ch for ch in acct_num if ch.isdigit())
+            acct = next(
+                (a for a in accounts if digits and digits in
+                 "".join(ch for ch in str(a.get("account_number") or "") if ch.isdigit())),
+                accounts[0] if len(accounts) == 1 else None)
+            if acct is None:
+                _ulog(f"❌ No MyFundedPerps account matching {acct_num}", "ERROR")
+                return False
+            executor = PerpsTradeExecutor(client, account_id=acct["id"])
+            snap = unwrap(client.get_account(acct["id"]))
+            risk = snap.get("risk") or {}
+            tp_usd = float(risk.get("remaining_profit") or 0) or \
+                float(snap.get("starting_balance") or 0) * 0.08
+            market = os.environ.get("PERPS_MARKET", self.PERPS_DEFAULT_MARKET)
+            order, plan = executor.enter_bracket(market, side, tp_usd=tp_usd)
+            if str(order.get("status") or "").lower() == "rejected":
+                _ulog(f"❌ {acct_num}: perps order rejected — "
+                      f"{order.get('reject_reason') or 'unknown'}", "ERROR")
+                return False
+            _ulog(f"✅ {acct_num}: {side.upper()} {plan['size']} {market} filled @ "
+                  f"{order.get('fill_price')} — TP {plan['tp_price']} "
+                  f"(+${plan['tp_usd']:,.0f}) / SL {plan['sl_price']} "
+                  f"(-${plan['sl_usd']:,.0f})")
+            _ev = row_data.get("eval")
+            if _ev:
+                _cur = self._cell(_ev.get("Status P1")).lower()
+                if not _cur or _cur in ("not started", "in progress"):
+                    _ev["Status P1"] = "In Progress"
+            def _remove():
+                try:
+                    row_data["frame"].destroy()
+                except Exception:
+                    pass
+                if row_data in self._active_trade_rows:
+                    self._active_trade_rows.remove(row_data)
+            self.root.after(0, _remove)
+            return True
+        except Exception as exc:
+            _ulog(f"❌ {acct_num}: perps trade failed — {exc}", "ERROR")
+            return False
 
     def _get_trade_config(self):
         """Get current trade configuration from blueprint."""
