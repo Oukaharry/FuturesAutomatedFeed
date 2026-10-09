@@ -2141,23 +2141,21 @@ def _flush_batched_breach_alerts(client_id, evaluations):
             app.logger.info(
                 f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
                 f"row is Pass/Completed, not a buy")
-        # A hold is never destroyed: it re-queues until its row turns terminal.
+        # A hold stays queued until that row itself fails. A row that is
+        # already Fail is a purchase for that account now — sibling rows
+        # and open trades on other accounts do not hold it back.
         still_pending.extend(hold)
-        if hold and not session_over:
-            still_pending.extend(sendable)
+        if hold and not sendable and not session_over:
             app.logger.info(
                 f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
                 f"waiting for Fail on the remaining live rows")
-            continue
         if not sendable:
             continue
-        firm_breaches = sendable
-        if _firm_has_active_trades(evaluations, firm_key) and not session_over:
-            still_pending.extend(firm_breaches)
+        if hold and not session_over:
             app.logger.info(
-                f"🚨 {client_id}: holding {len(firm_breaches)} {firm_key} breach alert(s) — "
-                f"active trades still open")
-            continue
+                f"🚨 {client_id}: sending {len(sendable)} {firm_key} Fail purchase "
+                f"alert(s); {len(hold)} other row(s) still live")
+        firm_breaches = sendable
 
         batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
         if batch_key in sent_batches:
@@ -2958,6 +2956,49 @@ def _ledger_outcome_for_marker(status):
     """'tp' / 'sl' when the status is a Hit TP/SL marker, else None."""
     m = _HIT_MARKER_RE.match(str(status or '').strip())
     return m.group(1).lower() if m else None
+
+
+def _fail_status_purchase_breaches(existing_evals, merged_evals):
+    """Purchase payloads for accounts whose phase status just became Fail.
+
+    The Tradovate status poll writes Fail onto the sheet and pushes with no
+    breach_alerts list. A change to Fail is the breach, for that account.
+    A row that was already Fail is not bought again.
+    """
+    existing_by_key = _index_existing_evaluations(existing_evals)
+    breaches = []
+    seen = set()
+    legs = (
+        ('Status P1', 'Challenge', 'Account #'),
+        ('Status', 'Funded', 'Account #.1'),
+    )
+    for ev in merged_evals or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        mk = _evaluation_row_merge_key(ev)
+        before = existing_by_key.get(mk) if mk else None
+        if not isinstance(before, dict):
+            continue
+        for field, phase, acct_field in legs:
+            new = str(ev.get(field) or '').strip()
+            old = str(before.get(field) or '').strip()
+            if not _status_is_fail(new) or _status_is_fail(old):
+                continue
+            account = str(ev.get(acct_field) or '').strip()
+            if phase == 'Funded' and account in ('', '-', '—', '–'):
+                account = str(ev.get('Account #') or '').strip()
+            if not account or account in ('-', '—', '–'):
+                continue
+            if account.lower() in seen:
+                continue
+            seen.add(account.lower())
+            breaches.append({
+                'account': account,
+                'prop_firm': ev.get('Prop Firm') or '',
+                'phase': phase,
+                'reason_code': 'status_fail',
+            })
+    return breaches
 
 
 def _record_status_change_events(client_id, existing_evals, merged_evals):
@@ -7966,6 +8007,12 @@ def api_client_push():
             existing_evals_push, incoming_evals, force_fields)
         _apply_server_eval_guards(evaluations)
         _record_status_change_events(client_id, existing_evals_push, evaluations)
+        fail_purchases = _fail_status_purchase_breaches(existing_evals_push, evaluations)
+        if fail_purchases:
+            breach_alerts_sanitized = list(breach_alerts_sanitized or []) + fail_purchases
+            app.logger.warning(
+                f"🚨 {client_id}: {len(fail_purchases)} account(s) changed to Fail — "
+                f"queued as purchases")
         app.logger.info(
             f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
             f"into {len(evaluations)} total (was {len(existing_evals_push)} in DB)")
@@ -15826,6 +15873,12 @@ def update_data():
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
+                    fail_purchases = _fail_status_purchase_breaches(existing_evals, evaluations)
+                    if fail_purchases:
+                        _queue_breach_alerts(client_id, fail_purchases)
+                        app.logger.warning(
+                            f"🚨 {client_id}: {len(fail_purchases)} account(s) set to Fail "
+                            f"on the dashboard — queued as purchases")
                     _flush_batched_breach_alerts(client_id, evaluations)
                 except Exception as exc:
                     app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")
