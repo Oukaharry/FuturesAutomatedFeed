@@ -7439,6 +7439,7 @@ _COMPANION_ONLY_PATHS = (
     '/api/client/migrate_sheet',
     '/api/client/import_csv_companion',
     '/api/client/ml_insights',
+    '/api/client/companion_scan',
 )
 # Shared with the web UI; gate only requests that identify as companion.
 _COMPANION_SHARED_PATHS = ('/api/update_data', '/api/data')
@@ -7557,6 +7558,52 @@ def api_companion_auth():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/client/companion_scan', methods=['POST'])
+@limiter.limit("600 per minute")
+def api_companion_scan():
+    """Tell an open companion whether this minute's scan is still due.
+
+    The scheduler publishes one epoch per UTC minute. Each companion that is
+    open polls this, and scans only when the epoch is newer than the scan it
+    last finished. A closed companion never calls, so it is not scanned.
+    """
+    denied = _companion_version_denied()
+    if denied:
+        return denied
+
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+
+    client_id = client_info['client']
+    existing = get_client_data(client_id) or {}
+    denied = _companion_access_denied(client_id, existing.get('identity'))
+    if denied:
+        return denied
+
+    from dashboard.database import get_setting, touch_companion_presence
+    epoch = (get_setting('companion_scan_epoch') or '').strip()
+    last_epoch = str(data.get('last_epoch') or '').strip()
+    scan = bool(epoch) and epoch != last_epoch
+    try:
+        touch_companion_presence(client_id, datetime.utcnow().isoformat(timespec='seconds') + 'Z')
+    except Exception as exc:
+        app.logger.warning("companion presence write failed for %s: %s", client_id, exc)
+    if scan:
+        app.logger.info("companion scan due for %s epoch=%s", client_id, epoch)
+    return jsonify({
+        "status": "success",
+        "scan": scan,
+        "epoch": epoch,
+        "client": client_id,
+    })
 
 
 _FALLBACK_MT5_DONOR_EMAILS = ('harryodhiambo16@gmail.co', 'harryodhiambo16@gmail.com')

@@ -154,6 +154,15 @@ def run_scheduler():
                     logging.error(f"Perps sync job failed: {exc}")
                 _mark_ran('perps_sync', minute_key)
 
+            # Every UTC minute: arm one scan for every open companion, and
+            # release purchase alerts whose rows are already terminal. Status
+            # itself still comes from the companion scan — this tick is what
+            # starts it, instead of waiting for a trader to press Scan.
+            try:
+                arm_companion_scans()
+            except Exception as exc:
+                logging.error(f"Companion scan arm failed: {exc}")
+
             time.sleep(30)  # Check every 30s
 
         except Exception as e:
@@ -630,8 +639,32 @@ def _build_daily_summary_text():
     return "\n".join(lines)
 
 
-def flush_queued_purchase_alerts():
-    """Send purchase alerts still queued once the EAT session is over."""
+def arm_companion_scans():
+    """One scan tick per UTC minute for every companion that is open.
+
+    The desktop app polls this tick and runs the same status/breach pass a
+    trader scan runs, then pushes. Companions that are closed are skipped —
+    there is no broker session to read.
+    """
+    from dashboard.database import claim_companion_scan_epoch
+
+    epoch = datetime.utcnow().strftime('%Y-%m-%dT%H:%M')
+    if not claim_companion_scan_epoch(epoch):
+        return
+    logging.info(
+        "Companion scan armed for %s UTC — each open companion refreshes "
+        "status and purchase alerts",
+        epoch,
+    )
+    flush_queued_purchase_alerts(reason='minute')
+
+
+def flush_queued_purchase_alerts(reason='session-end'):
+    """Send purchase alerts already queued, once their rows are ready to buy.
+
+    reason='session-end' is the 20:00 EAT release. reason='minute' is the
+    dashboard clock, so a finished Fail does not wait for the next manual scan.
+    """
     from dashboard.app import BREACH_SLACK_NOTIFICATIONS_PAUSED, _flush_batched_breach_alerts
     from dashboard.database import get_client_data, list_pending_breach_alert_clients
 
@@ -640,7 +673,7 @@ def flush_queued_purchase_alerts():
         return 0
 
     clients = list_pending_breach_alert_clients()
-    logging.info("Session-end purchase alert flush: %s client queue(s)", len(clients))
+    logging.info("%s purchase alert flush: %s client queue(s)", reason, len(clients))
     for client_id in clients:
         try:
             data = get_client_data(client_id) or {}

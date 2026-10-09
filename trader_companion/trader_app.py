@@ -1690,6 +1690,8 @@ class TradeOpssAIApp:
         self.auto_push_thread = None
         self._auto_push_first_run = True
         self._last_hourly_farming_refresh = None
+        self._outcome_correction_lock = threading.Lock()
+        self._dashboard_scan_epoch = ""
         self._push_lock = threading.Lock()
         self._push_in_progress = False
         self._push_pending = False
@@ -5350,12 +5352,26 @@ class TradeOpssAIApp:
 
         The placeholder is queued at fill time, before TP/SL is known, so the
         outcome branch can only be applied on a later pass. Idempotent.
+        Returns True when this pass finished, False when it was skipped or the
+        push did not land (the caller retries that scan epoch).
         """
+        lock = getattr(self, "_outcome_correction_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._outcome_correction_lock = lock
+        if not lock.acquire(blocking=False):
+            return False
+        try:
+            return self._apply_outcome_corrections_locked(force_history)
+        finally:
+            lock.release()
+
+    def _apply_outcome_corrections_locked(self, force_history=False):
         try:
             email = self.client_email_entry.get().strip()
             dashboard_url = self.url_entry.get().strip().rstrip('/')
             if not email or not dashboard_url:
-                return
+                return False
             # Deliver any $0.00 marks whose fill-time write failed, BEFORE the
             # fetch below so this pass sees the healed cells.
             self._retry_pending_day_cell_marks()
@@ -5366,7 +5382,7 @@ class TradeOpssAIApp:
                 timeout=10,
             )
             if resp.status_code != 200:
-                return
+                return False
             evaluations = (resp.json() or {}).get("evaluations", []) or []
             self._last_dashboard_evaluations = list(evaluations)
             self._sync_dashboard_vanish_registry(evaluations)
@@ -5415,7 +5431,7 @@ class TradeOpssAIApp:
             breaches = list(self._pending_breach_alerts)
             ledger_events = self._drain_ledger_events()
             if not force_fields and not breaches and not ledger_events:
-                return
+                return True
             push_response = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json={
@@ -5435,7 +5451,7 @@ class TradeOpssAIApp:
                          f"{push_response.text[:300]}", "WARN")
                 for ev_ledger in ledger_events:
                     self._queue_ledger_event(ev_ledger)  # breaches stay pending too
-                return
+                return False
             try:
                 push_result = push_response.json() or {}
             except ValueError:
@@ -5444,13 +5460,16 @@ class TradeOpssAIApp:
                 self.log(f"⚠ Outcome correction push failed: {push_result}", "WARN")
                 for ev_ledger in ledger_events:
                     self._queue_ledger_event(ev_ledger)
+                return False
             else:
                 # Delivered: drop exactly what was sent (appends-after stay queued)
                 self._pending_breach_alerts = self._pending_breach_alerts[len(breaches):]
                 self._save_breach_state()
                 self.log(f"📤 Outcome correction persisted ({len(set(force_fields))} field(s))")
+            return True
         except Exception as exc:
             self.log(f"⚠ Outcome correction pass failed: {exc}", "WARN")
+            return False
 
     # Farming (and any phase) outcomes flow from broker truth: statuses never
     # flip during a farm cycle, so resolved days are shipped directly.
@@ -5570,6 +5589,102 @@ class TradeOpssAIApp:
             return
         self._last_outcome_correction = now
         threading.Thread(target=self._apply_outcome_corrections, daemon=True).start()
+
+    # The dashboard publishes one scan epoch per UTC minute. This loop asks
+    # for it whether or not Auto-Push is on, so an open companion keeps
+    # status and purchase alerts moving without a manual Scan.
+    _DASHBOARD_SCAN_POLL_SEC = 60
+
+    def _start_dashboard_scan_poll(self):
+        if getattr(self, "_dashboard_scan_poll_started", False):
+            return
+        self._dashboard_scan_poll_started = True
+        threading.Thread(
+            target=self._dashboard_scan_poll_loop, daemon=True, name="dashboard-scan",
+        ).start()
+
+    def _dashboard_scan_poll_loop(self):
+        """Poll the dashboard clock and run one status/breach scan per minute."""
+        time.sleep(20)
+        while True:
+            try:
+                self.root.after(0, self._kick_dashboard_scan_poll)
+            except Exception:
+                return
+            for _ in range(self._DASHBOARD_SCAN_POLL_SEC):
+                time.sleep(1)
+
+    def _kick_dashboard_scan_poll(self):
+        if not self._dashboard_credentials_ready():
+            return
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip("/")
+        last_epoch = str(getattr(self, "_dashboard_scan_epoch", "") or "")
+        threading.Thread(
+            target=self._dashboard_scan_poll_request,
+            args=(email, dashboard_url, last_epoch),
+            daemon=True,
+        ).start()
+
+    def _dashboard_scan_poll_request(self, email, dashboard_url, last_epoch):
+        try:
+            resp = requests.post(
+                f"{dashboard_url}/api/client/companion_scan",
+                json={"email": email, "last_epoch": last_epoch},
+                headers=_companion_request_headers(),
+                timeout=15,
+            )
+        except Exception as exc:
+            self._log_dashboard_scan_throttled(
+                "poll", f"⚠ Dashboard scan poll failed: {exc}")
+            return
+        if resp.status_code != 200:
+            self._log_dashboard_scan_throttled(
+                f"http-{resp.status_code}",
+                f"⚠ Dashboard scan poll HTTP {resp.status_code}: {resp.text[:180]}")
+            return
+        try:
+            body = resp.json() or {}
+        except ValueError:
+            return
+        epoch = str(body.get("epoch") or "").strip()
+        if not body.get("scan") or not epoch or epoch == last_epoch:
+            return
+
+        def _start():
+            if self._outcome_correction_lock.locked():
+                self.log(
+                    f"⏳ Dashboard scan {epoch} skipped — previous scan still running")
+                return
+            self.log(
+                f"🔎 Dashboard scan {epoch} — refreshing statuses and purchase alerts")
+
+            def _work():
+                ok = self._apply_outcome_corrections(force_history=True)
+                if ok:
+                    self._dashboard_scan_epoch = epoch
+
+            threading.Thread(target=_work, daemon=True).start()
+
+        try:
+            self.root.after(0, _start)
+        except Exception:
+            pass
+
+    def _log_dashboard_scan_throttled(self, key, message):
+        now = time.monotonic()
+        store = getattr(self, "_dashboard_scan_log_throttle", None)
+        if store is None:
+            store = {}
+            self._dashboard_scan_log_throttle = store
+        last = store.get(key)
+        if last is not None and now - last < 300:
+            return
+        store[key] = now
+        try:
+            self.root.after(0, lambda m=message: self.log(m, "WARN"))
+        except Exception:
+            pass
 
     # Publish faster than the 300s staleness window so consumers always find
     # a valid signal — entries never wait for a fresh broadcast.
@@ -8856,16 +8971,43 @@ class TradeOpssAIApp:
             changed.append(started_field)
         return changed
 
+    def _use_funded_trade_account(self, row_data, ev=None):
+        """Trade Account #.1 once the eval has graduated.
+
+        A funded MFFU row keeps the old eval id in Account # (MFFUEV…) and the
+        live id in Account #.1 (MFFUSF…). Ordering against the eval id makes
+        Tradovate refuse the switch and the fill is blocked.
+        """
+        ev = ev if isinstance(ev, dict) else (row_data.get("eval") or {})
+        current = str((row_data or {}).get("acct_num") or "").strip()
+        resolved = self._primary_trade_account(ev)
+        if (
+            self._has_passed_to_funded(ev)
+            and resolved
+            and resolved not in ("—", "-")
+            and resolved != current
+        ):
+            self.log(
+                f"📌 {current}: eval account is closed — trading funded {resolved}")
+            if isinstance(row_data, dict):
+                row_data["acct_num"] = resolved
+            return resolved
+        return current or resolved
+
     def _refresh_eval_for_account(self, acct_num):
         """Fetch fresh eval data from dashboard for a specific account.
 
         Returns the updated eval dict, or None if fetch fails.
-        When duplicate rows exist for the same account, prefers the active one.
+        Matches either account column, including a graduated row whose live
+        leg is Account #.1 while the caller still holds the eval id.
+        When duplicate rows exist, prefers the active row and then the one
+        whose trade account is the id being looked up.
         """
         try:
             email = self.client_email_entry.get().strip()
             dashboard_url = self.url_entry.get().strip().rstrip('/')
-            if not email or not dashboard_url:
+            needle = str(acct_num or "").strip().lower()
+            if not email or not dashboard_url or not needle:
                 return None
             r = requests.post(
                 f"{dashboard_url}/api/client/data",
@@ -8876,25 +9018,29 @@ class TradeOpssAIApp:
             if r.status_code != 200:
                 return None
             data = r.json()
-            best = None
+            active = []
+            inactive = []
             for ev in data.get("evaluations", []):
                 if ev.get("_deleted"):
                     continue
-                acct1 = self._cell(ev.get("Account #.1"))
-                acct0 = self._cell(ev.get("Account #"))
+                acct1 = self._cell_account(ev.get("Account #.1"))
+                acct0 = self._cell_account(ev.get("Account #"))
                 primary = self._primary_trade_account(ev)
-                if acct_num == primary:
-                    pass
-                elif not self._has_passed_to_funded(ev) and acct_num in (acct1, acct0):
-                    pass
-                else:
+                ids = {
+                    a.lower() for a in (acct1, acct0, primary)
+                    if a and a not in ("—", "-")
+                }
+                if needle not in ids:
                     continue
                 is_active = ev.get("_is_active", self._is_eval_active(ev))
-                if is_active:
-                    return ev  # Active match — return immediately
-                if best is None:
-                    best = ev  # Keep first inactive as fallback
-            return best
+                (active if is_active else inactive).append(ev)
+            pool = active or inactive
+            if not pool:
+                return None
+            for ev in pool:
+                if self._primary_trade_account(ev).lower() == needle:
+                    return ev
+            return pool[0]
         except Exception:
             pass
         return None
@@ -9621,13 +9767,14 @@ class TradeOpssAIApp:
         firm_code = row_data["firm_code"]
         phase_key = row_data["phase_key"]
         acct_size = row_data["acct_size"]
-        acct_num = row_data["acct_num"]
+        acct_num = self._use_funded_trade_account(row_data)
 
         # ── Resolve phase_key from day placeholder (primary source of truth) ──
         fresh_ev = self._refresh_eval_for_account(acct_num)
         if fresh_ev:
             ev = fresh_ev
             row_data["eval"] = fresh_ev
+            acct_num = self._use_funded_trade_account(row_data, fresh_ev)
         resolved_key, day_idx, day_name = self._resolve_phase_key_from_day(
             ev, firm_code, row_data["current_phase"])
         if resolved_key is None:
@@ -11454,6 +11601,8 @@ class TradeOpssAIApp:
         firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
         rows = list(self._active_trade_rows)  # snapshot
+        for row_data in rows:
+            self._use_funded_trade_account(row_data)
 
         if not rows:
             self.log("⚠ No trades to execute — list is empty")
@@ -11702,7 +11851,7 @@ class TradeOpssAIApp:
                 firm_code = row_data["firm_code"]
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
-                acct_num = row_data["acct_num"]
+                acct_num = self._use_funded_trade_account(row_data)
 
                 # ── MyFundedPerps: API bracket — no day placeholders / Tradovate ──
                 if self._is_perps_firm(firm_code) or self._is_perps_firm(firm_name):
@@ -11738,6 +11887,7 @@ class TradeOpssAIApp:
                 if fresh_auto_ev:
                     auto_ev = fresh_auto_ev
                     row_data["eval"] = fresh_auto_ev
+                    acct_num = self._use_funded_trade_account(row_data, fresh_auto_ev)
                 resolved_key, day_idx, day_name = self._resolve_phase_key_from_day(
                     auto_ev, firm_code, row_data.get("current_phase", ""))
                 if resolved_key is None:
@@ -17084,6 +17234,7 @@ class TradeOpssAIApp:
 
     def run(self):
         """Run the application."""
+        self._start_dashboard_scan_poll()
         self.root.mainloop()
 
 

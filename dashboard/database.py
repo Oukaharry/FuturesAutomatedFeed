@@ -2049,6 +2049,39 @@ def set_setting(key: str, value: str, updated_by: str = ''):
         conn.commit()
 
 
+def claim_companion_scan_epoch(epoch: str) -> bool:
+    """Publish this minute's companion-scan tick. Only the first caller wins.
+
+    Several dashboard workers share one scheduler loop. The INSERT ... WHERE
+    keeps a second worker from flushing the same minute twice.
+    """
+    _ensure_settings_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_settings (key, value, updated_at, updated_by)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at,
+                updated_by = excluded.updated_by
+            WHERE system_settings.value IS DISTINCT FROM excluded.value
+            RETURNING value
+        ''', ('companion_scan_epoch', epoch, datetime.now().isoformat(), 'scheduler'))
+        won = cursor.fetchone() is not None
+        conn.commit()
+        return won
+
+
+def touch_companion_presence(client_id: str, seen_at: str) -> None:
+    """Record that this client's companion is open and polling for a scan."""
+    set_setting(
+        f'companion_open:{_normalize_identifier(client_id)}',
+        seen_at,
+        updated_by='companion',
+    )
+
+
 def _breach_alert_setting_key(kind: str, client_id: str) -> str:
     norm = _normalize_identifier(client_id)
     return f'breach_alerts_{kind}:{norm}'
