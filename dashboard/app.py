@@ -1725,6 +1725,9 @@ BREACH_SLACK_NOTIFICATIONS_PAUSED = (
 
 # Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
 _BREACH_FIRM_SHORT_NAMES = (
+    # Builder is its own plan (cap 1). It must be matched before plain MFFU,
+    # or "MFFU Builder" is counted as one of the 3 MFFU seats.
+    ('mffu builder', 'MFFU Builder'),
     ('my funded futures', 'MFFU'),
     ('mffu', 'MFFU'),
     ('my funded perps', 'MyFundedPerps'),
@@ -1978,6 +1981,7 @@ def _queue_breach_alerts(client_id, breaches):
 # breach alerts are dropped as false — max-out overrides replacement math.
 ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
     'mffu': 3,
+    'mffubuilder': 1,
     'tradeday': 3,
     'alphafutures': 3,
     'apex': 10,
