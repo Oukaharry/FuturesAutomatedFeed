@@ -200,9 +200,9 @@ class MFPClient:
         if margin_mode:
             body["margin_mode"] = margin_mode
         if take_profit is not None:
-            body["take_profit"] = take_profit
+            body["take_profit_price"] = take_profit
         if stop_loss is not None:
-            body["stop_loss"] = stop_loss
+            body["stop_loss_price"] = stop_loss
         body.update(extra)
         return self._request(
             "POST", "/orders", json=body,
