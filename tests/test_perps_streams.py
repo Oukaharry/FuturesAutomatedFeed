@@ -103,3 +103,21 @@ def test_ml_fetch_rates_falls_back_to_perps_feed(monkeypatch):
     monkeypatch.setattr(pmf, "_feed_singleton", feed)
     rates = _fetch_rates("USTECH", 1, 10)
     assert rates is not None and len(rates) == 5
+
+
+def test_perps_market_switches_on_weekends(monkeypatch):
+    import datetime as dt
+    import types
+    import trader_companion.trader_app as ta
+    stub = types.SimpleNamespace(
+        PERPS_DEFAULT_MARKET=ta.TradeOpssAIApp.PERPS_DEFAULT_MARKET,
+        PERPS_WEEKEND_MARKET=ta.TradeOpssAIApp.PERPS_WEEKEND_MARKET)
+    monkeypatch.delenv("PERPS_MARKET", raising=False)
+    monkeypatch.setattr(ta, "kenya_now",
+                        lambda: dt.datetime(2026, 10, 10, 12, 0))  # Saturday
+    assert ta.TradeOpssAIApp._perps_market_for_now(stub) == "binance|ETHUSDT"
+    monkeypatch.setattr(ta, "kenya_now",
+                        lambda: dt.datetime(2026, 10, 7, 12, 0))  # Wednesday
+    assert ta.TradeOpssAIApp._perps_market_for_now(stub) == "hyperliquid|xyz:XYZ100"
+    monkeypatch.setenv("PERPS_MARKET", "binance|BTCUSDT")
+    assert ta.TradeOpssAIApp._perps_market_for_now(stub) == "binance|BTCUSDT"

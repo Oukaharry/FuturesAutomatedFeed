@@ -9735,8 +9735,12 @@ class TradeOpssAIApp:
 
     def _execute_row_trade(self, side, row_data):
         """Execute a trade for a specific row, then remove the row."""
+        # Perps trade 24/7 — the weekday session window only gates futures.
+        _is_perps_row = (self._is_perps_firm(row_data.get("firm_code"))
+                         or self._is_perps_firm(
+                             (row_data.get("eval") or {}).get("Prop Firm")))
         allowed, window = self._trading_window_open()
-        if not allowed:
+        if not allowed and not _is_perps_row:
             self.log(f"⛔ Trade rejected — outside the {window} EAT trading window", "WARN")
             messagebox.showwarning("Trading Window", f"Trading is available only {window} EAT.")
             return
@@ -11594,10 +11598,18 @@ class TradeOpssAIApp:
         """
         allowed, window = self._trading_window_open()
         if not allowed:
-            self.log(f"⛔ Auto-trade stopped — outside the {window} EAT trading window", "WARN")
-            self._finish_auto_trade_batch(stop_when_done=stop_when_done)
-            self._stop_auto_trade()
-            return
+            # Perps trade 24/7: outside the futures window keep only perps rows.
+            perps_rows = [rd for rd in self._active_trade_rows
+                          if self._is_perps_firm(rd.get("firm_code"))
+                          or self._is_perps_firm(
+                              (rd.get("eval") or {}).get("Prop Firm"))]
+            if not perps_rows:
+                self.log(f"⛔ Auto-trade stopped — outside the {window} EAT trading window", "WARN")
+                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+                self._stop_auto_trade()
+                return
+            self.log(f"🌙 Outside the {window} EAT futures window — "
+                     f"continuing with {len(perps_rows)} perps row(s) only (24/7)")
         firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
         rows = list(self._active_trade_rows)  # snapshot
@@ -14513,6 +14525,18 @@ class TradeOpssAIApp:
     # ── MyFundedPerps (API-executed perps) ──────────────────────────────
 
     PERPS_DEFAULT_MARKET = "hyperliquid|xyz:XYZ100"  # Nasdaq-100 perp (USTECH)
+    # Weekends: the index underlying is closed and its perp pins to a stale
+    # mark, so trade a volatile 24/7 crypto instead. ETH carries the same
+    # 10x/$1M terms as BTC with meaningfully higher weekend movement.
+    PERPS_WEEKEND_MARKET = "binance|ETHUSDT"
+
+    def _perps_market_for_now(self) -> str:
+        env = os.environ.get("PERPS_MARKET")
+        if env:
+            return env
+        if kenya_now().weekday() >= 5:
+            return os.environ.get("PERPS_WEEKEND_MARKET", self.PERPS_WEEKEND_MARKET)
+        return self.PERPS_DEFAULT_MARKET
 
     def _is_perps_firm(self, name) -> bool:
         compact = str(name or "").lower().replace(" ", "").replace("_", "")
@@ -14573,7 +14597,7 @@ class TradeOpssAIApp:
             messagebox.showerror("Error", f"No MyFundedPerps account matching {acct_num}")
             return
 
-        market = os.environ.get("PERPS_MARKET", self.PERPS_DEFAULT_MARKET)
+        market = self._perps_market_for_now()
         executor = PerpsTradeExecutor(client, account_id=acct["id"])
         try:
             snap = unwrap(client.get_account(acct["id"]))
@@ -14684,7 +14708,7 @@ class TradeOpssAIApp:
             risk = snap.get("risk") or {}
             tp_usd = float(risk.get("remaining_profit") or 0) or \
                 float(snap.get("starting_balance") or 0) * 0.08
-            market = os.environ.get("PERPS_MARKET", self.PERPS_DEFAULT_MARKET)
+            market = self._perps_market_for_now()
             order, plan = executor.enter_bracket(market, side, tp_usd=tp_usd)
             if str(order.get("status") or "").lower() == "rejected":
                 _ulog(f"❌ {acct_num}: perps order rejected — "
@@ -14858,15 +14882,16 @@ class TradeOpssAIApp:
             self.log(f"⚠ Tradovate data feed not started: {exc}", "WARN")
 
     def _start_perps_md_feed(self):
-        """Start the public perps Nasdaq-100 candle stream (no credentials).
+        """Start the public perps candle stream (no credentials).
         Signals fall back to it when the Tradovate feed has no bars."""
         try:
             from trader_companion.perps_md_feed import get_perps_md_feed, start_perps_md_feed
             if get_perps_md_feed() and get_perps_md_feed().is_running:
                 return
-            symbol = self.PERPS_DEFAULT_MARKET.split("|", 1)[1]
+            market = self._perps_market_for_now()
+            provider, symbol = market.split("|", 1)
             start_perps_md_feed(
-                symbol=symbol, provider=self.PERPS_DEFAULT_MARKET.split("|", 1)[0],
+                symbol=symbol, provider=provider,
                 log_fn=lambda m: self.root.after(0, lambda msg=m: self.log(msg)))
             self.log(f"📈 Perps market feed started — {symbol} M1+M5 (24/7 signal data)")
         except Exception as exc:
