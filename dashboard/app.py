@@ -3079,12 +3079,16 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
     return breaches
 
 
+def _funded_status_is_blank(status):
+    return str(status or '').strip() in ('', '-', '—', '–')
+
+
 def _seed_funded_not_started_on_eval_pass(existing_evals, merged_evals):
     """When eval Status P1 becomes Pass, set funded Status to Not Started.
 
-    Only on the Pass transition so later In Progress / Hit TP/SL / Fail
-    updates are not wiped. Companion and dashboard edits can override Status
-    after this seed.
+    Fresh Pass always seeds. Rows already on Pass with a blank funded Status
+    ('-' / empty) are healed too — the UI used to leave those stuck on dashes.
+    A real funded status (In Progress / Hit TP/SL / Fail) is left alone.
     """
     existing_by_key = _index_existing_evaluations(existing_evals)
     seeded = 0
@@ -3095,7 +3099,9 @@ def _seed_funded_not_started_on_eval_pass(existing_evals, merged_evals):
             continue
         mk = _evaluation_row_merge_key(ev)
         before = existing_by_key.get(mk) if mk else None
-        if isinstance(before, dict) and _status_is_pass(before.get('Status P1')):
+        was_pass = isinstance(before, dict) and _status_is_pass(before.get('Status P1'))
+        funded_blank = _funded_status_is_blank(ev.get('Status'))
+        if was_pass and not funded_blank:
             continue
         ev['Status'] = 'Not Started'
         seeded += 1
