@@ -8482,6 +8482,15 @@
                     }, 50);
                 }
             }
+            // Eval Pass opens the funded leg as Not Started (override later freely).
+            if (key === 'Status P1' && statusToken.startsWith('pass')) {
+                row['Status'] = 'Not Started';
+                _changedFields[index].add('Status');
+                if (_dateCellRerenderTimer) clearTimeout(_dateCellRerenderTimer);
+                _dateCellRerenderTimer = setTimeout(() => {
+                    try { renderEvaluationsTable(false); } catch (e) { console.error('Pass→Not Started rerender error:', e); }
+                }, 50);
+            }
             if (key === 'Prop Firm' && shouldDefaultTradeifyToAddon(row)) {
                 value = normalizeTradeifyPropFirmDefault(value);
             }
