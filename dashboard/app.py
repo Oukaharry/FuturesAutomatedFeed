@@ -3658,6 +3658,109 @@ def _heal_stored_lucid_farming_fail(ev):
         ev[ended] = ''
 
 
+def _prop_firm_compact_name(ev):
+    return re.sub(r'[^a-z0-9]', '', str((ev or {}).get('Prop Firm') or '').lower())
+
+
+def _challenge_pass_tp_threshold(ev):
+    """Hit TP{n} at or above this becomes Pass for the eval firm.
+
+    MFFU (Flex / Rapid / My Funded Futures): Pass at TP3.
+    Works on old companions — no new desktop build required.
+    """
+    compact = _prop_firm_compact_name(ev)
+    if 'builder' in compact:
+        return 1
+    if 'mffu' in compact or 'myfundedfutures' in compact:
+        return 3
+    if any(tok in compact for tok in (
+            'topstep', 'lucid', 'tradeifyselect',
+            'blueguardian', 'bgr')):
+        return 2
+    if 'tradeday' in compact:
+        return 5
+    return 3
+
+
+def _challenge_numeric_trade_count(ev):
+    """How many challenge Hedge Result cells hold a recorded P&L."""
+    if not isinstance(ev, dict):
+        return 0
+    filled = 0
+    for i in range(1, 6):
+        raw = ev.get(f'Hedge Result {i}')
+        if _hedge_cell_currency_only(raw):
+            filled += 1
+    return filled
+
+
+def _parse_hit_tp_number(status):
+    m = re.fullmatch(r'hit\s*tp\s*(\d+)', str(status or '').strip().lower())
+    return int(m.group(1)) if m else None
+
+
+def _mark_eval_passed(ev, reason):
+    """Set Status P1=Pass, stamp Date Ended, seed funded Status=Not Started."""
+    ev['Status P1'] = 'Pass'
+    ev['_derived_Status P1'] = reason
+    if _date_ended_blank(ev.get('Date Ended')):
+        ev['Date Ended'] = _kenya_today_str()
+    funded = str(ev.get('Status') or '').strip().lower()
+    if funded in ('', '-', '—', '–', 'not started'):
+        ev['Status'] = 'Not Started'
+
+
+def _heal_eval_challenge_status_progression(ev):
+    """Advance Status P1 from hedge fills / Hit TP markers without a new companion.
+
+    - In Progress + N filled challenge hedges → Hit TP{N} (or Pass at threshold)
+    - Hit TP{n} at/above firm threshold → Pass + Not Started (MFFU: TP3)
+    - Account #.1 present while eval not Fail/Pass → Pass + Not Started
+    """
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return
+    p1 = str(ev.get('Status P1') or '').strip()
+    p1_l = p1.lower()
+    if _status_is_pass(p1):
+        if _funded_status_is_blank(ev.get('Status')):
+            ev['Status'] = 'Not Started'
+        return
+    if any(tok in p1_l for tok in (
+            'fail', 'breach', 'delete', 'closed', 'ended', 'lost', 'complete')):
+        return
+    if 'hit sl' in p1_l:
+        return
+
+    threshold = _challenge_pass_tp_threshold(ev)
+
+    # Funded account already issued — evaluation is done.
+    if _eval_on_funded_leg(ev):
+        _mark_eval_passed(ev, 'funded account present — evaluation passed')
+        return
+
+    hit_n = _parse_hit_tp_number(p1)
+    filled = _challenge_numeric_trade_count(ev)
+    effective = max(hit_n or 0, filled)
+
+    if effective >= threshold:
+        _mark_eval_passed(
+            ev,
+            f'challenge complete — Hit TP{effective} (threshold {threshold})',
+        )
+        return
+
+    # Advance In Progress / blank / stale lower Hit TP to the filled count.
+    if effective <= 0:
+        return
+    if hit_n is not None and hit_n >= effective:
+        return
+    if p1_l in ('', '-', '—', '–', 'in progress', 'not started', 'active', 'live') or hit_n is not None:
+        ev['Status P1'] = f'Hit TP{effective}'
+        ev['_derived_Status P1'] = (
+            f'advanced from {p1 or "blank"} using {effective} challenge hedge fill(s)'
+        )
+
+
 def _apply_server_eval_guards(evaluations):
     """Correct companion writes the dashboard should not keep.
 
@@ -3665,6 +3768,8 @@ def _apply_server_eval_guards(evaluations):
     An eval or funded Pass or Fail with an empty Date Ended is filled with today (Kenya).
     A row keeps one weekday placeholder per phase. A Lucid farming Fail
     above $48,000 is put back to In Progress.
+    Challenge Hit TP / funded-account graduation → Pass + Not Started (no new
+    companion build required).
     """
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
@@ -3672,6 +3777,7 @@ def _apply_server_eval_guards(evaluations):
         _heal_fail_during_payout_pending(ev)
         _clear_date_ended_unless_pass_or_fail(ev)
         _heal_hit_marker_after_floor_fail(ev)
+        _heal_eval_challenge_status_progression(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
         _stamp_fail_end_date(ev, 'Status', 'Date Ended.1')
         _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
