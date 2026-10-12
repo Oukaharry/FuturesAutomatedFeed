@@ -3079,6 +3079,29 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
     return breaches
 
 
+def _seed_funded_not_started_on_eval_pass(existing_evals, merged_evals):
+    """When eval Status P1 becomes Pass, set funded Status to Not Started.
+
+    Only on the Pass transition so later In Progress / Hit TP/SL / Fail
+    updates are not wiped. Companion and dashboard edits can override Status
+    after this seed.
+    """
+    existing_by_key = _index_existing_evaluations(existing_evals)
+    seeded = 0
+    for ev in merged_evals or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        if not _status_is_pass(ev.get('Status P1')):
+            continue
+        mk = _evaluation_row_merge_key(ev)
+        before = existing_by_key.get(mk) if mk else None
+        if isinstance(before, dict) and _status_is_pass(before.get('Status P1')):
+            continue
+        ev['Status'] = 'Not Started'
+        seeded += 1
+    return seeded
+
+
 def _record_status_change_events(client_id, existing_evals, merged_evals):
     """Log today's status flips so the 20:00 summary can report them."""
     try:
@@ -3511,6 +3534,11 @@ _PURE_WEEKDAY_LABELS = {
     'MON', 'TUE', 'TUES', 'WED', 'WEDS', 'THU', 'THURS', 'FRI', 'SAT', 'SUN',
 }
 _CHALLENGE_HEDGE_FIELDS = [f'Hedge Result {i}' for i in range(1, 6)]
+
+
+def _status_is_pass(status):
+    token = re.sub(r'[^a-z]', '', str(status or '').strip().lower())
+    return token.startswith('pass')
 
 
 def _status_is_pass_or_fail(status):
@@ -8084,6 +8112,12 @@ def api_client_push():
         evaluations = merge_evaluation_push_with_existing(
             existing_evals_push, incoming_evals, force_fields)
         _apply_server_eval_guards(evaluations)
+        seeded_ns = _seed_funded_not_started_on_eval_pass(
+            existing_evals_push, evaluations)
+        if seeded_ns:
+            app.logger.info(
+                f"🌱 {client_id}: {seeded_ns} account(s) eval Pass → "
+                f"funded Status set to Not Started")
         _record_status_change_events(client_id, existing_evals_push, evaluations)
         fail_purchases = _fail_status_purchase_breaches(existing_evals_push, evaluations)
         if fail_purchases:
@@ -15948,6 +15982,12 @@ def update_data():
 
                 # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
                 _apply_server_eval_guards(evaluations)
+                seeded_ns = _seed_funded_not_started_on_eval_pass(
+                    existing_evals, evaluations)
+                if seeded_ns:
+                    app.logger.info(
+                        f"🌱 {client_id}: {seeded_ns} account(s) eval Pass → "
+                        f"funded Status set to Not Started")
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:

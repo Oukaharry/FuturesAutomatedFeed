@@ -5057,6 +5057,11 @@ class TradeOpssAIApp:
         ev[note_field] = reason
         changed = [field]
         changed.extend(self._stamp_stage_end_date(ev, field, status))
+        # Eval Pass opens the funded leg as Not Started; later In Progress /
+        # Hit TP/SL / Fail updates override this freely.
+        if status == "Pass" and field == "Status P1":
+            ev["Status"] = "Not Started"
+            changed.append("Status")
         try:
             self._queue_outcome_ledger_event(ev, status)
         except Exception:
@@ -14087,6 +14092,8 @@ class TradeOpssAIApp:
             # Set the status on the eval
             if computed.lower() != current_check:
                 ev[status_field] = computed
+                if computed == "Pass" and status_field == "Status P1":
+                    ev["Status"] = "Not Started"
                 any_changed = True
                 self.root.after(0, lambda a=acct_key, c=computed, b=bal, s=start:
                     self.log(f"   📝 {a}: {c} (bal=${b:,.2f}, start=${s:,.0f})"))
@@ -14358,6 +14365,9 @@ class TradeOpssAIApp:
                                     ev[status_field] = "Pass"
                                     changes.append(f"{status_field}='Pass'")
                                     changes.extend(self._stamp_stage_end_date(ev, status_field, "Pass"))
+                                    if status_field == "Status P1":
+                                        ev["Status"] = "Not Started"
+                                        changes.append("Status='Not Started'")
                                     self.root.after(0, lambda a=acct_display, b=bal, s=start:
                                         self.log(f"   ✅ PASS: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
                                 elif computed == "In Progress":
