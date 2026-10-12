@@ -5026,42 +5026,123 @@ class TradeOpssAIApp:
     # Statuses a derived verdict may replace; anything else is an admin's call.
     _DERIVABLE_STATUSES = ("", "-", "—", "in progress", "not started", "active")
 
+    def _status_field_for_derived_update(self, ev, status):
+        """Challenge Hit TP/SL/Pass stay on Status P1 until the eval has Pass.
+
+        Once Account #.1 exists, `_on_funded_leg` is true — writing Hit TP to
+        funded Status left Status P1 stuck (Sean Ream Hit TP3 never became Pass).
+        """
+        if status == "Pass":
+            return "Status P1"
+        p1 = self._cell(ev.get("Status P1")).strip().lower()
+        challenge_done = (
+            p1.startswith("pass")
+            or any(tok in p1 for tok in ("fail", "breach", "delete", "closed", "complete"))
+        )
+        is_hit = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", str(status or "").strip().lower()))
+        if (is_hit or str(status) == "In Progress") and not challenge_done:
+            return "Status P1"
+        if status in ("Fail", "Completed") and not challenge_done and not self._on_funded_leg(ev):
+            return "Status P1"
+        if self._on_funded_leg(ev) and challenge_done:
+            return "Status"
+        if self._on_funded_leg(ev) and status in ("Fail", "Completed"):
+            return "Status"
+        return "Status P1" if not self._on_funded_leg(ev) else "Status"
+
+    def _promote_graduated_eval_to_pass(self, ev):
+        """When a funded account is already on the row, Status P1 must be Pass.
+
+        Seeds funded Status to Not Started when it is still blank. Later
+        In Progress / Hit TP/SL / Fail on the funded leg override freely.
+        """
+        if self._eval_has_payout(ev) or not self._has_passed_to_funded(ev):
+            return []
+        p1 = self._cell(ev.get("Status P1")).strip().lower()
+        if p1.startswith("pass"):
+            changed = []
+            funded = self._cell(ev.get("Status")).strip()
+            if funded in ("", "-", "—", "–"):
+                ev["Status"] = "Not Started"
+                changed.append("Status")
+            return changed
+        if any(tok in p1 for tok in ("fail", "breach", "delete", "closed", "complete")):
+            return []
+        ev["Status P1"] = "Pass"
+        ev["_derived_Status P1"] = "funded account present — evaluation passed"
+        changed = ["Status P1"]
+        changed.extend(self._stamp_stage_end_date(ev, "Status P1", "Pass"))
+        ev["Status"] = "Not Started"
+        changed.append("Status")
+        self.log(
+            f"📌 {self._primary_trade_account(ev)}: Status P1 → Pass "
+            f"(funded account on row)"
+        )
+        return changed
+
+    def _promote_hit_tp_to_pass_if_complete(self, ev):
+        """Heal Status P1 Hit TP{n} → Pass when n meets the firm challenge count."""
+        p1 = self._cell(ev.get("Status P1")).strip()
+        m = re.fullmatch(r"hit\s+tp(\d+)", p1.lower())
+        if not m:
+            return []
+        if not self._challenge_win_is_pass(ev, m.group(1)):
+            return []
+        ev["Status P1"] = "Pass"
+        ev["_derived_Status P1"] = f"challenge complete — healed from {p1}"
+        changed = ["Status P1"]
+        changed.extend(self._stamp_stage_end_date(ev, "Status P1", "Pass"))
+        ev["Status"] = "Not Started"
+        changed.append("Status")
+        self.log(
+            f"📌 {self._primary_trade_account(ev)}: Status P1 → Pass "
+            f"(healed from {p1})"
+        )
+        return changed
+
     def _apply_status_update(self, ev):
         """Advance the lifecycle status from resolved broker activity."""
         if self._eval_has_payout(ev):
             return []
+        changed = []
+        changed.extend(self._promote_graduated_eval_to_pass(ev))
+        changed.extend(self._promote_hit_tp_to_pass_if_complete(ev))
         try:
             status, reason = self._derive_account_status(ev)
         except Exception:
-            return []
+            status, reason = None, None
         if not status:
             try:
                 status, reason = self._derive_trade_progress_status(ev)
             except Exception:
-                return []
+                status, reason = None, None
         if not status:
-            return []
-        field = "Status P1" if status == "Pass" or not self._on_funded_leg(ev) else "Status"
+            return changed
+        field = self._status_field_for_derived_update(ev, status)
         current = self._cell(ev.get(field)).strip().lower()
         if current in ("fail", "completed") and status not in ("Fail", "Completed"):
-            return []
+            return changed
+        # Already Pass on Status P1 — do not overwrite with a Hit TP marker.
+        if field == "Status P1" and current.startswith("pass") and status != "Pass":
+            return changed
         is_prior_trade_marker = bool(re.fullmatch(r"hit\s+(?:tp|sl)\d+", current))
-        terminal_broker_verdict = status in ("Fail", "Completed")
+        terminal_broker_verdict = status in ("Fail", "Completed", "Pass")
         if (current not in self._DERIVABLE_STATUSES and not is_prior_trade_marker
             and not terminal_broker_verdict):
-            return []
+            return changed
         if current == status.lower():
-            return []
+            return changed
         ev[field] = status
         note_field = f"_derived_{field}"
         ev[note_field] = reason
-        changed = [field]
+        changed.append(field)
         changed.extend(self._stamp_stage_end_date(ev, field, status))
         # Eval Pass opens the funded leg as Not Started; later In Progress /
         # Hit TP/SL / Fail updates override this freely.
         if status == "Pass" and field == "Status P1":
             ev["Status"] = "Not Started"
-            changed.append("Status")
+            if "Status" not in changed:
+                changed.append("Status")
         try:
             self._queue_outcome_ledger_event(ev, status)
         except Exception:
@@ -5245,15 +5326,56 @@ class TradeOpssAIApp:
             return None
         return min(max(candidates), kenya_today())
 
+    def _firm_is_mffu_family(self, firm_code=None, prop_firm=None):
+        """True for My Funded Futures / MFFU Flex / Rapid (not Builder)."""
+        raw = f"{firm_code or ''} {prop_firm or ''}".lower()
+        compact = re.sub(r"[^a-z0-9]", "", raw)
+        if "builder" in compact:
+            return False
+        return (
+            "mffu" in compact
+            or "myfundedfutures" in compact
+            or compact in ("mffuflex", "mffurapideod", "rapideod")
+        )
+
+    def _challenge_trade_count(self, ev):
+        """How many challenge TPs the firm needs before Pass."""
+        firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+        mgr = self.prop_firm_mgr
+        n = 0
+        if mgr and firm_code:
+            order = (getattr(mgr, "_PHASE_TRADE_ORDER", {}) or {}).get(firm_code) or {}
+            challenge = order.get("Challenge") or []
+            # Count primary challenge_tradeN legs only (skip recovery sidecars).
+            n = sum(
+                1 for k in challenge
+                if str(k).startswith("challenge_trade") and "recovery" not in str(k)
+            )
+        # MFFU plan: Pass after Hit TP3 (even when a 4th blueprint leg exists).
+        if self._firm_is_mffu_family(firm_code, ev.get("Prop Firm")):
+            return 3
+        return n or 3
+
+    def _challenge_win_is_pass(self, ev, trade_number):
+        """True when this challenge TP completes the evaluation."""
+        try:
+            n = int(trade_number)
+        except (TypeError, ValueError):
+            return False
+        return n >= int(self._challenge_trade_count(ev) or 3)
+
     def _derive_trade_progress_status(self, ev):
-        """Return a Hit TP/SL marker for the currently resolved trade.
+        """Return a Hit TP/SL marker (or Pass) for the currently resolved trade.
 
         Challenge losses follow the daily-loss-limit rule: 'Hit SL{n}' means
         the n-th DLL hit, and only firms with a DLL survive the first one —
         the second hit (or any loss without a DLL) breaches the account.
+        The last required challenge TP becomes Pass (MFFU: TP3 → Pass).
         """
-        traded_field, _traded_phase, placeholder = self._locate_progression_cells(ev)
-        if not traded_field or not placeholder:
+        traded_field, traded_phase, placeholder = self._locate_progression_cells(ev)
+        # A resolved win/loss still advances status when the weekday placeholder
+        # has already been cleared or moved.
+        if not traded_field:
             return None, None
         account = self._primary_trade_account(ev)
         _date, outcome = self._latest_resolved_outcome(account)
@@ -5263,9 +5385,15 @@ class TradeOpssAIApp:
             if traded_field not in fields:
                 continue
             trade_number = fields.index(traded_field) + 1
+            phase = phase_name or traded_phase or ""
             if outcome == "win":
+                if phase == "Challenge" and self._challenge_win_is_pass(ev, trade_number):
+                    return (
+                        "Pass",
+                        f"challenge complete — Hit TP{trade_number} on {traded_field}",
+                    )
                 return f"Hit TP{trade_number}", f"resolved win on {traded_field}"
-            if phase_name != "Challenge":
+            if phase != "Challenge":
                 return f"Hit SL{trade_number}", f"resolved loss on {traded_field}"
             dll = self._challenge_daily_loss_limit(ev)
             if not dll:
