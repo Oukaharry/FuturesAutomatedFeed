@@ -1761,12 +1761,21 @@ def _breach_firm_family(raw):
 
 
 def _breach_alert_item_key(breach):
+    """One queue slot per broker account — phase/reason must not create duplicates.
+
+    Companion balance alerts and dashboard status_fail used to produce two
+    keys for the same account, so the same purchase could be Slack'd twice.
+    """
     if not isinstance(breach, dict):
         return ''
-    account = str(breach.get('account') or '').strip()
-    phase = str(breach.get('phase') or '').strip()
-    reason = str(breach.get('reason_code') or 'balance').strip()
-    return f'{account}|{phase}|{reason}'
+    return str(breach.get('account') or '').strip().lower()
+
+
+def _breach_account_sent_key(firm_family, account):
+    acct = str(account or '').strip().lower()
+    if not acct:
+        return ''
+    return f'{firm_family}|{acct}'
 
 
 def _breach_batch_key(client_id, firm_family, breaches):
@@ -1944,9 +1953,16 @@ def _firm_has_active_trades(evaluations, firm_family):
 
 def _queue_breach_alerts(client_id, breaches):
     """Persist incoming breach payloads until their firm batch can be sent."""
-    from dashboard.database import get_breach_alert_pending, set_breach_alert_pending
+    from dashboard.database import (
+        get_breach_alert_pending,
+        get_breach_alert_sent_accounts,
+        requeue_breach_alert_pending,
+    )
     pending = get_breach_alert_pending(client_id)
     seen = {_breach_alert_item_key(b) for b in pending}
+    seen.discard('')
+    already_bought = get_breach_alert_sent_accounts(client_id)
+    to_add = []
     added = 0
     for breach in breaches or []:
         if not isinstance(breach, dict):
@@ -1954,25 +1970,32 @@ def _queue_breach_alerts(client_id, breaches):
         key = _breach_alert_item_key(breach)
         if not key or key in seen:
             continue
-        pending.append(breach)
+        firm_key = _breach_firm_family(breach.get('prop_firm'))
+        sent_key = _breach_account_sent_key(firm_key, key)
+        if sent_key and sent_key in already_bought:
+            app.logger.info(
+                f"🚨 {client_id}: skip queue for {key} — purchase already sent")
+            continue
+        to_add.append(breach)
         seen.add(key)
         added += 1
     if added:
-        set_breach_alert_pending(client_id, pending)
+        # Merge under lock so a concurrent flush claim cannot wipe these.
+        requeue_breach_alert_pending(client_id, to_add)
+        pending_n = len(get_breach_alert_pending(client_id))
         try:
             from dashboard.database import record_daily_event
-            for breach in breaches or []:
-                if isinstance(breach, dict):
-                    record_daily_event(
-                        client_id, 'breach_queued',
-                        prop_firm=breach.get('prop_firm', ''),
-                        account=breach.get('account', ''),
-                        detail=str(breach.get('phase') or ''),
-                        event_date=_kenya_today_str())
+            for breach in to_add:
+                record_daily_event(
+                    client_id, 'breach_queued',
+                    prop_firm=breach.get('prop_firm', ''),
+                    account=breach.get('account', ''),
+                    detail=str(breach.get('phase') or ''),
+                    event_date=_kenya_today_str())
         except Exception:
             pass
         app.logger.warning(
-            f"🚨 {client_id}: queued {added} breach alert(s) ({len(pending)} pending total)")
+            f"🚨 {client_id}: queued {added} breach alert(s) ({pending_n} pending total)")
     return added
 
 
@@ -2093,125 +2116,176 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     """Send queued firm batches once all trades for that firm have closed."""
     from collections import defaultdict
     from dashboard.database import (
-        get_breach_alert_pending,
+        claim_breach_alert_pending,
+        get_breach_alert_sent_accounts,
         get_breach_alert_sent_batches,
+        mark_breach_alert_accounts_sent,
         mark_breach_alert_batch_sent,
-        set_breach_alert_pending,
+        requeue_breach_alert_pending,
     )
 
-    pending = get_breach_alert_pending(client_id)
-    if not pending:
-        return 0
     if BREACH_SLACK_NOTIFICATIONS_PAUSED:
         return 0
-    for ev in evaluations or []:
-        if isinstance(ev, dict) and not ev.get('_deleted'):
-            _heal_hit_marker_after_floor_fail(ev)
-    if _purchase_alerts_held_for_weekend():
-        app.logger.info(
-            f"🚨 {client_id}: holding {len(pending)} purchase alert(s) until Monday — weekend")
+    # Take the queue first so a concurrent minute flush / companion push /
+    # dashboard save cannot Slack the same purchase again.
+    pending = claim_breach_alert_pending(client_id)
+    if not pending:
         return 0
-
-    sent_batches = get_breach_alert_sent_batches(client_id)
-    session_over = _trading_session_over_eat()
-    active_families = _client_active_firm_families(client_id, evaluations)
-    by_firm = defaultdict(list)
-    for breach in pending:
-        by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
-
+    claimed = list(pending)
     still_pending = []
     announced = 0
-    for firm_key, firm_breaches in by_firm.items():
-        if _firm_eval_marked_live_account(firm_key, evaluations):
+    try:
+        for ev in evaluations or []:
+            if isinstance(ev, dict) and not ev.get('_deleted'):
+                _heal_hit_marker_after_floor_fail(ev)
+        if _purchase_alerts_held_for_weekend():
             app.logger.info(
-                f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
-                f"alert(s) — eval Account # is Live Account")
-            continue
-        if active_families and firm_key not in active_families:
-            app.logger.warning(
-                f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase alert(s) — "
-                f"client has no recent activity for that firm")
-            continue
-        sendable, hold, discarded = [], [], []
-        for breach in firm_breaches:
-            kind = _breach_alert_disposition(breach, evaluations)
-            if kind == 'send':
-                sendable.append(breach)
-            elif kind == 'hold':
-                hold.append(breach)
-            else:
-                discarded.append(breach)
-        if discarded:
-            app.logger.info(
-                f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase alert(s) — "
-                f"row is Pass/Completed, not a buy")
-        # A hold stays queued until that row itself fails. A row that is
-        # already Fail is a purchase for that account now — sibling rows
-        # and open trades on other accounts do not hold it back.
-        still_pending.extend(hold)
-        if hold and not sendable and not session_over:
-            app.logger.info(
-                f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase alert(s) — "
-                f"waiting for Fail on the remaining live rows")
-        if not sendable:
-            continue
-        if hold and not session_over:
-            app.logger.info(
-                f"🚨 {client_id}: sending {len(sendable)} {firm_key} Fail purchase "
-                f"alert(s); {len(hold)} other row(s) still live")
-        firm_breaches = sendable
+                f"🚨 {client_id}: holding {len(pending)} purchase alert(s) "
+                f"until Monday — weekend")
+            still_pending = claimed
+            return 0
 
-        batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
-        if batch_key in sent_batches:
-            app.logger.info(
-                f"🚨 {client_id}: skipping duplicate {firm_key} breach batch ({batch_key})")
-            continue
+        sent_batches = get_breach_alert_sent_batches(client_id)
+        sent_accounts = get_breach_alert_sent_accounts(client_id)
+        session_over = _trading_session_over_eat()
+        active_families = _client_active_firm_families(client_id, evaluations)
+        by_firm = defaultdict(list)
+        for breach in pending:
+            by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
 
-        cap = _firm_max_out(firm_key)
-        occupied = _count_firm_max_out_slots(firm_key, evaluations)
-        to_announce = _breaches_within_firm_max_out(firm_key, firm_breaches, evaluations)
-        if len(to_announce) < len(firm_breaches) and to_announce:
-            app.logger.warning(
-                f"🚨 {client_id}: {firm_key} purchase capped at {len(to_announce)} "
-                f"(max-out {cap}, {len(firm_breaches)} breach alert(s))")
-        if not to_announce:
-            if occupied >= cap:
+        for firm_key, firm_breaches in by_firm.items():
+            if _firm_eval_marked_live_account(firm_key, evaluations):
                 app.logger.info(
                     f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
-                    f"alert(s) — false alert, firm already at max-out "
-                    f"({occupied}/{cap} slots)")
-            else:
-                still_pending.extend(firm_breaches)
+                    f"alert(s) — eval Account # is Live Account")
+                continue
+            if active_families and firm_key not in active_families:
+                app.logger.warning(
+                    f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
+                    f"alert(s) — client has no recent activity for that firm")
+                continue
+            sendable, hold, discarded = [], [], []
+            for breach in firm_breaches:
+                kind = _breach_alert_disposition(breach, evaluations)
+                if kind == 'send':
+                    sendable.append(breach)
+                elif kind == 'hold':
+                    hold.append(breach)
+                else:
+                    discarded.append(breach)
+            if discarded:
                 app.logger.info(
-                    f"🚨 {client_id}: {firm_key} at max-out — purchase alert waits for a free slot")
-            continue
+                    f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase "
+                    f"alert(s) — row is Pass/Completed, not a buy")
+            # A hold stays queued until that row itself fails. A row that is
+            # already Fail is a purchase for that account now — sibling rows
+            # and open trades on other accounts do not hold it back.
+            still_pending.extend(hold)
+            if hold and not sendable and not session_over:
+                app.logger.info(
+                    f"🚨 {client_id}: holding {len(hold)} {firm_key} purchase "
+                    f"alert(s) — waiting for Fail on the remaining live rows")
+            if not sendable:
+                continue
+            if hold and not session_over:
+                app.logger.info(
+                    f"🚨 {client_id}: sending {len(sendable)} {firm_key} Fail purchase "
+                    f"alert(s); {len(hold)} other row(s) still live")
 
-        count = _send_admin_breach_alert(client_id, to_announce)
-        if count <= 0 and BREACH_SLACK_NOTIFICATIONS_PAUSED:
-            still_pending.extend(firm_breaches)
-            continue
-        if count <= 0:
-            still_pending.extend(firm_breaches)
+            # Drop accounts already purchased — same Slack text used to fire
+            # again when a second flush raced or reason_code differed.
+            fresh = []
+            for breach in sendable:
+                acct = _breach_alert_item_key(breach)
+                sent_key = _breach_account_sent_key(firm_key, acct)
+                if sent_key and sent_key in sent_accounts:
+                    app.logger.info(
+                        f"🚨 {client_id}: skipping duplicate {firm_key} "
+                        f"purchase for {acct}")
+                    continue
+                fresh.append(breach)
+            if not fresh:
+                continue
+            firm_breaches = _unique_breach_accounts(fresh)
+
+            batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
+            if batch_key in sent_batches:
+                app.logger.info(
+                    f"🚨 {client_id}: skipping duplicate {firm_key} breach "
+                    f"batch ({batch_key})")
+                mark_breach_alert_accounts_sent(
+                    client_id,
+                    [_breach_account_sent_key(firm_key, _breach_alert_item_key(b))
+                     for b in firm_breaches],
+                )
+                continue
+
+            cap = _firm_max_out(firm_key)
+            occupied = _count_firm_max_out_slots(firm_key, evaluations)
+            to_announce = _breaches_within_firm_max_out(
+                firm_key, firm_breaches, evaluations)
+            if len(to_announce) < len(firm_breaches) and to_announce:
+                app.logger.warning(
+                    f"🚨 {client_id}: {firm_key} purchase capped at "
+                    f"{len(to_announce)} (max-out {cap}, "
+                    f"{len(firm_breaches)} breach alert(s))")
+            if not to_announce:
+                if occupied >= cap:
+                    app.logger.info(
+                        f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} "
+                        f"purchase alert(s) — false alert, firm already at "
+                        f"max-out ({occupied}/{cap} slots)")
+                else:
+                    still_pending.extend(firm_breaches)
+                    app.logger.info(
+                        f"🚨 {client_id}: {firm_key} at max-out — purchase "
+                        f"alert waits for a free slot")
+                continue
+
+            count = _send_admin_breach_alert(client_id, to_announce)
+            if count <= 0 and BREACH_SLACK_NOTIFICATIONS_PAUSED:
+                still_pending.extend(firm_breaches)
+                continue
+            if count <= 0:
+                still_pending.extend(firm_breaches)
+                app.logger.warning(
+                    f"🚨 {client_id}: breach batch send failed for {firm_key} "
+                    f"— will retry")
+                continue
+
+            account_keys = [
+                _breach_account_sent_key(firm_key, _breach_alert_item_key(b))
+                for b in to_announce
+            ]
+            mark_breach_alert_accounts_sent(client_id, account_keys)
+            mark_breach_alert_batch_sent(client_id, batch_key)
+            sent_accounts.update(k for k in account_keys if k)
+            announced += count
+            # Accounts over the cap stay queued for a later free slot.
+            announced_accts = {
+                _breach_alert_item_key(b) for b in to_announce
+            }
+            for breach in firm_breaches:
+                if _breach_alert_item_key(breach) not in announced_accts:
+                    still_pending.append(breach)
+            try:
+                from dashboard.database import record_daily_event
+                record_daily_event(
+                    client_id, 'purchase_sent',
+                    prop_firm=(to_announce[0] or {}).get('prop_firm', firm_key),
+                    detail=str(len(to_announce)),
+                    event_date=_kenya_today_str())
+            except Exception:
+                pass
             app.logger.warning(
-                f"🚨 {client_id}: breach batch send failed for {firm_key} — will retry")
-            continue
-
-        mark_breach_alert_batch_sent(client_id, batch_key)
-        announced += count
-        try:
-            from dashboard.database import record_daily_event
-            record_daily_event(
-                client_id, 'purchase_sent',
-                prop_firm=(to_announce[0] or {}).get('prop_firm', firm_key),
-                detail=str(len(to_announce)),
-                event_date=_kenya_today_str())
-        except Exception:
-            pass
-        app.logger.warning(
-            f"🚨 {client_id}: sent batched {firm_key} breach alert ({len(to_announce)} account(s))")
-
-    set_breach_alert_pending(client_id, still_pending)
-    return announced
+                f"🚨 {client_id}: sent batched {firm_key} breach alert "
+                f"({len(to_announce)} account(s))")
+        return announced
+    except Exception:
+        still_pending = claimed
+        raise
+    finally:
+        requeue_breach_alert_pending(client_id, still_pending)
 
 
 _BREACH_VANISH_REASON_CODES = frozenset({'tradovate_vanish', 'dashboard_vanish'})

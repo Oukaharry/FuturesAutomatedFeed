@@ -2131,6 +2131,93 @@ def set_breach_alert_pending(client_id: str, pending: list):
     )
 
 
+def claim_breach_alert_pending(client_id: str) -> list:
+    """Atomically take the pending purchase queue for one client.
+
+    Companion push, dashboard save, and the minute flush all call the same
+    sender. Without this claim, two workers read the same queue and Slack
+    posts Purchase 1 two or three times for the same accounts.
+    """
+    key = _breach_alert_setting_key('pending', client_id)
+    _ensure_settings_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT value FROM system_settings WHERE key = ? FOR UPDATE',
+            (key,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return []
+        try:
+            data = json.loads(row['value'] or '[]')
+        except (TypeError, ValueError):
+            data = []
+        if not isinstance(data, list) or not data:
+            return []
+        cursor.execute(
+            '''UPDATE system_settings
+               SET value = ?, updated_at = ?, updated_by = ?
+               WHERE key = ?''',
+            ('[]', datetime.now().isoformat(), 'system', key),
+        )
+        conn.commit()
+        return data
+
+
+def requeue_breach_alert_pending(client_id: str, items: list) -> int:
+    """Merge hold/retry payloads back into the queue under a row lock.
+
+    After claim_breach_alert_pending clears the queue, a concurrent push may
+    have already appended new breaches. Overwriting would drop those.
+    """
+    if not items:
+        return 0
+    key = _breach_alert_setting_key('pending', client_id)
+    _ensure_settings_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT value FROM system_settings WHERE key = ? FOR UPDATE',
+            (key,),
+        )
+        row = cursor.fetchone()
+        try:
+            current = json.loads((row['value'] if row else '') or '[]')
+        except (TypeError, ValueError):
+            current = []
+        if not isinstance(current, list):
+            current = []
+
+        def _acct(breach):
+            if not isinstance(breach, dict):
+                return ''
+            return str(breach.get('account') or '').strip().lower()
+
+        seen = {_acct(b) for b in current}
+        seen.discard('')
+        added = 0
+        for breach in items:
+            acct = _acct(breach)
+            if not acct or acct in seen:
+                continue
+            current.append(breach)
+            seen.add(acct)
+            added += 1
+        if added or not row:
+            cursor.execute(
+                '''INSERT INTO system_settings (key, value, updated_at, updated_by)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET
+                       value = excluded.value,
+                       updated_at = excluded.updated_at,
+                       updated_by = excluded.updated_by''',
+                (key, json.dumps(current), datetime.now().isoformat(), 'system'),
+            )
+        conn.commit()
+        return added
+
+
 def get_breach_alert_sent_batches(client_id: str) -> set:
     """Batch keys already announced to Slack for one client."""
     raw = get_setting(_breach_alert_setting_key('sent', client_id))
@@ -2157,6 +2244,68 @@ def mark_breach_alert_batch_sent(client_id: str, batch_key: str):
         json.dumps(sorted(sent)),
         updated_by='system',
     )
+
+
+def get_breach_alert_sent_accounts(client_id: str) -> set:
+    """Firm|account keys already purchased via Slack for one client."""
+    raw = get_setting(_breach_alert_setting_key('sent_accounts', client_id))
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return {str(x).strip().lower() for x in data if x}
+        if isinstance(data, dict):
+            return {str(k).strip().lower() for k in data.keys()}
+    except (TypeError, ValueError):
+        pass
+    return set()
+
+
+def mark_breach_alert_accounts_sent(client_id: str, account_keys) -> None:
+    """Record firm|account purchases so a second flush cannot Slack them again."""
+    keys = {
+        str(k).strip().lower()
+        for k in (account_keys or [])
+        if str(k or '').strip()
+    }
+    if not keys:
+        return
+    setting_key = _breach_alert_setting_key('sent_accounts', client_id)
+    _ensure_settings_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT value FROM system_settings WHERE key = ? FOR UPDATE',
+            (setting_key,),
+        )
+        row = cursor.fetchone()
+        try:
+            current = json.loads((row['value'] if row else '') or '[]')
+        except (TypeError, ValueError):
+            current = []
+        if not isinstance(current, list):
+            current = []
+        merged = {str(x).strip().lower() for x in current if x}
+        before = len(merged)
+        merged.update(keys)
+        if len(merged) == before and row:
+            return
+        cursor.execute(
+            '''INSERT INTO system_settings (key, value, updated_at, updated_by)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET
+                   value = excluded.value,
+                   updated_at = excluded.updated_at,
+                   updated_by = excluded.updated_by''',
+            (
+                setting_key,
+                json.dumps(sorted(merged)),
+                datetime.now().isoformat(),
+                'system',
+            ),
+        )
+        conn.commit()
 
 
 def clear_all_breach_alert_pending() -> int:
