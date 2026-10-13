@@ -327,12 +327,25 @@ def test_traded_account_with_unreadable_balance_is_queued_for_retry():
     app = _scrub_app()
     app._unresolved_status_accounts = {}
     app._trade_outcome_history = lambda force=False: {}  # balance unreadable
+    app._firm_broker_connected = lambda ev: True  # broker up, read failed
     row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999"}
 
     changed = app._apply_status_update(row)
 
     assert changed == []
     assert "ftdfyslx999" in app._unresolved_status_accounts
+
+
+def test_unreadable_balance_not_queued_when_broker_disconnected():
+    app = _scrub_app()
+    app._unresolved_status_accounts = {}
+    app._trade_outcome_history = lambda force=False: {}
+    app._firm_broker_connected = lambda ev: False  # no broker — never flood
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999"}
+
+    app._apply_status_update(row)
+
+    assert app._unresolved_status_accounts == {}
 
 
 def test_resolved_account_is_cleared_from_retry_queue():

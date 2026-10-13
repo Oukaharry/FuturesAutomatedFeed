@@ -381,6 +381,8 @@ _FIRM_MAP = {
     "myfundedperps": "MyFundedPerps",
     "myfundedperpetuals": "MyFundedPerps",
     "mfp": "MyFundedPerps",
+    "tradeify247": "Tradeify247",
+    "tradeify247dxtrade": "Tradeify247",
     "topstep": "Topstep",
     "topsteprtp": "TopStep RTP",
     "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",

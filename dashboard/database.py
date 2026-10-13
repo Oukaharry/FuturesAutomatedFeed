@@ -1355,6 +1355,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
                 "myfundedperps": "MyFundedPerps",
                 "myfundedperpetuals": "MyFundedPerps",
                 "mfp": "MyFundedPerps",
+                "tradeify247": "Tradeify247",
+                "tradeify247dxtrade": "Tradeify247",
                 "topstep": "Topstep",
                 "topsteprtp": "TopStep RTP",
                 "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",

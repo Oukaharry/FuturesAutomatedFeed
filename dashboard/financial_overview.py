@@ -764,6 +764,8 @@ def normalize_prop_firm_name(name):
         "myfundedfx": "My Funded Futures",
         "myfundedperps": "MyFundedPerps",
         "myfundedperpetuals": "MyFundedPerps",
+        "tradeify247": "Tradeify247",
+        "tradeify247dxtrade": "Tradeify247",
         "fundednext": "FundedNext",
         "fundednextflex": "FundedNext",
         "fundednextrapiddaily": "FundedNext Rapid Daily",

@@ -86,6 +86,8 @@ class PropFirmManager:
         "MyFundedPerps": "MyFundedPerps",
         "My Funded Perps": "MyFundedPerps",
         "MFP": "MyFundedPerps",
+        "Tradeify247": "Tradeify247",
+        "Tradeify 247": "Tradeify247",
     }
 
     def __init__(self):
@@ -2511,6 +2513,24 @@ class PropFirmManager:
             return mapped
         return phase_key
 
+    @staticmethod
+    def _looks_like_tradeify247_account(username: str) -> bool:
+        """True for DXtrade account ids like 1S10K2166973 / 2S50K… / IF25K…
+        (optionally prefixed with the 'default:' domain)."""
+        s = str(username or "").strip().upper()
+        if ":" in s:
+            s = s.split(":", 1)[-1]
+        for plan in ("1S", "2S", "IF"):
+            if s.startswith(plan):
+                rest = s[len(plan):]
+                digits = ""
+                while rest and rest[0].isdigit() and len(digits) < 3:
+                    digits += rest[0]
+                    rest = rest[1:]
+                if digits and rest.startswith("K"):
+                    return True
+        return False
+
     def detect_prop_firm(self, username: str) -> Optional[str]:
         """Detect prop firm based on username prefix. Returns None if unrecognized."""
         if not username or (isinstance(username, str) and len(username) < 4):
@@ -2525,6 +2545,10 @@ class PropFirmManager:
         
         if any(prefix.startswith(var) for var in ["APEX"]):
             return "Apex"
+        # Tradeify247 (DXtrade) accounts: <plan><size>K<id>, e.g. 1S10K2166973,
+        # 2S50K…, IF25K… — no futures prefix starts with a digit or "IF".
+        elif self._looks_like_tradeify247_account(username):
+            return "Tradeify247"
         elif any(prefix.startswith(var) for var in ["ELTD", "TDFU"]):
             return "Trade Day"
         elif any(prefix.startswith(var) for var in ["FNFT", "FTFN"]):

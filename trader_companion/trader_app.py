@@ -1651,6 +1651,8 @@ class TradeOpssAIApp:
         "Top One Futures": "#0D9488",
         "Funded Futures Family": "#7C3AED",
         "LucidMaxx":        "#8B5CF6",
+        "MyFundedPerps":    "#F59E0B",
+        "Tradeify247":      "#06B6D4",   # cyan — DXtrade 24/7 perps, distinct from Tradeify teal
     }
 
     PHASE_BADGE = {
@@ -1768,6 +1770,8 @@ class TradeOpssAIApp:
         self._auto_wake_attempt_date = None
         self._auto_wake_last_notice = None
         self._last_trade_scan_succeeded = False
+        self._day_watch_started = False
+        self._day_watch_scan_active = False
 
         # Trading engine state
         self.trading_api = None
@@ -5213,8 +5217,10 @@ class TradeOpssAIApp:
                 status, reason = None, None
         if not status:
             # A traded, flat account we could not resolve because the broker
-            # balance was unreadable is queued and retried until it lands.
-            if traded and balance is None:
+            # balance was unreadable is queued and retried until it lands —
+            # but only when its broker is connected, so unconnected firms
+            # (balance simply not fetched yet) never flood the queue or log.
+            if traded and balance is None and self._firm_broker_connected(ev):
                 self._queue_unresolved_status(account, phase, on_funded)
             return changed
         field = self._status_field_for_derived_update(ev, status)
@@ -5249,8 +5255,9 @@ class TradeOpssAIApp:
         except Exception:
             pass
         self._clear_unresolved_status(account)
-        self._log_balance_status(account, phase, "close", balance, status,
-                                 floor=self._recorded_breach_floor(account, on_funded))
+        if self._firm_broker_connected(ev):
+            self._log_balance_status(account, phase, "close", balance, status,
+                                     floor=self._recorded_breach_floor(account, on_funded))
         self.log(f"📌 {account}: {field} → {status} ({reason})")
         return changed
 
@@ -5267,6 +5274,18 @@ class TradeOpssAIApp:
         except (TypeError, ValueError):
             return None
         return bal if bal > 0 else None
+
+    def _firm_broker_connected(self, ev):
+        """True when this row's prop firm has a connected broker account."""
+        firm = self._cell(ev.get("Prop Firm"))
+        if not firm:
+            return False
+        conns = getattr(self, "_broker_connections", None) or {}
+        try:
+            conn = conns.get(self._broker_connection_key(firm)) or conns.get(firm)
+        except Exception:
+            conn = conns.get(firm)
+        return bool(conn and conn.get("account"))
 
     def _log_balance_status(self, account, phase, when, balance, status, floor=None):
         """One greppable balance+status line (open/close) for the AI and debugging."""
@@ -5298,8 +5317,6 @@ class TradeOpssAIApp:
             store[key] = {"account": str(account), "phase": phase,
                           "on_funded": bool(on_funded), "attempts": 1,
                           "since": kenya_now().isoformat(timespec="seconds")}
-            self._log_balance_status(account, phase, "close", None, "unresolved",
-                                     floor=self._recorded_breach_floor(account, on_funded))
             self.log(f"⏳ {account}: balance unreadable at close — queued for "
                      f"retry until a status lands", "WARN")
         else:
@@ -6382,6 +6399,9 @@ class TradeOpssAIApp:
         "MyFundedPerps": "MyFundedPerps",
         "My Funded Perps": "MyFundedPerps",
         "MyFundedPerpetuals": "MyFundedPerps",
+        "Tradeify247": "Tradeify247",
+        "Tradeify 247": "Tradeify247",
+        "Tradeify247 (DXtrade)": "Tradeify247",
     }
 
     # ── Broker login sharing ──────────────────────────────────────────
@@ -6422,6 +6442,11 @@ class TradeOpssAIApp:
         "topstep rtp": "Topstep",
         "top step rtp": "Topstep",
         "topsteprtp": "Topstep",
+        # Tradeify247 is the DXtrade (24/7 perps) product — its own login,
+        # NOT the Tradovate login used by Tradeify / Tradeify Select.
+        "tradeify247": "Tradeify247",
+        "tradeify 247": "Tradeify247",
+        "tradeify247 (dxtrade)": "Tradeify247",
     }
 
     # Families whose live accounts sit behind a SEPARATE broker login, so they
@@ -9377,15 +9402,18 @@ class TradeOpssAIApp:
         if not self._cell(evaluation.get(started_field)):
             evaluation[started_field] = kenya_today().strftime("%Y-%m-%d")
             changed.append(started_field)
-        try:
-            acct = self._primary_trade_account(evaluation)
-            self._log_balance_status(
-                acct, "Funded" if on_funded else "Challenge", "open",
-                self._account_balance(self._breach_balance_account(evaluation, on_funded)),
-                evaluation.get(status_field),
-                floor=self._recorded_breach_floor(acct, on_funded))
-        except Exception:
-            pass
+        # Log balance+status only on a genuine new fill (status just flipped to
+        # In Progress) with the broker connected — never on every rescan.
+        if status_field in changed and self._firm_broker_connected(evaluation):
+            try:
+                acct = self._primary_trade_account(evaluation)
+                self._log_balance_status(
+                    acct, "Funded" if on_funded else "Challenge", "open",
+                    self._account_balance(self._breach_balance_account(evaluation, on_funded)),
+                    evaluation.get(status_field),
+                    floor=self._recorded_breach_floor(acct, on_funded))
+            except Exception:
+                pass
         return changed
 
     def _use_funded_trade_account(self, row_data, ev=None):
@@ -10156,10 +10184,10 @@ class TradeOpssAIApp:
 
     def _execute_row_trade(self, side, row_data):
         """Execute a trade for a specific row, then remove the row."""
-        # Perps trade 24/7 — the weekday session window only gates futures.
-        _is_perps_row = (self._is_perps_firm(row_data.get("firm_code"))
-                         or self._is_perps_firm(
-                             (row_data.get("eval") or {}).get("Prop Firm")))
+        # Perps / DXtrade trade 24/7 — the weekday session window only gates futures.
+        _row_firm = (row_data.get("eval") or {}).get("Prop Firm")
+        _is_perps_row = (self._is_api_only_firm(row_data.get("firm_code"))
+                         or self._is_api_only_firm(_row_firm))
         allowed, window = self._trading_window_open()
         if not allowed and not _is_perps_row:
             self.log(f"⛔ Trade rejected — outside the {window} EAT trading window", "WARN")
@@ -10187,6 +10215,12 @@ class TradeOpssAIApp:
         if self._is_perps_firm(row_data.get("firm_code")) or self._is_perps_firm(
                 (row_data.get("eval") or {}).get("Prop Firm")):
             self._execute_perps_row_trade(side, row_data)
+            return
+
+        # ── Tradeify247: DXtrade REST bracket — no Tradovate/MT5 ──
+        if self._is_dxtrade_firm(row_data.get("firm_code")) or self._is_dxtrade_firm(
+                (row_data.get("eval") or {}).get("Prop Firm")):
+            self._execute_dxtrade_row_trade(side, row_data)
             return
 
         firm_code = row_data["firm_code"]
@@ -10980,10 +11014,20 @@ class TradeOpssAIApp:
 
     def _toggle_auto_trade(self):
         """Toggle the auto-trade scheduler on/off."""
+        if getattr(self, "_auto_wake_scheduler_started", False):
+            # Auto-wake owns this control once scheduled — no manual press needed.
+            return
         if self.auto_trade_enabled:
             self._stop_auto_trade()
         else:
             self._start_auto_trade()
+
+    def _lock_auto_trade_button_for_autowake(self):
+        """Grey out the manual Auto-Trade button once auto-wake owns the schedule."""
+        try:
+            self.auto_trade_btn.configure(state='disabled')
+        except Exception:
+            pass
 
     _AUTO_WAKE_POLL_SEC = 15
     _AUTO_WAKE_RESCAN_SEC = 60
@@ -11052,6 +11096,7 @@ class TradeOpssAIApp:
         self._auto_wake_client_email = self.client_email_entry.get().strip().lower()
         self._auto_wake_scheduler_started = True
         scheduled = self._ensure_auto_wake_schedule()
+        self._lock_auto_trade_button_for_autowake()
         self.auto_trade_status_var.set(
             f"Auto-wake scheduled {scheduled.strftime('%I:%M %p EAT')}")
         self.log(
@@ -11062,6 +11107,7 @@ class TradeOpssAIApp:
             daemon=True,
             name="auto-wake-scheduler",
         ).start()
+        self._start_day_watch()
 
     def _auto_wake_scheduler_loop(self):
         while not self._auto_wake_stop.is_set():
@@ -11186,6 +11232,62 @@ class TradeOpssAIApp:
             getattr(self, "_auto_wake_client_email", "") or "").strip().lower()
         self._auto_wake_state["started_date"] = scheduled_date
         self._save_auto_wake_state()
+
+    # ── Day-watch: trade accounts purchased/added after the morning wake ──
+    # From 08:00 until end of session, periodically rescan the dashboard for
+    # any newly tradeable account (e.g. a replacement purchase after a Fail)
+    # and arm a fresh, randomly-staggered batch for it — fully autonomous.
+    _DAY_WATCH_POLL_SEC = 300  # 5 minutes
+
+    def _start_day_watch(self):
+        if getattr(self, "_day_watch_started", False):
+            return
+        self._day_watch_started = True
+        threading.Thread(
+            target=self._day_watch_loop, daemon=True, name="day-watch").start()
+
+    def _day_watch_loop(self):
+        while not self._auto_wake_stop.is_set():
+            if self._auto_wake_stop.wait(self._DAY_WATCH_POLL_SEC):
+                return
+            try:
+                self.root.after(0, self._day_watch_tick)
+            except Exception:
+                return
+
+    def _day_watch_tick(self):
+        """Rescan for newly tradeable accounts and arm them when the day permits."""
+        now = kenya_now()
+        if now.weekday() >= 5:
+            return
+        if not (8 <= now.hour < TRADING_SESSION_END_HOUR):
+            return
+        if self.auto_trade_enabled or getattr(self, "_auto_wake_pending_date", None):
+            return  # a batch is live, or the morning wake scan is in flight
+        if getattr(self, "_day_watch_scan_active", False):
+            return
+        if not self._dashboard_credentials_ready() or not self.client_info:
+            return
+        self._day_watch_scan_active = True
+        self._load_active_trades()
+        self.root.after(5000, self._day_watch_after_scan)
+
+    def _day_watch_after_scan(self):
+        """Arm a new randomized batch once the rescan settles, if anything is new."""
+        try:
+            if str(self.load_trades_btn.cget("state")) == "disabled":
+                self.root.after(2000, self._day_watch_after_scan)
+                return
+        except Exception:
+            pass
+        self._day_watch_scan_active = False
+        if self.auto_trade_enabled or not getattr(self, "_last_trade_scan_succeeded", False):
+            return
+        if not self._active_trade_rows:
+            return
+        self.log(f"🔎 Day-watch: {len(self._active_trade_rows)} newly tradeable "
+                 "account(s) found — arming Auto-Trade")
+        self._start_auto_trade(automatic=True)
 
     # ── Hedge Protector ──────────────────────────────────────────────
 
@@ -11452,12 +11554,16 @@ class TradeOpssAIApp:
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
-        if automatic:
+        if automatic and immediate:
             self.auto_trade_status_var.set(f"Auto-wake started {time_str} — {mode_label}")
+        elif automatic:
+            self.auto_trade_status_var.set(f"Day-watch scheduled {time_str} — {mode_label}")
         else:
             self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
-        if automatic:
+        if automatic and immediate:
             self.log(f"🌅 Automatic wake starting trades now ({mode_label})")
+        elif automatic:
+            self.log(f"🔎 Day-watch: newly tradeable account(s) scheduled at {time_str} ({mode_label})")
         elif immediate:
             self.log(f"⚡ Entering trades now ({mode_label})")
         else:
@@ -12234,10 +12340,10 @@ class TradeOpssAIApp:
         """
         allowed, window = self._trading_window_open()
         if not allowed:
-            # Perps trade 24/7: outside the futures window keep only perps rows.
+            # Perps / DXtrade trade 24/7: outside the futures window keep only those rows.
             perps_rows = [rd for rd in self._active_trade_rows
-                          if self._is_perps_firm(rd.get("firm_code"))
-                          or self._is_perps_firm(
+                          if self._is_api_only_firm(rd.get("firm_code"))
+                          or self._is_api_only_firm(
                               (rd.get("eval") or {}).get("Prop Firm"))]
             if not perps_rows:
                 self.log(f"⛔ Auto-trade stopped — outside the {window} EAT trading window", "WARN")
@@ -12339,6 +12445,9 @@ class TradeOpssAIApp:
                         trado_accounts = [
                             str(a.get("account_number") or "")
                             for a in (_unwrap(broker_account.list_accounts()) or [])]
+                    elif self._is_dxtrade_firm(firm_name):
+                        trado_accounts = [c.split(":", 1)[-1]
+                                          for c in broker_account.account_codes()]
                     else:
                         trado_accounts = broker_account.get_all_accounts()
                 except Exception as e:
@@ -12501,8 +12610,8 @@ class TradeOpssAIApp:
                 acct_size = row_data["acct_size"]
                 acct_num = self._use_funded_trade_account(row_data)
 
-                # ── MyFundedPerps: API bracket — no day placeholders / Tradovate ──
-                if self._is_perps_firm(firm_code) or self._is_perps_firm(firm_name):
+                # ── MyFundedPerps / Tradeify247: API bracket — no day placeholders / Tradovate ──
+                if self._is_api_only_firm(firm_code) or self._is_api_only_firm(firm_name):
                     p_side = locked_side if locked_side in ("buy", "sell") else None
                     if p_side is None and use_signal:
                         sig = self._get_signal_direction("USTECH")
@@ -12514,7 +12623,10 @@ class TradeOpssAIApp:
                             f"🎲 {an}: ML unavailable — implicit fallback {s.upper()}", "WARN"))
                     with firm_sides_lock:
                         firm_sides.setdefault(family_key, p_side)
-                    ok = self._auto_execute_perps_row(row_data, p_side)
+                    if self._is_dxtrade_firm(firm_code) or self._is_dxtrade_firm(firm_name):
+                        ok = self._auto_execute_dxtrade_row(row_data, p_side)
+                    else:
+                        ok = self._auto_execute_perps_row(row_data, p_side)
                     with total_success:
                         counters["success" if ok else "fail"] += 1
                     continue
@@ -13195,6 +13307,29 @@ class TradeOpssAIApp:
                              f"Prop Firm Accounts tab to connect", "WARN")
                 continue
 
+            # ── Tradeify247: DXtrade — Chrome login + REST bracket, no Tradovate ──
+            if self._is_dxtrade_firm(display_firm):
+                dx_user = (pa.get("dxtrade_username") or pa.get("tradovate_username")
+                           or os.environ.get("DXTRADE_USERNAME") or "").strip()
+                dx_pass = (pa.get("dxtrade_password") or pa.get("tradovate_password")
+                           or os.environ.get("DXTRADE_PASSWORD") or "").strip()
+                dx_host = (pa.get("dxtrade_host") or "").strip() or None
+                self._broker_connections[firm] = {
+                    "account": existing_account,
+                    "row_frame": None,
+                    "creds_source": "dashboard" if (dx_user and dx_pass) else "missing",
+                }
+                if existing_account:
+                    auto_count += 1
+                elif dx_user and dx_pass:
+                    auto_count += 1
+                    threading.Thread(target=self._connect_dxtrade_broker,
+                                     args=(firm, dx_user, dx_pass, dx_host), daemon=True).start()
+                else:
+                    self.log(f"🔑 {display_firm}: add the DXtrade username/password on the "
+                             f"dashboard Prop Firm Accounts tab to connect", "WARN")
+                continue
+
             if CTK_AVAILABLE:
                 row = ctk.CTkFrame(self._broker_rows_frame, fg_color="#0A1220",
                                    corner_radius=4, height=36,
@@ -13337,6 +13472,23 @@ class TradeOpssAIApp:
         """Connect a single prop firm's broker account."""
         conn = self._broker_connections.get(firm_name)
         if not conn:
+            return
+
+        # DXtrade rows have no entry widgets — credentials come from the
+        # dashboard prop-account row or the environment.
+        if self._is_dxtrade_firm(firm_name):
+            if conn.get("account"):
+                return
+            user = os.environ.get("DXTRADE_USERNAME", "").strip()
+            pwd = os.environ.get("DXTRADE_PASSWORD", "").strip()
+            if not user or not pwd:
+                messagebox.showerror(
+                    "Error", f"Add the DXtrade username/password for {firm_name} on the "
+                             "dashboard Prop Firm Accounts tab (or DXTRADE_USERNAME / "
+                             "DXTRADE_PASSWORD in .env).")
+                return
+            threading.Thread(target=self._connect_dxtrade_broker,
+                             args=(firm_name, user, pwd), daemon=True).start()
             return
 
         # Platform follows the resolved blueprint, not just a substring of
@@ -15093,6 +15245,8 @@ class TradeOpssAIApp:
             return default
 
         # 1. Literal heuristic — fast path, preserves prior behaviour.
+        if self._is_dxtrade_firm(name):
+            return "DXtrade"
         if "topstep" in name.lower():
             return "TopStepX"
         if "alphafutures" in name.lower() or "alpha futures" in name.lower():
@@ -15182,6 +15336,205 @@ class TradeOpssAIApp:
     def _is_perps_firm(self, name) -> bool:
         compact = str(name or "").lower().replace(" ", "").replace("_", "")
         return "myfundedperp" in compact
+
+    # ── Tradeify247 (DXtrade: Chrome login + REST bracket) ──────────────
+
+    DXTRADE_DEFAULT_SYMBOL = "XYZ100/USD"   # Nasdaq-100 synthetic perp (USTECH)
+    DXTRADE_WEEKEND_SYMBOL = "BTC/USD"      # index perp pins on weekends
+
+    def _is_dxtrade_firm(self, name) -> bool:
+        compact = str(name or "").lower().replace(" ", "").replace("_", "")
+        return "tradeify247" in compact or compact.startswith("dxtrade")
+
+    def _is_api_only_firm(self, name) -> bool:
+        """Firms whose execution never touches Tradovate/TopStepX/MT5 hedging."""
+        return self._is_perps_firm(name) or self._is_dxtrade_firm(name)
+
+    def _dxtrade_symbol_for_now(self) -> str:
+        env = os.environ.get("DXTRADE_SYMBOL")
+        if env:
+            return env
+        if kenya_now().weekday() >= 5:
+            return os.environ.get("DXTRADE_WEEKEND_SYMBOL", self.DXTRADE_WEEKEND_SYMBOL)
+        return self.DXTRADE_DEFAULT_SYMBOL
+
+    def _dxtrade_session(self):
+        for f, c in (getattr(self, "_broker_connections", {}) or {}).items():
+            if self._is_dxtrade_firm(f) and c.get("account"):
+                return c["account"]
+        return None
+
+    def _connect_dxtrade_broker(self, firm, username, password, host=None, domain=None):
+        """Chrome login to the DXtrade terminal + REST token; store as broker."""
+        try:
+            from trader_companion.dxtrade_browser import DXTradeBrowserSession
+        except ImportError:
+            from dxtrade_browser import DXTradeBrowserSession
+        try:
+            sess = DXTradeBrowserSession(
+                username, password,
+                host=host or os.environ.get("DXTRADE_HOST", "dx.tradeify247.co"),
+                domain=domain or os.environ.get("DXTRADE_DOMAIN", "default"))
+            sess.login(api_login=True)
+            conn = self._broker_connections.setdefault(firm, {})
+            conn["account"] = sess
+            codes = sess.account_codes()
+            self.root.after(0, lambda: self.log(
+                f"🔑 {firm} connected via DXtrade ({sess.host}) — account(s): "
+                f"{', '.join(c.split(':', 1)[-1] for c in codes) or 'none'}"))
+            self.root.after(0, self._start_broker_idle_keepalive)
+            self.root.after(0, self._start_status_poll)
+            self.root.after(0, self._reconcile_connected_broker_history)
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"❌ {firm} DXtrade connection failed: {e}", "ERROR"))
+
+    def _dxtrade_plan_for_row(self, sess, row_data, side):
+        """(executor, account_code, plan) for a dashboard row, or raises."""
+        try:
+            from trader_companion.dxtrade_executor import DXTradeExecutor
+        except ImportError:
+            from dxtrade_executor import DXTradeExecutor
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        code = sess._code_for(acct_num)
+        if not code:
+            raise RuntimeError(f"no DXtrade account matching {acct_num} "
+                               f"(have {sess.account_codes()})")
+        symbol = self._dxtrade_symbol_for_now()
+        quote = sess.quote(symbol)
+        ref = quote["ask"] if side == "buy" else quote["bid"]
+        executor = DXTradeExecutor(sess.api, code)
+        m = sess.api.get_metrics(code)
+        balance = float(m.get("balance") or 0)
+        # Dollar targets from the blueprint when present, else conservative
+        # defaults (TP 1% / SL 0.5% of balance) until the blueprint lands.
+        firm_code = row_data.get("firm_code") or "Tradeify247"
+        rules = {}
+        try:
+            rules = (self.prop_firm_mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+        except Exception:
+            pass
+        tp_usd = float(rules.get("dxtrade_tp_usd") or 0) or balance * 0.01
+        sl_usd = float(rules.get("dxtrade_sl_usd") or 0) or balance * 0.005
+        max_margin = rules.get("dxtrade_max_margin_usd")
+        plan = executor.plan_bracket(symbol, side, ref_price=ref, tp_usd=tp_usd,
+                                     sl_usd=sl_usd,
+                                     max_margin_usd=float(max_margin) if max_margin else None,
+                                     quantity=rules.get("dxtrade_quantity"))
+        return executor, code, plan
+
+    def _execute_dxtrade_row_trade(self, side, row_data):
+        """Manual BUY/SELL on a Tradeify247 row: bracket via the DXtrade API."""
+        sess = self._dxtrade_session()
+        if sess is None:
+            messagebox.showerror("Error", "Tradeify247 (DXtrade) is not connected.\n"
+                                 "Connect it on the Brokers panel first.")
+            return
+        try:
+            executor, code, plan = self._dxtrade_plan_for_row(sess, row_data, side)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Tradeify247 trade plan failed: {exc}")
+            return
+        confirm = messagebox.askyesno(
+            "Confirm Trade",
+            f"{side.upper()} {plan['quantity']} {plan['symbol']} @~{plan['ref_price']}\n"
+            f"Account:  {code.split(':', 1)[-1]} (balance ${plan['balance']:,.2f})\n"
+            f"Leverage: {plan['leverage']:g}x  margin ≈ ${plan['margin']:,.2f}\n"
+            f"TP {plan['tp_price']} (+{plan['tp_pts']} pts = +${plan['tp_usd']:,.0f})\n"
+            f"SL {plan['sl_price']} (-{plan['sl_pts']} pts = -${plan['sl_usd']:,.0f})\n\nProceed?")
+        if not confirm:
+            return
+        for btn_key in ("buy_btn", "sell_btn"):
+            try:
+                row_data[btn_key].configure(state='disabled', text="...")
+            except Exception:
+                pass
+        self.log(f"⚡ {side.upper()} {plan['quantity']} {plan['symbol']} → Tradeify247 "
+                 f"{code.split(':', 1)[-1]} (TP +${plan['tp_usd']:,.0f} / SL -${plan['sl_usd']:,.0f})")
+
+        def _do():
+            try:
+                result = executor.execute(plan, metadata={"source": "tradeops", "acct": code})
+                pos = result.get("position") or {}
+                self.log(f"✅ Tradeify247 {side.upper()} filled @ {pos.get('openPrice')} — "
+                         f"bracket live (TP {plan['tp_price']} / SL {plan['sl_price']})")
+                self._after_dxtrade_fill(row_data, code, plan)
+            except Exception as exc:
+                self.log(f"❌ Tradeify247 trade failed: {exc}", "ERROR")
+                def _reenable():
+                    for bk, label in (("buy_btn", "BUY"), ("sell_btn", "SELL")):
+                        try:
+                            row_data[bk].configure(state='normal', text=label)
+                        except Exception:
+                            pass
+                self.root.after(0, _reenable)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _auto_execute_dxtrade_row(self, row_data, side) -> bool:
+        """Headless Tradeify247 bracket for auto-trade; True when filled."""
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        def _ulog(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, l=level: self.log(m, l))
+        sess = self._dxtrade_session()
+        if sess is None:
+            _ulog(f"❌ {acct_num}: Tradeify247 (DXtrade) not connected", "ERROR")
+            return False
+        try:
+            executor, code, plan = self._dxtrade_plan_for_row(sess, row_data, side)
+            result = executor.execute(plan, metadata={"source": "tradeops-auto", "acct": code})
+            pos = result.get("position") or {}
+            _ulog(f"✅ {acct_num}: {side.upper()} {plan['quantity']} {plan['symbol']} filled @ "
+                  f"{pos.get('openPrice')} — TP {plan['tp_price']} (+${plan['tp_usd']:,.0f}) "
+                  f"/ SL {plan['sl_price']} (-${plan['sl_usd']:,.0f})")
+            self.root.after(0, lambda: self._after_dxtrade_fill(row_data, code, plan))
+            return True
+        except Exception as exc:
+            _ulog(f"❌ {acct_num}: Tradeify247 trade failed: {exc}", "ERROR")
+            return False
+
+    def _after_dxtrade_fill(self, row_data, code, plan):
+        """Mark the row In Progress, record the SL as the breach floor, drop the row."""
+        _ev = row_data.get("eval")
+        if _ev:
+            try:
+                self._mark_trade_in_progress(_ev)
+            except Exception:
+                _cur = self._cell(_ev.get("Status P1")).lower()
+                if not _cur or _cur in ("not started", "in progress"):
+                    _ev["Status P1"] = "In Progress"
+        try:
+            acct = code.split(":", 1)[-1]
+            on_funded = bool(self._cell((_ev or {}).get("Account #.1")))
+            # The SL price is the loss floor for this trade; a flat balance at or
+            # below it fails the account through the same breach path as futures.
+            floor_balance = float(plan["balance"]) - float(plan["sl_usd"])
+            self._record_breach_floor(acct, floor_balance, on_funded=on_funded)
+        except Exception:
+            pass
+        try:
+            self._snapshot_pre_trade_balance(code.split(":", 1)[-1])
+        except Exception:
+            pass
+
+        def _remove():
+            try:
+                row_data["frame"].destroy()
+            except Exception:
+                pass
+            if row_data in self._active_trade_rows:
+                self._active_trade_rows.remove(row_data)
+            remaining = len(self._active_trade_rows)
+            try:
+                self.trades_count_var.set(
+                    f"{remaining} active trade{'s' if remaining != 1 else ''}"
+                    if remaining > 0 else "All trades complete ✓")
+                self._stat_queue_var.set(f"Queue: {remaining}")
+                cur = self._stat_trades_var.get()
+                n = int(cur.split(":")[1].strip()) + 1 if ":" in cur else 1
+                self._stat_trades_var.set(f"Trades: {n}")
+            except Exception:
+                pass
+        self.root.after(0, _remove)
 
     def _perps_client(self):
         for f, c in (getattr(self, "_broker_connections", {}) or {}).items():

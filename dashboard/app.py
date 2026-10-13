@@ -1755,6 +1755,10 @@ _BREACH_FIRM_SHORT_NAMES = (
     ('my funded perpetuals', 'MyFundedPerps'),
     ('funded next', 'Funded Next'),
     ('fundednext', 'Funded Next'),
+    # Substring match: Tradeify247 must come BEFORE 'tradeify' or it lands
+    # in the Tradeify (Tradovate) bucket.
+    ('tradeify247', 'Tradeify247'),
+    ('tradeify 247', 'Tradeify247'),
     ('tradeify', 'Tradeify'),
     ('topstep', 'Topstep'),
     ('lucid', 'Lucid'),

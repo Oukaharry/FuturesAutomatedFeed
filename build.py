@@ -137,9 +137,12 @@ def build(trader_release: bool = False):
 
     hidden_imports = [
         'selenium', 'dotenv', 'psutil', 'pyperclip', 'pytz', 'zoneinfo',
-        'requests', 'urllib3', 'certifi',
+        'requests', 'urllib3', 'certifi', 'websocket',
         'playwright', 'playwright.async_api', 'playwright.sync_api',
         'connectors.alphatrader_connector',
+        'trader_companion.dxtrade_connector', 'trader_companion.dxtrade_browser',
+        'trader_companion.dxtrade_executor',
+        'dxtrade_connector', 'dxtrade_browser', 'dxtrade_executor',
     ]
     if not trader_release:
         hidden_imports.extend([

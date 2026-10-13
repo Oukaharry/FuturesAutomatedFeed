@@ -21,6 +21,7 @@ import os
 import sys
 import ssl
 import urllib.request
+import urllib.error
 import argparse
 from datetime import date
 
@@ -102,11 +103,20 @@ FILES = {
 def download(remote, local):
     print(f"Downloading {remote} ...")
     req  = urllib.request.Request(f"{BASE}{remote}", headers={"Authorization": f"Token {TOKEN}"})
-    data = _urlopen(req).read()
+    try:
+        data = _urlopen(req).read()
+    except urllib.error.HTTPError as exc:
+        # A missing file (e.g. the retired SQLite db after the Postgres move)
+        # must not abort the rest of the run.
+        if exc.code == 404:
+            print(f"  Skipped (not found on server): {remote}")
+            return False
+        raise
     os.makedirs(os.path.dirname(os.path.abspath(local)), exist_ok=True)
     with open(local, "wb") as f:
         f.write(data)
     print(f"  Saved {len(data):,} bytes -> {os.path.abspath(local)}")
+    return True
 
 def main():
     # -- custom --src / --dest mode
