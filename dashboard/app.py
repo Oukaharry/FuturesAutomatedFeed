@@ -1729,6 +1729,8 @@ BREACH_SLACK_NOTIFICATIONS_PAUSED = (
 # skipped and batches are marked sent so they do not retry into Traders Hub.
 _BREACH_SLACK_BLOCKED_ADMINS = {
     'dennis muthee',
+    'philip tangara',   # hierarchy spelling (one L)
+    'phillip tangara',  # common misspelling
 } | {
     n.strip().lower()
     for n in str(os.environ.get('BREACH_SLACK_BLOCKED_ADMINS', '')).split(',')
