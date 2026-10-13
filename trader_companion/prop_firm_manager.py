@@ -86,6 +86,9 @@ class PropFirmManager:
         "MyFundedPerps": "MyFundedPerps",
         "My Funded Perps": "MyFundedPerps",
         "MFP": "MyFundedPerps",
+        "MyFundedPerps Elite": "MyFundedPerps Elite",
+        "MyFundedPerps Elite 50K": "MyFundedPerps Elite",
+        "MFP Elite": "MyFundedPerps Elite",
         "Tradeify247": "Tradeify247",
         "Tradeify 247": "Tradeify247",
     }
@@ -2454,6 +2457,124 @@ class PropFirmManager:
             },
             "strategy_configs": {},
         }
+
+        # MyFundedPerps Elite $50K (3% DLL, 80% split) — Golden Spike Capital
+        # blueprint, Oct 12 2026. $-denominated first-hit model: fixed stop
+        # ladder, eval TP = distance to $55K, funded TP = T drawn per cycle
+        # (uniform $3,500–$6,000, whole dollars, never a multiple of $100).
+        # Static floor $47,500; the model spends $2,450 of the $2,500 room and
+        # never trades into the $50 reserve. One attempt per daily reset
+        # (midnight New York). Withdraw all profit on every win, then restart
+        # at $50,000 and redraw T. See plan_mfp_elite_attempt().
+        self.firm_blueprints["MyFundedPerps Elite"] = {
+            "name": "MyFundedPerps Elite 50K",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "asset_class": "perps",
+            "market": "hyperliquid|xyz:XYZ100",
+            "purchase_price": 346.50,            # $495 list less 30% (unverified)
+            "profit_split": 0.80,
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "starting_balance": 50000.0,
+                "evaluation_goal": 55000.0,      # +$5,000
+                "static_loss_floor": 47500.0,    # $2,500 static MLL
+                "reserve": 50.0,                 # never trade into this
+                "room": 2450.0,                  # 2,500 − 50
+                "daily_loss_limit": 1500.0,      # 3% DLL — one attempt per reset
+                "daily_reset_tz": "America/New_York",
+                "stop_ladder": [1000.0, 1000.0, 450.0],   # attempts 1,2,3 (both stages)
+                "funded_target_band": [3500.0, 6000.0],   # T, redrawn every cycle
+                "funded_target_avoid_round_hundreds": True,
+                "payout_rule": "all_profit",     # request everything on a win
+                "max_payout_cycles_modeled": 4,  # modeling horizon, not a firm cap
+                "news_blackout": {"before_min": 10, "after_min": 2},
+                "per_user_active_cap_usd": 100000.0,   # 2 × 50K funded at once
+                "per_user_lifetime_payout_cap_usd": 100000.0,
+            },
+            "strategy_configs": {},
+        }
+
+    # ── MyFundedPerps Elite 50K planner ─────────────────────────────────
+
+    _MFP_ELITE_CODES = ("MyFundedPerps Elite", "MyFundedPerps Elite 50K",
+                        "MFP Elite", "MFP_Elite")
+
+    def is_mfp_elite_code(self, firm_code: str) -> bool:
+        compact = str(firm_code or "").lower().replace(" ", "").replace("_", "")
+        return compact in ("myfundedperpselite", "myfundedperpselite50k",
+                           "mfpelite", "mfpelite50k")
+
+    def _draw_mfp_elite_target(self, lo: float, hi: float) -> float:
+        """Whole-dollar uniform draw, re-drawn if it lands on a multiple of $100."""
+        for _ in range(50):
+            t = float(int(round(self._draw_uniform(lo, hi))))
+            if t % 100 != 0 and lo <= t <= hi:
+                return t
+        return float(int(round(self._draw_uniform(lo, hi)))) + 1.0
+
+    def mfp_elite_cycle_target(self, account_key: str, cycle_index: int,
+                               redraw: bool = False) -> float:
+        """T for a funded cycle (stored per account+cycle; redraw on new cycle)."""
+        rules = self.firm_blueprints["MyFundedPerps Elite"]["risk_rules"]
+        lo, hi = rules["funded_target_band"]
+        state = self._account_random_state.setdefault(str(account_key or "default"), {})
+        key = f"mfp_elite_T_cycle_{int(cycle_index)}"
+        if redraw or key not in state:
+            state[key] = self._draw_mfp_elite_target(lo, hi)
+            self.logger.info(f"[MFP Elite] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
+        return float(state[key])
+
+    def plan_mfp_elite_attempt(self, *, equity: float, on_funded: bool,
+                               attempt_index: int, account_key: str = "default",
+                               cycle_index: int = 0, balance_sod: Optional[float] = None,
+                               traded_today: bool = False) -> Dict:
+        """$-denominated stop/target for one Elite attempt (0-based index).
+
+        Returns {sl_usd, tp_usd, target_equity, attempt, stage, allowed, reason,
+        reserve_floor, T}. `allowed` is False when the ladder is exhausted, the
+        reserve would be breached, or an attempt already resolved today.
+        """
+        bp = self.firm_blueprints["MyFundedPerps Elite"]
+        r = bp["risk_rules"]
+        start = float(r["starting_balance"])
+        floor = float(r["static_loss_floor"])
+        reserve_floor = floor + float(r["reserve"])          # 47,550
+        ladder = list(r["stop_ladder"])
+        stage = "funded" if on_funded else "evaluation"
+        plan = {"stage": stage, "attempt": attempt_index + 1, "allowed": True,
+                "reason": "", "reserve_floor": reserve_floor, "T": None,
+                "split": float(bp["profit_split"]), "market": bp["market"]}
+
+        if traded_today:
+            plan.update(allowed=False, reason="one attempt per daily reset (midnight New York)")
+            return plan
+        if attempt_index >= len(ladder):
+            plan.update(allowed=False, reason="stop ladder exhausted — account retired")
+            return plan
+
+        if on_funded:
+            T = self.mfp_elite_cycle_target(account_key, cycle_index)
+            target_equity = start + T
+            plan["T"] = T
+        else:
+            target_equity = float(r["evaluation_goal"])
+
+        # Stop k = min(ladder[k], equity − reserve_floor); never into the reserve.
+        sl_usd = min(float(ladder[attempt_index]), float(equity) - reserve_floor)
+        tp_usd = target_equity - float(equity)
+        if sl_usd <= 0:
+            plan.update(allowed=False, reason=f"no room above the ${reserve_floor:,.0f} reserve floor")
+            return plan
+        if tp_usd <= 0:
+            plan.update(allowed=False, reason="already at or above target — request payout / pass")
+            return plan
+
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2),
+                    target_equity=round(target_equity, 2),
+                    payout_cash=round(tp_usd * float(bp["profit_split"]), 2) if on_funded else None)
+        return plan
 
     _TOPSTEP_RTP_PAYOUT2_PHASE_MAP = {
         "funded_trade1": "funded_trade1_p2",
