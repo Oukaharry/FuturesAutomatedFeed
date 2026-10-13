@@ -10251,8 +10251,8 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
+        // Daily summaries must still cover existing legacy FundedNext rows (only removed from selection dropdowns)
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};
