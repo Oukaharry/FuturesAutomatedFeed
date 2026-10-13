@@ -1928,11 +1928,34 @@ def _client_active_firm_families(client_id, evaluations, days=_ACTIVE_FIRM_WINDO
     return families
 
 
+def _eval_dashboard_payout_count(ev) -> int:
+    """Count non-empty Payout N / Date N cells on a dashboard evaluation row."""
+    if not isinstance(ev, dict):
+        return 0
+    count = 0
+    for number in range(1, 9):
+        amount = str(ev.get(f'Payout {number}') or '').strip()
+        paid_on = str(ev.get(f'Date {number}') or '').strip()
+        if paid_on and paid_on not in ('-', '—', '–'):
+            count += 1
+            continue
+        try:
+            cleaned = amount.replace('$', '').replace(',', '').strip()
+            if cleaned and float(cleaned) > 0:
+                count += 1
+        except (TypeError, ValueError):
+            pass
+    return count
+
+
 def _breach_alert_disposition(breach, evaluations):
-    """send = Fail (buy it). hold = still live. discard = Pass/Completed, not a buy.
+    """send = Fail or Completed-with-payout (buy it). hold = still live.
+    discard = Pass / Completed-without-payout, not a buy.
 
     Dropping Hit TP/SL used to throw away the rest of the firm batch. Abby
     sent Purchase 2 because two rows were still Hit TP1 after a real Fail.
+    Funded rows that banked ≥1 payout and then breached are Status=Completed
+    but still need a replacement purchase (Chad Gines / Funded Next).
     """
     if not isinstance(breach, dict):
         return 'discard'
@@ -1942,11 +1965,19 @@ def _breach_alert_disposition(breach, evaluations):
         reason = str(breach.get('reason_code') or '').strip().lower()
         return 'send' if reason in _BREACH_VANISH_REASON_CODES else 'hold'
     phase = str(breach.get('phase') or '').strip().lower()
+    reason = str(breach.get('reason_code') or '').strip().lower()
     if phase.startswith('fund'):
         status = ev.get('Status') or ev.get('Status Funded') or ''
     else:
         status = ev.get('Status P1') or ''
     if is_eval_phase_failed(status):
+        return 'send'
+    # Completed after payout(s) still replaces the account.
+    if (phase.startswith('fund')
+            and is_funded_phase_ended(status)
+            and 'complete' in str(status or '').lower()
+            and (_eval_dashboard_payout_count(ev) >= 1
+                 or reason == 'completed_with_payout')):
         return 'send'
     if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
         return 'discard'
@@ -2147,18 +2178,30 @@ def _flush_batched_breach_alerts(client_id, evaluations):
     # Take the queue first so a concurrent minute flush / companion push /
     # dashboard save cannot Slack the same purchase again.
     pending = claim_breach_alert_pending(client_id)
-    if not pending:
-        return 0
-    claimed = list(pending)
+    claimed = list(pending or [])
     still_pending = []
     announced = 0
     try:
+        # Snapshot Status before heal so Fail+payout → Completed can still buy
+        # accounts that were never queued by an old companion push.
+        pre_heal = [dict(ev) for ev in (evaluations or [])
+                    if isinstance(ev, dict)]
         for ev in evaluations or []:
             if isinstance(ev, dict) and not ev.get('_deleted'):
                 _heal_hit_marker_after_floor_fail(ev)
+                _heal_failed_funded_with_payout_to_completed(ev)
+        orphan_purchases = _completed_with_payout_purchase_breaches(
+            pre_heal, evaluations)
+        if orphan_purchases:
+            claimed = _merge_purchase_breach_lists(claimed, orphan_purchases)
+            app.logger.warning(
+                f"🚨 {client_id}: {len(orphan_purchases)} funded Fail+payout "
+                f"row(s) healed to Completed — added as purchases")
+        if not claimed:
+            return 0
         if _purchase_alerts_held_for_weekend():
             app.logger.info(
-                f"🚨 {client_id}: holding {len(pending)} purchase alert(s) "
+                f"🚨 {client_id}: holding {len(claimed)} purchase alert(s) "
                 f"until Monday — weekend")
             still_pending = claimed
             return 0
@@ -2168,7 +2211,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
         session_over = _trading_session_over_eat()
         active_families = _client_active_firm_families(client_id, evaluations)
         by_firm = defaultdict(list)
-        for breach in pending:
+        for breach in claimed:
             by_firm[_breach_firm_family(breach.get('prop_firm'))].append(breach)
 
         for firm_key, firm_breaches in by_firm.items():
@@ -2194,7 +2237,7 @@ def _flush_batched_breach_alerts(client_id, evaluations):
             if discarded:
                 app.logger.info(
                     f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase "
-                    f"alert(s) — row is Pass/Completed, not a buy")
+                    f"alert(s) — row is Pass/Completed without payout buy")
             # A hold stays queued until that row itself fails. A row that is
             # already Fail is a purchase for that account now — sibling rows
             # and open trades on other accounts do not hold it back.
@@ -3070,6 +3113,9 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
     The Tradovate status poll writes Fail onto the sheet and pushes with no
     breach_alerts list. A change to Fail is the breach, for that account.
     A row that was already Fail is not bought again.
+
+    Funded Fail/Breach with Payout N filled uses reason_code
+    completed_with_payout (Status is healed to Completed by server guards).
     """
     existing_by_key = _index_existing_evaluations(existing_evals)
     breaches = []
@@ -3098,13 +3144,97 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
             if account.lower() in seen:
                 continue
             seen.add(account.lower())
+            reason = 'status_fail'
+            if phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1:
+                reason = 'completed_with_payout'
             breaches.append({
                 'account': account,
                 'prop_firm': ev.get('Prop Firm') or '',
                 'phase': phase,
-                'reason_code': 'status_fail',
+                'reason_code': reason,
             })
     return breaches
+
+
+def _completed_with_payout_purchase_breaches(existing_evals, merged_evals):
+    """Purchase when funded Status newly becomes Completed after Fail + payouts.
+
+    Old companions push Fail (not Completed). Server heal Fail→Completed must
+    still queue a buy for rows that were already Fail on the prior push.
+    """
+    existing_by_key = _index_existing_evaluations(existing_evals)
+    breaches = []
+    seen = set()
+    for ev in merged_evals or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        new = str(ev.get('Status') or ev.get('Status Funded') or '').strip()
+        if 'complete' not in new.lower():
+            continue
+        if _eval_dashboard_payout_count(ev) < 1:
+            continue
+        mk = _evaluation_row_merge_key(ev)
+        before = existing_by_key.get(mk) if mk else None
+        old = ''
+        if isinstance(before, dict):
+            old = str(before.get('Status') or before.get('Status Funded') or '').strip()
+        if 'complete' in old.lower():
+            continue
+        if not (_status_is_fail(old) or 'breach' in old.lower()):
+            continue
+        account = str(ev.get('Account #.1') or '').strip()
+        if not account or account in ('-', '—', '–'):
+            account = str(ev.get('Account #') or '').strip()
+        if not account or account in ('-', '—', '–'):
+            continue
+        if account.lower() in seen:
+            continue
+        seen.add(account.lower())
+        breaches.append({
+            'account': account,
+            'prop_firm': ev.get('Prop Firm') or '',
+            'phase': 'Funded',
+            'reason_code': 'completed_with_payout',
+        })
+    return breaches
+
+
+def _rewrite_fail_breaches_to_completed_with_payout(evaluations, breaches):
+    """Old companions send Fail breach_alerts; rewrite when payouts are banked."""
+    if not breaches:
+        return breaches or []
+    out = []
+    for breach in breaches:
+        if not isinstance(breach, dict):
+            continue
+        item = dict(breach)
+        phase = str(item.get('phase') or '').strip().lower()
+        reason = str(item.get('reason_code') or '').strip().lower()
+        if phase.startswith('fund') and (
+                reason in ('', 'status_fail', 'fail', 'fail_status', 'breach')
+                or 'fail' in reason):
+            ev = _existing_eval_for_account(evaluations, item.get('account'))
+            if isinstance(ev, dict) and _eval_dashboard_payout_count(ev) >= 1:
+                item['reason_code'] = 'completed_with_payout'
+        out.append(item)
+    return out
+
+
+def _merge_purchase_breach_lists(*lists):
+    """Dedupe purchase payloads by account key (prefer completed_with_payout)."""
+    by_key = {}
+    for group in lists:
+        for breach in group or []:
+            if not isinstance(breach, dict):
+                continue
+            key = _breach_alert_item_key(breach)
+            if not key:
+                continue
+            prev = by_key.get(key)
+            reason = str(breach.get('reason_code') or '').strip().lower()
+            if prev is None or reason == 'completed_with_payout':
+                by_key[key] = breach
+    return list(by_key.values())
 
 
 def _funded_status_is_blank(status):
@@ -3667,6 +3797,31 @@ def _heal_hit_marker_after_floor_fail(ev):
             ev[ended] = _kenya_today_str()
 
 
+def _heal_failed_funded_with_payout_to_completed(ev):
+    """Funded Fail/Breach with Payout N filled → Completed (still a purchase)."""
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    manual = set(ev.get('_manual_push_fields') or [])
+    if 'Status' in manual:
+        return False
+    funded_acct = str(ev.get('Account #.1') or '').strip()
+    if not funded_acct or funded_acct in ('-', '—', '–'):
+        return False
+    if _eval_dashboard_payout_count(ev) < 1:
+        return False
+    status = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
+    if 'complete' in status:
+        return False
+    if not any(tok in status for tok in ('fail', 'breach')):
+        return False
+    ev['Status'] = 'Completed'
+    ev['_derived_Status'] = (
+        'funded payout(s) banked before breach — Completed (purchase)')
+    if _date_ended_blank(ev.get('Date Ended.1')):
+        ev['Date Ended.1'] = _kenya_today_str()
+    return True
+
+
 def _heal_stored_lucid_farming_fail(ev):
     """Undo a Lucid farming Fail whose recorded balance never reached $48,000."""
     if not _firm_is_lucid(ev) or not _row_is_farming(ev):
@@ -3798,6 +3953,8 @@ def _apply_server_eval_guards(evaluations):
     above $48,000 is put back to In Progress.
     Challenge Hit TP / funded-account graduation → Pass + Not Started (no new
     companion build required).
+    Funded Fail/Breach with Payout N filled → Completed (purchase still queued;
+    works for already-released companions that still push Fail).
     """
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
@@ -3811,6 +3968,7 @@ def _apply_server_eval_guards(evaluations):
         _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
         _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
         _heal_stored_lucid_farming_fail(ev)
+        _heal_failed_funded_with_payout_to_completed(ev)
 
 
 def _cell_is_payout_marker(raw):
@@ -8251,6 +8409,9 @@ def api_client_push():
         force_fields = set(data.get('force_fields', []))
         evaluations = merge_evaluation_push_with_existing(
             existing_evals_push, incoming_evals, force_fields)
+        # Capture Fail purchases before Status heal Fail+payout → Completed.
+        fail_purchases = _fail_status_purchase_breaches(
+            existing_evals_push, evaluations)
         _apply_server_eval_guards(evaluations)
         seeded_ns = _seed_funded_not_started_on_eval_pass(
             existing_evals_push, evaluations)
@@ -8259,12 +8420,18 @@ def api_client_push():
                 f"🌱 {client_id}: {seeded_ns} account(s) eval Pass → "
                 f"funded Status set to Not Started")
         _record_status_change_events(client_id, existing_evals_push, evaluations)
-        fail_purchases = _fail_status_purchase_breaches(existing_evals_push, evaluations)
-        if fail_purchases:
-            breach_alerts_sanitized = list(breach_alerts_sanitized or []) + fail_purchases
+        payout_completed = _completed_with_payout_purchase_breaches(
+            existing_evals_push, evaluations)
+        breach_alerts_sanitized = _rewrite_fail_breaches_to_completed_with_payout(
+            evaluations, breach_alerts_sanitized)
+        server_purchases = _merge_purchase_breach_lists(
+            fail_purchases, payout_completed)
+        if server_purchases:
+            breach_alerts_sanitized = _merge_purchase_breach_lists(
+                breach_alerts_sanitized, server_purchases)
             app.logger.warning(
-                f"🚨 {client_id}: {len(fail_purchases)} account(s) changed to Fail — "
-                f"queued as purchases")
+                f"🚨 {client_id}: {len(server_purchases)} account(s) "
+                f"Fail/Completed-with-payout — queued as purchases")
         app.logger.info(
             f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
             f"into {len(evaluations)} total (was {len(existing_evals_push)} in DB)")
@@ -16120,7 +16287,9 @@ def update_data():
                         PUSH_SOURCED_KEYS,
                     )
 
-                # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
+                # Capture Fail purchases before Status heal Fail+payout → Completed.
+                fail_purchases = _fail_status_purchase_breaches(
+                    existing_evals, evaluations)
                 _apply_server_eval_guards(evaluations)
                 seeded_ns = _seed_funded_not_started_on_eval_pass(
                     existing_evals, evaluations)
@@ -16131,12 +16300,16 @@ def update_data():
                 evaluations = recalculate_hedge_nets(evaluations)
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
                 try:
-                    fail_purchases = _fail_status_purchase_breaches(existing_evals, evaluations)
-                    if fail_purchases:
-                        _queue_breach_alerts(client_id, fail_purchases)
+                    payout_completed = _completed_with_payout_purchase_breaches(
+                        existing_evals, evaluations)
+                    server_purchases = _merge_purchase_breach_lists(
+                        fail_purchases, payout_completed)
+                    if server_purchases:
+                        _queue_breach_alerts(client_id, server_purchases)
                         app.logger.warning(
-                            f"🚨 {client_id}: {len(fail_purchases)} account(s) set to Fail "
-                            f"on the dashboard — queued as purchases")
+                            f"🚨 {client_id}: {len(server_purchases)} account(s) "
+                            f"Fail/Completed-with-payout on dashboard — "
+                            f"queued as purchases")
                     _flush_batched_breach_alerts(client_id, evaluations)
                 except Exception as exc:
                     app.logger.error(f"Breach alert flush failed for {client_id}: {exc}")

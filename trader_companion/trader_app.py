@@ -5153,6 +5153,41 @@ class TradeOpssAIApp:
         )
         return changed
 
+    def _promote_failed_funded_with_payout_to_completed(self, ev):
+        """Fail/Breach + dashboard payout column(s) → Completed + purchase alert.
+
+        A funded account that already banked Payout 1+ and then breaches is done
+        successfully (Completed), not a bare Fail — and still needs a replace buy.
+        """
+        if not isinstance(ev, dict) or not self._on_funded_leg(ev):
+            return []
+        if self._dashboard_payout_count(ev) < 1:
+            return []
+        status = self._cell(ev.get("Status") or ev.get("Status Funded")).strip().lower()
+        firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+        if "complete" in status:
+            if firm_code:
+                self._record_breach_alert(
+                    ev, firm_code, "Funded", balance=None, floor=None,
+                    reason_code="completed_with_payout")
+            return []
+        if not any(tok in status for tok in ("fail", "breach")):
+            return []
+        ev["Status"] = "Completed"
+        ev["_derived_Status"] = (
+            "funded payout(s) banked before breach — Completed (purchase queued)")
+        changed = ["Status"]
+        changed.extend(self._stamp_stage_end_date(ev, "Status", "Completed"))
+        if firm_code:
+            self._record_breach_alert(
+                ev, firm_code, "Funded", balance=None, floor=None,
+                reason_code="completed_with_payout")
+        self.log(
+            f"📌 {self._primary_trade_account(ev)}: Status → Completed "
+            f"(payout banked before breach — purchase queued)"
+        )
+        return changed
+
     def _apply_status_update(self, ev):
         """Advance the lifecycle status from resolved broker activity."""
         if self._eval_has_payout(ev):
@@ -5160,6 +5195,7 @@ class TradeOpssAIApp:
         changed = []
         changed.extend(self._promote_graduated_eval_to_pass(ev))
         changed.extend(self._promote_hit_tp_to_pass_if_complete(ev))
+        changed.extend(self._promote_failed_funded_with_payout_to_completed(ev))
         account = self._primary_trade_account(ev)
         on_funded = self._on_funded_leg(ev)
         phase = "Funded" if on_funded else "Challenge"
@@ -6755,7 +6791,8 @@ class TradeOpssAIApp:
         """('Fail' | 'Pass' | 'Completed' | None, reason) from broker truth.
 
         SOP 7b: Tradovate balance is the final source of truth; 7c: Completed
-        needs every payout processed AND the account blown.
+        when the funded account has banked ≥1 dashboard payout and then blows
+        (not only when a firm-specific payout_count target is met).
         """
         if self._eval_has_payout(ev):
             return None, None
@@ -6826,10 +6863,17 @@ class TradeOpssAIApp:
                 if floor is None or float(min_eq_floor) > float(floor):
                     floor = float(min_eq_floor)
         payouts = self._funded_payout_count(ev)
-        target = rules.get("payout_count")
-
-        if blown and target and payouts >= int(target):
-            return "Completed", f"{payouts} payout(s) banked and balance {balance:,.2f} at floor"
+        # Any banked payout + breach = Completed (Chad Gines / Funded Next).
+        # Previously required firm rules.payout_count (often unset) so FN rows
+        # with Payout 1+ stayed Fail and never queued a replace purchase.
+        if blown and payouts >= 1:
+            self._record_breach_alert(
+                ev, firm_code, phase, balance, floor,
+                reason_code="completed_with_payout")
+            return (
+                "Completed",
+                f"{payouts} payout(s) banked and balance {balance:,.2f} at floor",
+            )
         if blown:
             self._record_breach_alert(ev, firm_code, phase, balance, floor)
             return "Fail", (f"{phase.lower()} balance {balance:,.2f} at or below "
@@ -6858,8 +6902,10 @@ class TradeOpssAIApp:
             "account": account,
             "prop_firm": self._cell(ev.get("Prop Firm")) or firm_code,
             "phase": phase,
-            "balance": round(float(balance), 2),
-            "floor": round(float(floor), 2) if floor is not None else None,
+            "balance": (round(float(balance), 2)
+                        if isinstance(balance, (int, float)) else None),
+            "floor": (round(float(floor), 2)
+                      if isinstance(floor, (int, float)) else None),
         }
         if reason_code:
             payload["reason_code"] = reason_code
@@ -6872,6 +6918,11 @@ class TradeOpssAIApp:
         elif reason_code == "tradovate_vanish":
             self.log(f"🚨 {account}: {phase} breach — account no longer "
                      f"exists on Tradovate", "ERROR")
+        elif reason_code == "completed_with_payout":
+            bal = (f" balance {float(balance):,.2f}"
+                   if isinstance(balance, (int, float)) else "")
+            self.log(f"🚨 {account}: {phase} Completed with payout(s){bal} — "
+                     f"purchase queued", "ERROR")
         else:
             self.log(f"🚨 {account}: {phase} breach — balance {balance:,.2f} at or "
                      f"below floor {float(floor):,.2f}", "ERROR")
@@ -7072,6 +7123,10 @@ class TradeOpssAIApp:
         again). When the status proves trade n resolved, cells 1..n holding a
         weekday become $0.00 and the next weekday is queued, blueprint-aware.
         Runs inside the 5-minute poll, so the write is durable.
+
+        Stale Hit TP/SL without a broker-resolved outcome must NOT consume a
+        waiting weekday — that was wiping Funded Next placeholders before the
+        trade was taken.
         """
         changed = []
         for ev in evaluations or []:
@@ -7084,6 +7139,10 @@ class TradeOpssAIApp:
                     status = self._cell(ev.get("Status Funded"))
                 m = self._HIT_TRADE_RE.fullmatch(status.strip().lower())
                 if not m:
+                    continue
+                account = self._primary_trade_account(ev)
+                _date, outcome = self._latest_resolved_outcome(account)
+                if outcome not in ("win", "loss"):
                     continue
                 n = int(m.group(1))
                 fields = self._get_phase_fields(phase)
@@ -7106,7 +7165,7 @@ class TradeOpssAIApp:
                     firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
                     try:
                         next_field = self._resolve_next_hedge_field(
-                            ev, firm_code, phase, traded_field)
+                            ev, firm_code, phase, traded_field, outcome=outcome)
                     except Exception:
                         next_field = None
                     if next_field and self._cell(ev.get(next_field)) in ("", "—", "-"):
@@ -7868,15 +7927,19 @@ class TradeOpssAIApp:
         if sm_field is not None:
             return sm_field
 
-        if traded_phase == "Funded" and farming_keys:
-            # A funded entry earns its qualifying-day placeholder immediately.
-            # Fail-status handling removes it later when the funded entry loses.
-            return next((field for field in farming_fields
-                         if not self._cell(ev.get(field))), None)
-
         next_idx = traded_idx + 1
         if trade_keys and next_idx < len(trade_keys) and next_idx < len(fields):
+            # Prefer the next funded blueprint cell (FT2, recovery, …). Jumping
+            # to farming here used to steal the weekday off Hedge Result N.1 for
+            # Funded Next / Flex / TopStep — placeholder vanished from the funded
+            # columns before that trade was taken, so the row looked undetected.
             return fields[next_idx]
+
+        if traded_phase == "Funded" and farming_keys:
+            # Funded sequence exhausted (or single-FT firms whose state machine
+            # did not already route above) — queue the first free farming day.
+            return next((field for field in farming_fields
+                         if not self._cell(ev.get(field))), None)
 
         if traded_phase == "Farming" and farming_keys:
             # Farming is a daily sequence, not a transition straight into the
@@ -8128,12 +8191,18 @@ class TradeOpssAIApp:
         return False
 
     def _has_taken_funded_trade1(self, ev) -> bool:
-        """True once FT1 is in progress or complete (Hedge Result 1.1), not pre-FT1 funded."""
+        """True once FT1 is in progress or complete (Hedge Result 1.1), not pre-FT1 funded.
+
+        Account #.1 / Date Started.1 only mean the funded leg exists — a row can
+        sit at Status=Not Started with TUESDAY queued on Hedge Result 1.1. Treating
+        those as "FT1 taken" falsely raises the breach floor, can mark Fail, and
+        the failed-row scrub then wipes the waiting weekday placeholder.
+        """
         if not self._on_funded_leg(ev):
             return False
-        if (self._cell_account(ev.get("Account #.1"))
-                or self._cell(ev.get("Date Started.1"))
-                or self._dashboard_payout_count(ev)):
+        # Payouts only exist after funded trading — durable FT1+ evidence when
+        # imported rows have sparse hedge cells.
+        if self._dashboard_payout_count(ev) or self._payout_marker_field(ev):
             return True
         hr1 = self._cell(ev.get("Hedge Result 1.1"))
         if hr1 and hr1 not in ("—", "-") and self._parse_day_token(hr1) is None:
@@ -8141,6 +8210,10 @@ class TradeOpssAIApp:
         # Later funded slots only exist after FT1 has been traded or queued forward.
         for i in range(2, 8):
             val = self._cell(ev.get(f"Hedge Result {i}.1"))
+            if val and val not in ("—", "-"):
+                return True
+        for field in ("Hedge Result 6", "Hedge Result 7"):
+            val = self._cell(ev.get(field))
             if val and val not in ("—", "-"):
                 return True
         return False
