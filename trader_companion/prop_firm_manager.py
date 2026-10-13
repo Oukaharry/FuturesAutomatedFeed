@@ -2496,6 +2496,90 @@ class PropFirmManager:
             "strategy_configs": {},
         }
 
+        # Tradeify247 — Tradeify's 24/7 tokenized-perps product on DXtrade
+        # (dx.tradeify247.co). Published 1-Step rules, Oct 2026: static
+        # drawdown, Daily Loss Limit is a hard breach, no min trading days,
+        # no payout lock. Verified live on the account: XYZ100/USD (Nasdaq-100
+        # perp) marginRate 0.5 (2:1), BTC/USD 0.2 (5:1), min 0.01 lot, 1 lot
+        # = $1/pt. Per-size $ figures drive DXTradeExecutor via
+        # tradeify247_rules_for_balance(); the strategy ladder/randomization
+        # spec is TBD — until then the executor uses the conservative
+        # defaults below (TP = remaining target, SL = usable daily room).
+        self.firm_blueprints["Tradeify247"] = {
+            "name": "Tradeify247",
+            "account_sizes": ["$10,000", "$25,000", "$50,000", "$100,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "platform": "DXtrade",
+            "asset_class": "perps",
+            "market": "XYZ100/USD",
+            "weekend_market": "BTC/USD",
+            "profit_split": 0.80,
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "drawdown_type": "static",
+                "daily_loss_is_hard_breach": True,
+                "min_trading_days": 0,
+                "reserve": 50.0,                 # never trade into this
+                "sizes": {
+                    10000:  {"fee": 100.0, "profit_target": 1200.0,  "daily_loss": 300.0,  "max_loss": 600.0},
+                    25000:  {"fee": 231.0, "profit_target": 3000.0,  "daily_loss": 750.0,  "max_loss": 1500.0},
+                    50000:  {"fee": 431.0, "profit_target": 6000.0,  "daily_loss": 1500.0, "max_loss": 3000.0},
+                    100000: {"fee": 838.0, "profit_target": 12000.0, "daily_loss": 3000.0, "max_loss": 6000.0},
+                },
+                "margin_rate": {"XYZ100/USD": 0.5, "SP500/USD": 0.5, "BTC/USD": 0.2},
+            },
+            "strategy_configs": {},
+        }
+
+    def tradeify247_rules_for_balance(self, starting_balance: float) -> Dict:
+        """Per-size Tradeify247 rules + derived floors for a starting balance."""
+        bp = self.firm_blueprints["Tradeify247"]
+        sizes = bp["risk_rules"]["sizes"]
+        start = float(starting_balance or 0)
+        key = min(sizes.keys(), key=lambda s: abs(s - start)) if start > 0 else 10000
+        r = dict(sizes[key])
+        r["starting_balance"] = float(key)
+        r["static_loss_floor"] = float(key) - r["max_loss"]
+        r["reserve"] = float(bp["risk_rules"]["reserve"])
+        r["reserve_floor"] = r["static_loss_floor"] + r["reserve"]
+        r["evaluation_goal"] = float(key) + r["profit_target"]
+        return r
+
+    def plan_tradeify247_attempt(self, *, equity: float, balance_sod: float,
+                                 starting_balance: float, on_funded: bool,
+                                 target_profit: Optional[float] = None) -> Dict:
+        """Conservative $ plan for one Tradeify247 trade.
+
+        TP = remaining distance to the stage target (eval: profit target;
+        funded: `target_profit` or the same profit target). SL = the smaller
+        of today's remaining daily-loss room and the room above the reserve
+        floor, so a stop-out can never be a breach.
+        """
+        r = self.tradeify247_rules_for_balance(starting_balance)
+        start = r["starting_balance"]
+        stage = "funded" if on_funded else "evaluation"
+        plan = {"stage": stage, "allowed": True, "reason": "",
+                "reserve_floor": r["reserve_floor"], "market": self.firm_blueprints["Tradeify247"]["market"]}
+        daily_room = (float(balance_sod) - r["daily_loss"]) if balance_sod else None
+        daily_room = (float(equity) - daily_room) if daily_room is not None else r["daily_loss"]
+        static_room = float(equity) - r["reserve_floor"]
+        sl_usd = min(daily_room, static_room)
+        # Keep a sliver of the daily limit for fees/slippage (hard breach).
+        sl_usd = sl_usd - r["reserve"] if sl_usd > r["reserve"] * 2 else sl_usd
+        goal = start + float(target_profit if (on_funded and target_profit) else r["profit_target"])
+        tp_usd = goal - float(equity)
+        if sl_usd <= 0:
+            plan.update(allowed=False, reason="no loss room left today / above the reserve floor")
+            return plan
+        if tp_usd <= 0:
+            plan.update(allowed=False, reason="already at or above target — request payout / pass")
+            return plan
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2),
+                    target_equity=round(goal, 2), daily_room=round(daily_room, 2),
+                    static_room=round(static_room, 2))
+        return plan
+
     # ── MyFundedPerps Elite 50K planner ─────────────────────────────────
 
     _MFP_ELITE_CODES = ("MyFundedPerps Elite", "MyFundedPerps Elite 50K",

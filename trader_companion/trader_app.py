@@ -15409,22 +15409,56 @@ class TradeOpssAIApp:
         executor = DXTradeExecutor(sess.api, code)
         m = sess.api.get_metrics(code)
         balance = float(m.get("balance") or 0)
-        # Dollar targets from the blueprint when present, else conservative
-        # defaults (TP 1% / SL 0.5% of balance) until the blueprint lands.
-        firm_code = row_data.get("firm_code") or "Tradeify247"
+        equity = float(m.get("equity") or balance)
+        ev = row_data.get("eval") or {}
+        on_funded = self._on_funded_leg(ev)
+        mgr = self.prop_firm_mgr
+        # Blueprint planner: TP = remaining to target, SL = min(daily room,
+        # room above the reserve floor). Explicit dxtrade_* overrides win.
         rules = {}
+        firm_code = row_data.get("firm_code") or "Tradeify247"
         try:
-            rules = (self.prop_firm_mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
+            rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
         except Exception:
             pass
-        tp_usd = float(rules.get("dxtrade_tp_usd") or 0) or balance * 0.01
-        sl_usd = float(rules.get("dxtrade_sl_usd") or 0) or balance * 0.005
+        start = self._tradeify247_starting_balance(row_data, balance)
+        sod = None
+        try:
+            sod = float((sess.get_min_equity(code) or {}).get("net_liq_sod") or 0) or None
+        except Exception:
+            pass
+        bplan = mgr.plan_tradeify247_attempt(
+            equity=equity, balance_sod=sod, starting_balance=start, on_funded=on_funded,
+            target_profit=rules.get("dxtrade_funded_target_usd"))
+        if not bplan.get("allowed"):
+            raise RuntimeError(f"Tradeify247 plan: {bplan.get('reason')}")
+        tp_usd = float(rules.get("dxtrade_tp_usd") or 0) or bplan["tp_usd"]
+        sl_usd = float(rules.get("dxtrade_sl_usd") or 0) or bplan["sl_usd"]
         max_margin = rules.get("dxtrade_max_margin_usd")
         plan = executor.plan_bracket(symbol, side, ref_price=ref, tp_usd=tp_usd,
                                      sl_usd=sl_usd,
                                      max_margin_usd=float(max_margin) if max_margin else None,
                                      quantity=rules.get("dxtrade_quantity"))
+        plan["blueprint"] = bplan
         return executor, code, plan
+
+    def _tradeify247_starting_balance(self, row_data, balance_fallback: float) -> float:
+        """Starting balance from the account id (1S10K… → 10,000) or the row."""
+        acct = str(row_data.get("acct_num") or "").upper()
+        for plan in ("1S", "2S", "IF"):
+            if acct.startswith(plan):
+                rest = acct[len(plan):]
+                digits = ""
+                while rest and rest[0].isdigit():
+                    digits += rest[0]
+                    rest = rest[1:]
+                if digits and rest.startswith("K"):
+                    return float(digits) * 1000.0
+        size = str((row_data.get("eval") or {}).get("Account Size") or row_data.get("acct_size") or "")
+        digits = "".join(ch for ch in size if ch.isdigit())
+        if digits:
+            return float(digits)
+        return float(balance_fallback or 0)
 
     def _execute_dxtrade_row_trade(self, side, row_data):
         """Manual BUY/SELL on a Tradeify247 row: bracket via the DXtrade API."""
@@ -15545,6 +15579,95 @@ class TradeOpssAIApp:
                 return c["account"]
         return None
 
+    # ── MyFundedPerps Elite 50K: $-ladder planner hook ──────────────────
+
+    def _is_mfp_elite_row(self, row_data) -> bool:
+        mgr = self.prop_firm_mgr
+        if not mgr or not hasattr(mgr, "is_mfp_elite_code"):
+            return False
+        ev = row_data.get("eval") or {}
+        return (mgr.is_mfp_elite_code(row_data.get("firm_code"))
+                or mgr.is_mfp_elite_code(ev.get("Prop Firm")))
+
+    @staticmethod
+    def _ny_today_str() -> str:
+        try:
+            from zoneinfo import ZoneInfo
+            return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        except Exception:
+            return datetime.utcnow().date().isoformat()
+
+    def _mfp_elite_traded_today(self, client, account_id) -> bool:
+        """True when a fill already landed in the current New York day."""
+        from trader_companion.perps_connector import unwrap
+        today = self._ny_today_str()
+        try:
+            fills = unwrap(client.list_fills(account_id=account_id)) or []
+        except Exception:
+            fills = []
+        items = fills.get("items") if isinstance(fills, dict) else fills
+        for f in items or []:
+            ts = str(f.get("filled_at") or f.get("created_at") or f.get("timestamp") or "")
+            if not ts:
+                continue
+            try:
+                from zoneinfo import ZoneInfo
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if dt.astimezone(ZoneInfo("America/New_York")).date().isoformat() == today:
+                    return True
+            except Exception:
+                if ts[:10] == today:
+                    return True
+        marker = (getattr(self, "_mfp_elite_last_attempt", {}) or {}).get(str(account_id))
+        return marker == today
+
+    def _mfp_elite_plan(self, client, acct, row_data):
+        """Resolve the Elite attempt for this account: (plan, snapshot).
+
+        Attempt index is derived from equity — losses are exactly the ladder,
+        so equity below start tells which rung we are on without counters.
+        """
+        from trader_companion.perps_connector import unwrap
+        mgr = self.prop_firm_mgr
+        snap = unwrap(client.get_account(acct["id"])) or {}
+        risk = snap.get("risk") or {}
+        equity = float(risk.get("equity") or snap.get("balance") or 0)
+        rules = mgr.firm_blueprints["MyFundedPerps Elite"]["risk_rules"]
+        start = float(rules["starting_balance"])
+        ladder = list(rules["stop_ladder"])
+        losses = max(0.0, start - equity)
+        cum, attempt_index = 0.0, 0
+        for stop in ladder:
+            if losses >= cum + stop - 1.0:   # $1 tolerance for fees/rounding
+                cum += stop
+                attempt_index += 1
+            else:
+                break
+        ev = row_data.get("eval") or {}
+        on_funded = (str(snap.get("stage") or "").lower() == "funded"
+                     or self._on_funded_leg(ev))
+        cycle_index = 0
+        try:
+            cycle_index = int(self._funded_payout_count(ev) or 0)
+        except Exception:
+            pass
+        traded_today = self._mfp_elite_traded_today(client, acct["id"])
+        plan = mgr.plan_mfp_elite_attempt(
+            equity=equity, on_funded=on_funded, attempt_index=attempt_index,
+            account_key=str(acct.get("account_number") or acct["id"]),
+            cycle_index=cycle_index, traded_today=traded_today)
+        plan["equity"] = equity
+        plan["losses_this_stage"] = losses
+        plan["account_number"] = acct.get("account_number")
+        return plan, snap
+
+    def _mark_mfp_elite_attempt(self, account_id):
+        store = getattr(self, "_mfp_elite_last_attempt", None)
+        if store is None:
+            store = {}
+            self._mfp_elite_last_attempt = store
+        store[str(account_id)] = self._ny_today_str()
+
     def _connect_perps_broker(self, firm, api_key):
         """Verify the API key and store the client as this firm's broker."""
         try:
@@ -15596,19 +15719,39 @@ class TradeOpssAIApp:
 
         market = self._perps_market_for_now()
         executor = PerpsTradeExecutor(client, account_id=acct["id"])
+        elite = self._is_mfp_elite_row(row_data)
         try:
-            snap = unwrap(client.get_account(acct["id"]))
-            risk = snap.get("risk") or {}
-            tp_usd = float(risk.get("remaining_profit") or 0) or \
-                float(snap.get("starting_balance") or 0) * 0.08
-            plan = executor.plan_bracket(market, side, tp_usd=tp_usd)
+            if elite:
+                eplan, snap = self._mfp_elite_plan(client, acct, row_data)
+                if not eplan.get("allowed"):
+                    messagebox.showinfo(
+                        "MFP Elite", f"{acct.get('account_number')}: no attempt today — "
+                                     f"{eplan.get('reason')}")
+                    self.log(f"⏭ {acct.get('account_number')}: Elite attempt skipped — "
+                             f"{eplan.get('reason')}", "WARN")
+                    return
+                tp_usd, sl_usd = eplan["tp_usd"], eplan["sl_usd"]
+                plan = executor.plan_bracket(market, side, tp_usd=tp_usd, sl_usd=sl_usd)
+                plan["elite"] = eplan
+            else:
+                snap = unwrap(client.get_account(acct["id"]))
+                risk = snap.get("risk") or {}
+                tp_usd = float(risk.get("remaining_profit") or 0) or \
+                    float(snap.get("starting_balance") or 0) * 0.08
+                plan = executor.plan_bracket(market, side, tp_usd=tp_usd)
         except Exception as exc:
             messagebox.showerror("Error", f"MyFundedPerps trade plan failed: {exc}")
             return
 
+        elite_line = ""
+        if plan.get("elite"):
+            e = plan["elite"]
+            elite_line = (f"Elite {e['stage']} attempt {e['attempt']}"
+                          + (f" — cycle T ${e['T']:,.0f} → payout ${e['payout_cash']:,.0f}"
+                             if e.get("T") else "") + "\n")
         confirm = messagebox.askyesno(
             "Confirm Trade",
-            f"{side.upper()} {plan['size']} {market}\n"
+            f"{elite_line}{side.upper()} {plan['size']} {market}\n"
             f"Account:  {acct.get('account_number')} (equity ${plan['equity']:,.2f})\n"
             f"Leverage: {plan['leverage']:g}x\n"
             f"TP {plan['tp_price']} (+{plan['tp_pts']} pts = +${plan['tp_usd']:,.0f})\n"
@@ -15634,6 +15777,8 @@ class TradeOpssAIApp:
                 if status == "rejected":
                     raise RuntimeError(
                         f"order rejected: {order.get('reject_reason') or 'unknown'}")
+                if plan.get("elite"):
+                    self._mark_mfp_elite_attempt(acct["id"])
                 self.log(f"✅ MyFundedPerps {side.upper()} filled @ "
                          f"{order.get('fill_price')} — bracket live "
                          f"(TP {final_plan['tp_price']} / SL {final_plan['sl_price']})")
@@ -15701,12 +15846,25 @@ class TradeOpssAIApp:
                 _ulog(f"❌ No MyFundedPerps account matching {acct_num}", "ERROR")
                 return False
             executor = PerpsTradeExecutor(client, account_id=acct["id"])
-            snap = unwrap(client.get_account(acct["id"]))
-            risk = snap.get("risk") or {}
-            tp_usd = float(risk.get("remaining_profit") or 0) or \
-                float(snap.get("starting_balance") or 0) * 0.08
             market = self._perps_market_for_now()
-            order, plan = executor.enter_bracket(market, side, tp_usd=tp_usd)
+            if self._is_mfp_elite_row(row_data):
+                eplan, _snap = self._mfp_elite_plan(client, acct, row_data)
+                if not eplan.get("allowed"):
+                    _ulog(f"⏭ {acct_num}: Elite attempt skipped — {eplan.get('reason')}", "WARN")
+                    return False
+                _ulog(f"🎯 {acct_num}: Elite {eplan['stage']} attempt {eplan['attempt']} — "
+                      f"SL ${eplan['sl_usd']:,.0f} / TP ${eplan['tp_usd']:,.0f}"
+                      + (f" (cycle T ${eplan['T']:,.0f})" if eplan.get("T") else ""))
+                order, plan = executor.enter_bracket(
+                    market, side, tp_usd=eplan["tp_usd"], sl_usd=eplan["sl_usd"])
+                if str(order.get("status") or "").lower() != "rejected":
+                    self._mark_mfp_elite_attempt(acct["id"])
+            else:
+                snap = unwrap(client.get_account(acct["id"]))
+                risk = snap.get("risk") or {}
+                tp_usd = float(risk.get("remaining_profit") or 0) or \
+                    float(snap.get("starting_balance") or 0) * 0.08
+                order, plan = executor.enter_bracket(market, side, tp_usd=tp_usd)
             if str(order.get("status") or "").lower() == "rejected":
                 _ulog(f"❌ {acct_num}: perps order rejected — "
                       f"{order.get('reject_reason') or 'unknown'}", "ERROR")
