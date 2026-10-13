@@ -1723,6 +1723,24 @@ BREACH_SLACK_NOTIFICATIONS_PAUSED = (
     not in ('0', 'false', 'no')
 )
 
+# Per-admin mute (no hierarchy.json edit required). Hardcoded names always
+# blocked; add more via BREACH_SLACK_BLOCKED_ADMINS=Name1,Name2 in .env.
+# Detection continues; purchase Slack (channel / DM / webhook fallback) is
+# skipped and batches are marked sent so they do not retry into Traders Hub.
+_BREACH_SLACK_BLOCKED_ADMINS = {
+    'dennis muthee',
+} | {
+    n.strip().lower()
+    for n in str(os.environ.get('BREACH_SLACK_BLOCKED_ADMINS', '')).split(',')
+    if n.strip()
+}
+
+
+def _admin_breach_alerts_blocked(admin_name):
+    """True when this admin must not receive purchase Slack alerts."""
+    name = str(admin_name or '').strip().lower()
+    return bool(name) and name in _BREACH_SLACK_BLOCKED_ADMINS
+
 # Row "Prop Firm" labels vary (plans, add-ons); alerts use the short name.
 _BREACH_FIRM_SHORT_NAMES = (
     # Builder is its own plan (cap 1). It must be matched before plain MFFU,
@@ -2742,6 +2760,16 @@ def _send_admin_breach_alert(client_id, breaches):
         _breach_firm_short_name(breach.get('prop_firm'))
         for breach in breaches if isinstance(breach, dict)
     )
+    if not counts:
+        return 0
+    if _admin_breach_alerts_blocked(admin):
+        app.logger.warning(
+            f"🚨 {client_id}: suppressed {len(breaches)} breach Slack "
+            f"notification(s) — admin {admin or '(unknown)'} blocked"
+        )
+        # Treat as delivered so the flush marks accounts sent and does not
+        # retry or fall back to the shared Traders Hub webhook.
+        return len(counts)
     mention = f"<@{slack_id}>" if slack_id else f"@{admin or 'admin'}"
     client_label = str(client_id or '').strip()
     sent = 0
