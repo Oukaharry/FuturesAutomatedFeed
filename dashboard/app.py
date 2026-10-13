@@ -1759,6 +1759,9 @@ _BREACH_FIRM_SHORT_NAMES = (
     # in the Tradeify (Tradovate) bucket.
     ('tradeify247', 'Tradeify247'),
     ('tradeify 247', 'Tradeify247'),
+    ('vest capital', 'Vest Capital'),
+    ('vestcapital', 'Vest Capital'),
+    ('vest markets', 'Vest Capital'),
     ('tradeify', 'Tradeify'),
     ('topstep', 'Topstep'),
     ('lucid', 'Lucid'),

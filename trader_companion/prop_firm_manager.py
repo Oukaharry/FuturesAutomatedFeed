@@ -91,6 +91,10 @@ class PropFirmManager:
         "MFP Elite": "MyFundedPerps",
         "Tradeify247": "Tradeify247",
         "Tradeify 247": "Tradeify247",
+        "Vest Capital": "Vest Capital",
+        "VestCapital": "Vest Capital",
+        "Vest Markets": "Vest Capital",
+        "Vest": "Vest Capital",
     }
 
     def __init__(self):
@@ -2516,6 +2520,107 @@ class PropFirmManager:
             "strategy_configs": {},
         }
 
+        # Vest Capital — Vest Markets' on-chain perps prop program
+        # (next.vestmarkets.com, REST api-gateway.hz.vestmarkets.com). Verified
+        # live on a $5K "Silver" evaluation, Oct 2026: 1-step, +10% target,
+        # 3% daily loss (hard floor, resets midnight NY), 6% static max
+        # drawdown, 5x leverage cap on Capital accounts, 80/20 split.
+        # NDX-USD-PERP sizeDecimals 4 → min 0.0001; 1 unit = $1/pt. The live
+        # account record (/v3/capital/accounts/active) is authoritative for
+        # floors; these percentages are the fallback when it is unavailable.
+        self.firm_blueprints["Vest Capital"] = {
+            "name": "Vest Capital",
+            "account_sizes": ["$500", "$1,000", "$2,500", "$5,000", "$10,000", "$25,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "platform": "Vest",
+            "asset_class": "perps",
+            "market": "NDX-USD-PERP",
+            "weekend_market": "BTC-PERP",
+            "profit_split": 0.80,
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "drawdown_type": "static",
+                "daily_loss_is_hard_breach": True,
+                "min_trading_days": 0,
+                "reserve": 10.0,                 # never trade into this
+                "profit_target_pct": 0.10,
+                "daily_loss_pct": 0.03,
+                "max_drawdown_pct": 0.06,
+                "max_leverage": 5.0,
+                "sizes": [500, 1000, 2500, 5000, 10000, 25000],
+            },
+            "strategy_configs": {},
+        }
+
+    def vest_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
+        """Vest Capital floors/targets for a starting balance.
+
+        `live` is the /v3/capital/accounts/active record; when present its
+        target_equity / max_drawdown_limit / daily_loss_floor override the
+        percentage defaults.
+        """
+        bp = self.firm_blueprints["Vest Capital"]
+        rr = bp["risk_rules"]
+        live = live or {}
+        start = float(live.get("initial_capital") or starting_balance or 0)
+        if start <= 0:
+            start = float(min(rr["sizes"], key=lambda s: abs(s - float(starting_balance or 0))))
+        r = {
+            "starting_balance": start,
+            "profit_target": start * rr["profit_target_pct"],
+            "daily_loss": start * rr["daily_loss_pct"],
+            "max_loss": start * rr["max_drawdown_pct"],
+            "max_leverage": float(live.get("max_leverage") or rr["max_leverage"]),
+            "reserve": float(rr["reserve"]),
+        }
+        r["evaluation_goal"] = float(live.get("target_equity") or (start + r["profit_target"]))
+        r["profit_target"] = r["evaluation_goal"] - start
+        r["static_loss_floor"] = float(live.get("max_drawdown_limit") or (start - r["max_loss"]))
+        r["max_loss"] = start - r["static_loss_floor"]
+        r["daily_loss_floor"] = float(live.get("daily_loss_floor") or 0) or None
+        r["reserve_floor"] = r["static_loss_floor"] + r["reserve"]
+        return r
+
+    def plan_vest_attempt(self, *, equity: float, balance_sod: Optional[float],
+                          starting_balance: float, on_funded: bool,
+                          live: Optional[Dict] = None,
+                          target_profit: Optional[float] = None) -> Dict:
+        """Conservative $ plan for one Vest Capital trade.
+
+        TP = remaining distance to the stage target. SL = the smaller of
+        today's remaining daily-loss room (from the live daily_loss_floor when
+        known) and the room above the reserve floor, minus a fee sliver.
+        """
+        r = self.vest_rules_for_balance(starting_balance, live=live)
+        start = r["starting_balance"]
+        stage = "funded" if on_funded else "evaluation"
+        plan = {"stage": stage, "allowed": True, "reason": "",
+                "reserve_floor": r["reserve_floor"], "market": self.firm_blueprints["Vest Capital"]["market"],
+                "leverage": r["max_leverage"]}
+        if r.get("daily_loss_floor"):
+            daily_room = float(equity) - r["daily_loss_floor"]
+        elif balance_sod:
+            daily_room = float(equity) - (float(balance_sod) - r["daily_loss"])
+        else:
+            daily_room = r["daily_loss"]
+        static_room = float(equity) - r["reserve_floor"]
+        sl_usd = min(daily_room, static_room)
+        if sl_usd > r["reserve"] * 2:
+            sl_usd -= r["reserve"]
+        goal = start + float(target_profit) if (on_funded and target_profit) else r["evaluation_goal"]
+        tp_usd = goal - float(equity)
+        if sl_usd <= 0:
+            plan.update(allowed=False, reason="no loss room left today / above the reserve floor")
+            return plan
+        if tp_usd <= 0:
+            plan.update(allowed=False, reason="already at or above target — request payout / pass")
+            return plan
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2),
+                    target_equity=round(goal, 2), daily_room=round(daily_room, 2),
+                    static_room=round(static_room, 2))
+        return plan
+
     def tradeify247_rules_for_balance(self, starting_balance: float) -> Dict:
         """Per-size Tradeify247 rules + derived floors for a starting balance."""
         bp = self.firm_blueprints["Tradeify247"]
@@ -2717,6 +2822,15 @@ class PropFirmManager:
                     return True
         return False
 
+    @staticmethod
+    def _looks_like_vest_account(username: str) -> bool:
+        """True for Vest account ids, which are RFC-4122 UUIDs."""
+        s = str(username or "").strip().lower()
+        parts = s.split("-")
+        if len(parts) != 5 or [len(p) for p in parts] != [8, 4, 4, 4, 12]:
+            return False
+        return all(ch in "0123456789abcdef" for ch in s.replace("-", ""))
+
     def detect_prop_firm(self, username: str) -> Optional[str]:
         """Detect prop firm based on username prefix. Returns None if unrecognized."""
         if not username or (isinstance(username, str) and len(username) < 4):
@@ -2735,6 +2849,9 @@ class PropFirmManager:
         # 2S50K…, IF25K… — no futures prefix starts with a digit or "IF".
         elif self._looks_like_tradeify247_account(username):
             return "Tradeify247"
+        # Vest Capital accounts are UUIDs (875c7864-2672-5a3f-890b-a9f594ef1c32).
+        elif self._looks_like_vest_account(username):
+            return "Vest Capital"
         elif any(prefix.startswith(var) for var in ["ELTD", "TDFU"]):
             return "Trade Day"
         elif any(prefix.startswith(var) for var in ["FNFT", "FTFN"]):

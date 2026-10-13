@@ -1653,6 +1653,7 @@ class TradeOpssAIApp:
         "LucidMaxx":        "#8B5CF6",
         "MyFundedPerps":    "#F59E0B",
         "Tradeify247":      "#06B6D4",   # cyan — DXtrade 24/7 perps, distinct from Tradeify teal
+        "Vest Capital":     "#A3E635",   # lime — Vest Markets on-chain perps
     }
 
     PHASE_BADGE = {
@@ -6405,6 +6406,10 @@ class TradeOpssAIApp:
         "Tradeify247": "Tradeify247",
         "Tradeify 247": "Tradeify247",
         "Tradeify247 (DXtrade)": "Tradeify247",
+        "Vest Capital": "Vest Capital",
+        "VestCapital": "Vest Capital",
+        "Vest Markets": "Vest Capital",
+        "Vest": "Vest Capital",
     }
 
     # ── Broker login sharing ──────────────────────────────────────────
@@ -6450,6 +6455,11 @@ class TradeOpssAIApp:
         "tradeify247": "Tradeify247",
         "tradeify 247": "Tradeify247",
         "tradeify247 (dxtrade)": "Tradeify247",
+        # Vest Capital: token-file login, no broker UI.
+        "vest capital": "Vest Capital",
+        "vestcapital": "Vest Capital",
+        "vest markets": "Vest Capital",
+        "vest": "Vest Capital",
     }
 
     # Families whose live accounts sit behind a SEPARATE broker login, so they
@@ -10226,6 +10236,12 @@ class TradeOpssAIApp:
             self._execute_dxtrade_row_trade(side, row_data)
             return
 
+        # ── Vest Capital: Vest REST bracket — no Tradovate/MT5 ──
+        if self._is_vest_firm(row_data.get("firm_code")) or self._is_vest_firm(
+                (row_data.get("eval") or {}).get("Prop Firm")):
+            self._execute_vest_row_trade(side, row_data)
+            return
+
         firm_code = row_data["firm_code"]
         phase_key = row_data["phase_key"]
         acct_size = row_data["acct_size"]
@@ -12451,6 +12467,8 @@ class TradeOpssAIApp:
                     elif self._is_dxtrade_firm(firm_name):
                         trado_accounts = [c.split(":", 1)[-1]
                                           for c in broker_account.account_codes()]
+                    elif self._is_vest_firm(firm_name):
+                        trado_accounts = list(broker_account.account_codes())
                     else:
                         trado_accounts = broker_account.get_all_accounts()
                 except Exception as e:
@@ -12628,6 +12646,8 @@ class TradeOpssAIApp:
                         firm_sides.setdefault(family_key, p_side)
                     if self._is_dxtrade_firm(firm_code) or self._is_dxtrade_firm(firm_name):
                         ok = self._auto_execute_dxtrade_row(row_data, p_side)
+                    elif self._is_vest_firm(firm_code) or self._is_vest_firm(firm_name):
+                        ok = self._auto_execute_vest_row(row_data, p_side)
                     else:
                         ok = self._auto_execute_perps_row(row_data, p_side)
                     with total_success:
@@ -13333,6 +13353,31 @@ class TradeOpssAIApp:
                              f"dashboard Prop Firm Accounts tab to connect", "WARN")
                 continue
 
+            # ── Vest Capital: persisted token chain — no browser, no password ──
+            if self._is_vest_firm(display_firm):
+                token_file = (pa.get("vest_token_file") or "").strip() or None
+                vest_acct = (pa.get("vest_account_id") or "").strip() or None
+                try:
+                    from trader_companion.vest_connector import default_token_file as _vest_tf
+                except ImportError:
+                    from vest_connector import default_token_file as _vest_tf
+                have_session = os.path.exists(token_file or _vest_tf())
+                self._broker_connections[firm] = {
+                    "account": existing_account,
+                    "row_frame": None,
+                    "creds_source": "token_file" if have_session else "missing",
+                }
+                if existing_account:
+                    auto_count += 1
+                elif have_session:
+                    auto_count += 1
+                    threading.Thread(target=self._connect_vest_broker,
+                                     args=(firm, token_file, vest_acct), daemon=True).start()
+                else:
+                    self.log(f"🔑 {display_firm}: no Vest session — run "
+                             f"`python -m trader_companion.vest_login --email …` once", "WARN")
+                continue
+
             if CTK_AVAILABLE:
                 row = ctk.CTkFrame(self._broker_rows_frame, fg_color="#0A1220",
                                    corner_radius=4, height=36,
@@ -13492,6 +13537,13 @@ class TradeOpssAIApp:
                 return
             threading.Thread(target=self._connect_dxtrade_broker,
                              args=(firm_name, user, pwd), daemon=True).start()
+            return
+
+        if self._is_vest_firm(firm_name):
+            if conn.get("account"):
+                return
+            threading.Thread(target=self._connect_vest_broker,
+                             args=(firm_name,), daemon=True).start()
             return
 
         # Platform follows the resolved blueprint, not just a substring of
@@ -15250,6 +15302,8 @@ class TradeOpssAIApp:
         # 1. Literal heuristic — fast path, preserves prior behaviour.
         if self._is_dxtrade_firm(name):
             return "DXtrade"
+        if self._is_vest_firm(name):
+            return "Vest"
         if "topstep" in name.lower():
             return "TopStepX"
         if "alphafutures" in name.lower() or "alpha futures" in name.lower():
@@ -15351,7 +15405,7 @@ class TradeOpssAIApp:
 
     def _is_api_only_firm(self, name) -> bool:
         """Firms whose execution never touches Tradovate/TopStepX/MT5 hedging."""
-        return self._is_perps_firm(name) or self._is_dxtrade_firm(name)
+        return self._is_perps_firm(name) or self._is_dxtrade_firm(name) or self._is_vest_firm(name)
 
     def _dxtrade_symbol_for_now(self) -> str:
         env = os.environ.get("DXTRADE_SYMBOL")
@@ -15578,6 +15632,162 @@ class TradeOpssAIApp:
             if self._is_perps_firm(f) and c.get("account"):
                 return c["account"]
         return None
+
+    # ── Vest Capital (Vest Markets: token-file auth + REST bracket) ──────
+
+    def _is_vest_firm(self, name) -> bool:
+        compact = str(name or "").lower().replace(" ", "").replace("_", "")
+        return compact.startswith("vest")
+
+    def _vest_client(self):
+        for f, c in (getattr(self, "_broker_connections", {}) or {}).items():
+            if self._is_vest_firm(f) and c.get("account"):
+                return c["account"]
+        return None
+
+    def _connect_vest_broker(self, firm, token_file=None, account_id=None):
+        """Headless Vest login from the persisted token chain; store as broker."""
+        try:
+            from trader_companion.vest_connector import VestClient
+        except ImportError:
+            from vest_connector import VestClient
+        try:
+            client = VestClient(token_file=token_file, account_id=account_id)
+            if not client.logged_in:
+                raise RuntimeError(
+                    f"no Vest session at {client.token_file} — run "
+                    "`python -m trader_companion.vest_login --email …` once")
+            client.login()
+            cap = client.capital_account()
+            conn = self._broker_connections.setdefault(firm, {})
+            conn["account"] = client
+            self.root.after(0, lambda: self.log(
+                f"🔑 {firm} connected via Vest API — account {client.account_id} "
+                f"(${client.balance():,.2f}, {cap.get('plan_name') or 'plan n/a'})"))
+            self.root.after(0, self._start_broker_idle_keepalive)
+            self.root.after(0, self._start_status_poll)
+            self.root.after(0, self._reconcile_connected_broker_history)
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"❌ {firm} Vest connection failed: {e}", "ERROR"))
+
+    def _vest_plan_for_row(self, client, row_data, side):
+        """(executor, account_id, plan) for a dashboard row, or raises."""
+        try:
+            from trader_companion.vest_connector import VestExecutor, symbol_for_now
+        except ImportError:
+            from vest_connector import VestExecutor, symbol_for_now
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        code = client._code_for(acct_num)
+        if not code:
+            raise RuntimeError(f"no Vest account matching {acct_num} (have {client.account_id})")
+        symbol = symbol_for_now(kenya_now().weekday())
+        executor = VestExecutor(client)
+        cap = client.capital_account()
+        balance = client.balance()
+        ev = row_data.get("eval") or {}
+        on_funded = self._on_funded_leg(ev) or str(cap.get("stage")) == "2"
+        mgr = self.prop_firm_mgr
+        rules = {}
+        try:
+            rules = (mgr.firm_blueprints.get("Vest Capital") or {}).get("rules") or {}
+        except Exception:
+            pass
+        sod = None
+        try:
+            sod = float((client.get_min_equity(code) or {}).get("net_liq_sod") or 0) or None
+        except Exception:
+            pass
+        bplan = mgr.plan_vest_attempt(
+            equity=balance, balance_sod=sod,
+            starting_balance=float(cap.get("initial_capital") or balance),
+            on_funded=on_funded, live=cap,
+            target_profit=rules.get("vest_funded_target_usd"))
+        if not bplan.get("allowed"):
+            raise RuntimeError(f"Vest plan: {bplan.get('reason')}")
+        tp_usd = float(rules.get("vest_tp_usd") or 0) or bplan["tp_usd"]
+        sl_usd = float(rules.get("vest_sl_usd") or 0) or bplan["sl_usd"]
+        max_margin = rules.get("vest_max_margin_usd")
+        plan = executor.plan_bracket(
+            symbol, side, tp_usd=tp_usd, sl_usd=sl_usd,
+            leverage=rules.get("vest_leverage") or bplan.get("leverage"),
+            max_margin_usd=float(max_margin) if max_margin else None,
+            quantity=rules.get("vest_quantity"))
+        plan["blueprint"] = bplan
+        return executor, code, plan
+
+    def _execute_vest_row_trade(self, side, row_data):
+        """Manual BUY/SELL on a Vest Capital row: bracket via the Vest API."""
+        client = self._vest_client()
+        if client is None:
+            messagebox.showerror("Error", "Vest Capital is not connected.\n"
+                                 "Connect it on the Brokers panel first.")
+            return
+        try:
+            executor, code, plan = self._vest_plan_for_row(client, row_data, side)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Vest trade plan failed: {exc}")
+            return
+        confirm = messagebox.askyesno(
+            "Confirm Trade",
+            f"{side.upper()} {plan['quantity_str']} {plan['symbol']} @~{plan['ref_price']}\n"
+            f"Account:  {code[:8]}… (balance ${plan['balance']:,.2f})\n"
+            f"Leverage: {plan['leverage']:g}x  margin ≈ ${plan['margin']:,.2f}\n"
+            f"TP {plan['tp_price_str']} (+{plan['tp_pts']} pts = +${plan['tp_usd']:,.0f})\n"
+            f"SL {plan['sl_price_str']} (-{plan['sl_pts']} pts = -${plan['sl_usd']:,.0f})\n\nProceed?")
+        if not confirm:
+            return
+        for btn_key in ("buy_btn", "sell_btn"):
+            try:
+                row_data[btn_key].configure(state='disabled', text="...")
+            except Exception:
+                pass
+        self.log(f"⚡ {side.upper()} {plan['quantity_str']} {plan['symbol']} → Vest "
+                 f"{code[:8]}… (TP +${plan['tp_usd']:,.0f} / SL -${plan['sl_usd']:,.0f})")
+
+        def _do():
+            try:
+                result = executor.execute(plan)
+                pos = result.get("position") or {}
+                self.log(f"✅ Vest {side.upper()} filled @ {pos.get('openPrice')} — "
+                         f"bracket live (TP {plan['tp_price_str']} / SL {plan['sl_price_str']})")
+                self._after_vest_fill(row_data, code, plan)
+            except Exception as exc:
+                self.log(f"❌ Vest trade failed: {exc}", "ERROR")
+                def _reenable():
+                    for bk, label in (("buy_btn", "BUY"), ("sell_btn", "SELL")):
+                        try:
+                            row_data[bk].configure(state='normal', text=label)
+                        except Exception:
+                            pass
+                self.root.after(0, _reenable)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _auto_execute_vest_row(self, row_data, side) -> bool:
+        """Headless Vest bracket for auto-trade; True when filled."""
+        acct_num = str(row_data.get("acct_num") or "").strip()
+        def _ulog(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, l=level: self.log(m, l))
+        client = self._vest_client()
+        if client is None:
+            _ulog(f"❌ {acct_num}: Vest Capital not connected", "ERROR")
+            return False
+        try:
+            executor, code, plan = self._vest_plan_for_row(client, row_data, side)
+            result = executor.execute(plan)
+            pos = result.get("position") or {}
+            _ulog(f"✅ {acct_num}: {side.upper()} {plan['quantity_str']} {plan['symbol']} filled @ "
+                  f"{pos.get('openPrice')} — TP {plan['tp_price_str']} (+${plan['tp_usd']:,.0f}) "
+                  f"/ SL {plan['sl_price_str']} (-${plan['sl_usd']:,.0f})")
+            self.root.after(0, lambda: self._after_vest_fill(row_data, code, plan))
+            return True
+        except Exception as exc:
+            _ulog(f"❌ {acct_num}: Vest trade failed: {exc}", "ERROR")
+            return False
+
+    def _after_vest_fill(self, row_data, code, plan):
+        """Same bookkeeping as a DXtrade fill: In Progress, breach floor, drop row."""
+        self._after_dxtrade_fill(row_data, code, plan)
 
     # ── MyFundedPerps Elite 50K: $-ladder planner hook ──────────────────
 

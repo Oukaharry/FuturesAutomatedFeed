@@ -5990,6 +5990,7 @@
                         'alphafutures': 'Alpha Futures', 'lucid': 'Lucid', 'lucidmaxx': 'LucidMaxx',
                         'myfundedperps': 'MyFundedPerps', 'myfundedperpetuals': 'MyFundedPerps',
                         'tradeify247': 'Tradeify247', 'tradeify247dxtrade': 'Tradeify247',
+                        'vestcapital': 'Vest Capital', 'vestmarkets': 'Vest Capital', 'vest': 'Vest Capital',
                         'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
                         'fundedfuturesfamily': 'Funded Futures Family', 'fff': 'Funded Futures Family',
                         'goatfunded': 'Goat Funded Futures', 'goatfundedfutures': 'Goat Funded Futures', 'gff': 'Goat Funded Futures',
@@ -6707,7 +6708,7 @@
                 // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
                 const firms = [
                     'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay',
-                    'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'
+                    'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6731,8 +6732,12 @@
                     const isPerpsFirm = (acc.prop_firm || '') === 'MyFundedPerps';
                     // DXtrade firm: same two cells, but they are the DXtrade terminal login
                     const isDxFirm = (acc.prop_firm || '') === 'Tradeify247';
-                    const userPh = isDxFirm ? 'DXtrade username (tradeify247-…)' : 'Username';
-                    const passPh = isDxFirm ? 'DXtrade password' : 'Password';
+                    // Vest: login is a token file created once by vest_login; cells hold the Privy email
+                    const isVestFirm = (acc.prop_firm || '') === 'Vest Capital';
+                    const userPh = isDxFirm ? 'DXtrade username (tradeify247-…)'
+                                 : isVestFirm ? 'Vest login email (token via vest_login)' : 'Username';
+                    const passPh = isDxFirm ? 'DXtrade password'
+                                 : isVestFirm ? 'n/a — session token file' : 'Password';
                     const credentialCells = isPerpsFirm ? `
                         <td colspan="2">
                             <input type="text" class="cell-input" style="width:100%" 
@@ -7912,7 +7917,7 @@
 
         const dropdownOptions = {
             // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
-            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -10252,7 +10257,7 @@
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
         // Daily summaries must still cover existing legacy FundedNext rows (only removed from selection dropdowns)
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};
