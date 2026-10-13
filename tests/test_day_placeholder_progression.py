@@ -256,6 +256,22 @@ def test_confirmed_funded_breach_replaces_stale_pass_status():
     assert row["Status"] == "Fail"
 
 
+def test_challenge_breach_alert_is_not_held_for_other_accounts():
+    app = _scrub_app()
+    app._pending_breach_alerts = []
+    app._held_challenge_breaches = {}
+    app._record_breach_alert(
+        {"Account #": "Apex-123", "Prop Firm": "Apex"},
+        "Apex",
+        "Challenge",
+        18500.0,
+        20000.0,
+    )
+
+    assert app._pending_breach_alerts[0]["account"] == "Apex-123"
+    assert app._held_challenge_breaches == {}
+
+
 def test_tradeify_evaluation_primary_placeholder_is_not_filtered_as_funded():
     app = _scrub_app()
     row = {

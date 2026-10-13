@@ -85,6 +85,41 @@ def kenya_today():
 TRADING_SESSION_START_HOUR = 1
 TRADING_SESSION_END_HOUR = 20
 
+AUTO_WAKE_START_MINUTE = 3 * 60
+AUTO_WAKE_END_MINUTE = 8 * 60  # exclusive; last selectable minute is 07:59
+AUTO_WAKE_AUTH_JITTER_MINUTES = 10
+
+
+def randomized_auto_wake_time(now, selected_minute=None):
+    """Pick a daily EAT wake; authentication during the window starts shortly."""
+    day = now.date()
+    if now.hour >= 8:
+        day += timedelta(days=1)
+        first_minute = AUTO_WAKE_START_MINUTE
+        last_minute = AUTO_WAKE_END_MINUTE - 1
+    elif now.hour >= 3:
+        first_minute = now.hour * 60 + now.minute
+        last_minute = min(
+            AUTO_WAKE_END_MINUTE - 1,
+            first_minute + AUTO_WAKE_AUTH_JITTER_MINUTES,
+        )
+        if first_minute >= AUTO_WAKE_END_MINUTE:
+            day += timedelta(days=1)
+            first_minute = AUTO_WAKE_START_MINUTE
+            last_minute = AUTO_WAKE_END_MINUTE - 1
+    else:
+        first_minute = AUTO_WAKE_START_MINUTE
+        last_minute = AUTO_WAKE_END_MINUTE - 1
+
+    minute = (random.randint(first_minute, last_minute)
+              if selected_minute is None else int(selected_minute))
+    if not first_minute <= minute <= last_minute:
+        raise ValueError("selected wake minute is outside the 03:00–08:00 window")
+    return now.replace(
+        year=day.year, month=day.month, day=day.day,
+        hour=minute // 60, minute=minute % 60, second=0, microsecond=0,
+    )
+
 
 # ── MT5 trade-comment helper ─────────────────────────────────────────
 # `MqlTradeRequest.comment` in MetaTrader 5 is a 32-byte char[] — only
@@ -1726,6 +1761,13 @@ class TradeOpssAIApp:
         self._auto_trade_scheduled_dt = None
         self._auto_trade_waiting_gate = False
         self._planned_trade_configs = {}
+        self._auto_wake_stop = threading.Event()
+        self._auto_wake_scheduler_started = False
+        self._auto_wake_state = None
+        self._auto_wake_pending_date = None
+        self._auto_wake_attempt_date = None
+        self._auto_wake_last_notice = None
+        self._last_trade_scan_succeeded = False
 
         # Trading engine state
         self.trading_api = None
@@ -1880,6 +1922,7 @@ class TradeOpssAIApp:
         self.client_email_entry.delete(0, tk.END)
         self.client_email_entry.insert(0, email)
         self.root.after(200, self.lookup_client)
+        self._start_auto_wake_scheduler()
         
     # ── Helper: create a section card ──
     def _section_card(self, parent, title="", icon="", **kw):
@@ -6717,17 +6760,9 @@ class TradeOpssAIApp:
         }
         if reason_code:
             payload["reason_code"] = reason_code
-        if str(phase) == "Challenge":
-            # One ping per firm once every challenge account has closed — not
-            # one per breach as they land.
-            if not hasattr(self, "_held_challenge_breaches"):
-                self._held_challenge_breaches = {}
-            family = self._breach_hold_family(payload["prop_firm"])
-            self._held_challenge_breaches.setdefault(family, []).append(payload)
-            self.log(f"\U0001f6a8 {account}: challenge breach held \u2014 waiting for all "
-                     f"{payload['prop_firm']} challenge accounts to close", "WARN")
-        else:
-            self._pending_breach_alerts.append(payload)
+        # Single-account close wins immediately. One challenge account breaching
+        # must not wait behind the rest of the firm's challenge batch.
+        self._pending_breach_alerts.append(payload)
         if reason_code == "dashboard_vanish":
             self.log(f"🚨 {account}: {phase} breach — account removed from "
                      f"dashboard after trading", "ERROR")
@@ -6762,14 +6797,15 @@ class TradeOpssAIApp:
             return
         self._pending_breach_alerts = list(state.get("pending") or [])
         self._breach_alerts_sent = set(state.get("sent_keys") or [])
-        self._held_challenge_breaches = dict(state.get("held_challenge") or {})
+        # Challenge breaches are now sent immediately instead of being held for
+        # the rest of the firm's batch. Ignore stale hold state from older runs.
+        self._held_challenge_breaches = {}
         self._pre_trade_balances = dict(state.get("pre_trade_balances") or {})
         self._pending_day_cell_marks = list(state.get("day_cell_marks") or [])
-        if self._pending_breach_alerts or self._held_challenge_breaches:
-            held_n = sum(len(v) for v in self._held_challenge_breaches.values())
+        if self._pending_breach_alerts:
             try:
                 self.log(f"🚨 Restored breach state: {len(self._pending_breach_alerts)} "
-                         f"pending, {held_n} held challenge alert(s)")
+                         f"pending alert(s)")
             except Exception:
                 pass
 
@@ -6942,28 +6978,25 @@ class TradeOpssAIApp:
         return changed
 
     def _release_held_breach_alerts(self, evaluations):
-        """Queue held challenge breaches once their firm's accounts all closed.
+        """Flush any stale challenge holds immediately instead of waiting for batch closure.
 
-        After 20:00 EAT the session is over, so anything still held flushes
-        regardless — an alert must never survive to the next day unsent.
+        Single-account breaches should trigger purchase alerts as soon as the
+        account fails; the old waiting-for-all-accounts behavior is removed.
         """
         held = getattr(self, "_held_challenge_breaches", None)
         if not held:
             return
-        session_over = kenya_now().hour >= TRADING_SESSION_END_HOUR
         for family in list(held.keys()):
             alerts = held.get(family) or []
             if not alerts:
                 held.pop(family, None)
                 continue
-            if not session_over and self._challenge_accounts_still_pending(evaluations, family):
-                continue
             self._pending_breach_alerts.extend(alerts)
             held.pop(family, None)
-            self._save_breach_state()
             firm = alerts[0].get("prop_firm", family)
-            self.log(f"🚨 Releasing {len(alerts)} held {firm} challenge breach "
-                     f"alert(s) — all challenge accounts closed", "WARN")
+            self.log(f"🚨 Releasing {len(alerts)} stale {firm} challenge breach "
+                     f"alert(s) immediately", "WARN")
+        self._save_breach_state()
 
     def _challenge_accounts_still_pending(self, evaluations, family):
         """True while any live challenge account of this firm has not closed.
@@ -9240,6 +9273,7 @@ class TradeOpssAIApp:
 
     def _load_active_trades(self):
         """Fetch evaluations from dashboard and populate the active trades list."""
+        self._last_trade_scan_succeeded = False
         email = self.client_email_entry.get().strip()
         dashboard_url = self.url_entry.get().strip().rstrip('/')
 
@@ -9275,6 +9309,7 @@ class TradeOpssAIApp:
                     self.root.after(0, lambda: self.trades_count_var.set("Load failed"))
                     return
                 data = r.json()
+                self._last_trade_scan_succeeded = data.get("status") == "success"
                 evaluations = data.get("evaluations", [])
                 self._last_dashboard_evaluations = list(evaluations)
 
@@ -9412,6 +9447,8 @@ class TradeOpssAIApp:
                 self.root.after(0, lambda: self.trades_count_var.set("Load failed"))
             finally:
                 self.root.after(0, lambda: self.load_trades_btn.configure(state='normal'))
+                if getattr(self, "_auto_wake_pending_date", None):
+                    self.root.after(0, self._auto_wake_after_scan)
 
         threading.Thread(target=_do_load, daemon=True).start()
 
@@ -10690,6 +10727,208 @@ class TradeOpssAIApp:
         else:
             self._start_auto_trade()
 
+    _AUTO_WAKE_POLL_SEC = 15
+    _AUTO_WAKE_RESCAN_SEC = 60
+
+    def _auto_wake_state_path(self):
+        return os.path.join(os.path.dirname(__file__), "auto_wake_state.json")
+
+    def _save_auto_wake_state(self):
+        state = getattr(self, "_auto_wake_state", None)
+        if not isinstance(state, dict):
+            return
+        path = self._auto_wake_state_path()
+        temp_path = path + ".tmp"
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            os.replace(temp_path, path)
+        except Exception as exc:
+            self.log(f"⚠ Auto-wake schedule state could not be saved: {exc}", "WARN")
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+
+    def _ensure_auto_wake_schedule(self, now=None):
+        """Load or create this client's once-daily randomized EAT wake time."""
+        now = now or kenya_now()
+        email = str(getattr(self, "_auto_wake_client_email", "") or "").strip().lower()
+        state = getattr(self, "_auto_wake_state", None)
+        if state is None:
+            try:
+                with open(self._auto_wake_state_path(), "r", encoding="utf-8") as f:
+                    state = json.load(f) or {}
+            except Exception:
+                state = {}
+            if state.get("client_email", "") != email:
+                state = {}
+            self._auto_wake_state = state
+
+        today = now.date().isoformat()
+        if state.get("scheduled_date") == today and state.get("scheduled_at"):
+            try:
+                scheduled = datetime.fromisoformat(state["scheduled_at"])
+                if scheduled.tzinfo is None:
+                    scheduled = scheduled.replace(tzinfo=KENYA_TZ)
+                return scheduled.astimezone(KENYA_TZ)
+            except (TypeError, ValueError):
+                pass
+
+        scheduled = randomized_auto_wake_time(now)
+        state.update({
+            "client_email": email,
+            "scheduled_date": scheduled.date().isoformat(),
+            "scheduled_at": scheduled.isoformat(),
+        })
+        self._save_auto_wake_state()
+        return scheduled
+
+    def _start_auto_wake_scheduler(self):
+        """Start unattended scheduling once a dashboard client is configured."""
+        if getattr(self, "_auto_wake_scheduler_started", False):
+            return
+        if not self._dashboard_credentials_ready():
+            return
+        self._auto_wake_client_email = self.client_email_entry.get().strip().lower()
+        self._auto_wake_scheduler_started = True
+        scheduled = self._ensure_auto_wake_schedule()
+        self.auto_trade_status_var.set(
+            f"Auto-wake scheduled {scheduled.strftime('%I:%M %p EAT')}")
+        self.log(
+            f"🕒 Automatic trade wake scheduled for {scheduled.strftime('%A %I:%M %p EAT')} "
+            "— queue refresh and broker readiness are automatic")
+        threading.Thread(
+            target=self._auto_wake_scheduler_loop,
+            daemon=True,
+            name="auto-wake-scheduler",
+        ).start()
+
+    def _auto_wake_scheduler_loop(self):
+        while not self._auto_wake_stop.is_set():
+            try:
+                if (getattr(self, "_auto_wake_client_email", "")
+                        and getattr(self, "client_info", None)):
+                    scheduled = self._ensure_auto_wake_schedule()
+                    now = kenya_now()
+                    scheduled_date = scheduled.date().isoformat()
+                    state = self._auto_wake_state or {}
+                    if (now >= scheduled and state.get("started_date") != scheduled_date
+                            and self._auto_wake_attempt_date != scheduled_date):
+                        self._auto_wake_attempt_date = scheduled_date
+                        self.root.after(
+                            0, lambda d=scheduled_date: self._auto_wake_begin(d))
+            except Exception as exc:
+                try:
+                    self.root.after(0, lambda e=str(exc): self.log(
+                        f"⚠ Auto-wake scheduler error: {e}", "WARN"))
+                except Exception:
+                    return
+            self._auto_wake_stop.wait(self._AUTO_WAKE_POLL_SEC)
+
+    def _auto_wake_begin(self, scheduled_date):
+        """Refresh the day's trade queue when the randomized wake time arrives."""
+        now = kenya_now()
+        if now.date().isoformat() != scheduled_date:
+            return
+        if now.hour >= 8:
+            self.log("⏭ Auto-wake missed the 03:00–08:00 EAT window; next run is tomorrow", "WARN")
+            self._auto_wake_attempt_date = None
+            self._auto_wake_state["scheduled_date"] = ""
+            self._auto_wake_state["scheduled_at"] = ""
+            self._save_auto_wake_state()
+            return
+        if self.auto_trade_enabled:
+            self.log("ℹ Auto-wake found an Auto-Trade session already active; no duplicate batch")
+            self._mark_auto_wake_started(scheduled_date)
+            return
+        if not self._dashboard_credentials_ready() or not self.client_info:
+            self.log("⚠ Auto-wake paused: dashboard client is not authenticated", "WARN")
+            return
+        self._auto_wake_pending_date = scheduled_date
+        self._auto_wake_last_notice = None
+        self.log("🌅 AI auto-wake: refreshing today's queue and connecting required brokers")
+        self._load_active_trades()
+        self.root.after(5000, self._auto_wake_after_scan)
+
+    def _auto_wake_after_scan(self):
+        """Wait for fresh rows and broker connections, then start one staggered batch."""
+        scheduled_date = getattr(self, "_auto_wake_pending_date", None)
+        if not scheduled_date:
+            return
+        now = kenya_now()
+        if now.date().isoformat() != scheduled_date or now.hour >= 8:
+            self.log("⏭ Auto-wake stopped: readiness was not reached before 08:00 EAT", "WARN")
+            self._auto_wake_pending_date = None
+            self._auto_wake_attempt_date = None
+            if self._auto_wake_state:
+                self._auto_wake_state["scheduled_date"] = ""
+                self._auto_wake_state["scheduled_at"] = ""
+                self._save_auto_wake_state()
+            return
+
+        try:
+            if str(self.load_trades_btn.cget("state")) == "disabled":
+                self.root.after(5000, self._auto_wake_after_scan)
+                return
+        except Exception:
+            pass
+
+        if not getattr(self, "_last_trade_scan_succeeded", False):
+            self._auto_wake_log_once(
+                "scan-error", "⚠ Auto-wake: dashboard scan failed; retrying shortly")
+            self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_rescan)
+            return
+
+        if not self._active_trade_rows:
+            self._auto_wake_log_once(
+                "empty", "⏳ Auto-wake: no tradeable rows yet; rescanning shortly")
+            self.root.after(self._AUTO_WAKE_RESCAN_SEC * 1000, self._auto_wake_rescan)
+            return
+
+        missing = []
+        for row in self._active_trade_rows:
+            firm = (row.get("eval") or {}).get("Prop Firm", row.get("firm_code", ""))
+            if not self._get_broker_for_firm(firm):
+                missing.append(str(firm or row.get("firm_code") or "Unknown"))
+        if missing:
+            self._auto_wake_log_once(
+                "brokers", "⏳ Auto-wake waiting for broker connection(s): "
+                + ", ".join(sorted(set(missing))))
+            self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_after_scan)
+            return
+
+        if self.hedge_mode_var.get() == "Hedging" and not self._get_mt5_trading_api():
+            self._auto_wake_log_once(
+                "mt5", "⏳ Auto-wake waiting for the configured MT5 hedge connection")
+            self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_after_scan)
+            return
+
+        if self._start_auto_trade(immediate=True, automatic=True):
+            self._mark_auto_wake_started(scheduled_date)
+            return
+        self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_after_scan)
+
+    def _auto_wake_rescan(self):
+        if getattr(self, "_auto_wake_pending_date", None):
+            self._load_active_trades()
+
+    def _auto_wake_log_once(self, key, message):
+        if self._auto_wake_last_notice == key:
+            return
+        self._auto_wake_last_notice = key
+        self.log(message)
+
+    def _mark_auto_wake_started(self, scheduled_date):
+        self._auto_wake_pending_date = None
+        self._auto_wake_attempt_date = scheduled_date
+        self._auto_wake_state = self._auto_wake_state or {}
+        self._auto_wake_state["client_email"] = str(
+            getattr(self, "_auto_wake_client_email", "") or "").strip().lower()
+        self._auto_wake_state["started_date"] = scheduled_date
+        self._save_auto_wake_state()
+
     # ── Hedge Protector ──────────────────────────────────────────────
 
     def _test_min_equity(self, event=None):
@@ -10902,30 +11141,30 @@ class TradeOpssAIApp:
         self.log("⚡ Immediate trade entry authorized")
         self._start_auto_trade(immediate=True)
 
-    def _start_auto_trade(self, immediate=False):
+    def _start_auto_trade(self, immediate=False, automatic=False):
         """Activate auto-trade, either immediately or after a randomized delay."""
         from datetime import datetime, timedelta, timezone
 
         # Validation: need trades loaded
         if not self._active_trade_rows:
             self.log("⚠ Load trades first before enabling auto-trade", "WARN")
-            return
+            return False
 
         # Validation: need at least one broker connected
         connected_firms = [f for f, c in self._broker_connections.items() if c.get("account")]
         if not connected_firms:
             self.log("⚠ Connect at least one broker before enabling auto-trade", "WARN")
-            return
+            return False
 
         # Validation: hedging mode needs MT5
         if self.hedge_mode_var.get() == "Hedging":
             mt5_api = self._get_mt5_trading_api()
             if not mt5_api:
                 self.log("⚠ Connect MT5 first for hedging mode auto-trade", "WARN")
-                return
+                return False
 
-            self._auto_trade_total = len(self._active_trade_rows)
-            self._update_auto_trade_progress()
+        self._auto_trade_total = len(self._active_trade_rows)
+        self._update_auto_trade_progress()
 
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
@@ -10955,8 +11194,13 @@ class TradeOpssAIApp:
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
-        self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
-        if immediate:
+        if automatic:
+            self.auto_trade_status_var.set(f"Auto-wake started {time_str} — {mode_label}")
+        else:
+            self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
+        if automatic:
+            self.log(f"🌅 Automatic wake starting trades now ({mode_label})")
+        elif immediate:
             self.log(f"⚡ Entering trades now ({mode_label})")
         else:
             self.log(f"⏰ Auto-trade scheduled at {time_str} ({mode_label})")
@@ -10982,6 +11226,7 @@ class TradeOpssAIApp:
                             st.configure(text="⚡ ARMED", bg="#064E3B", fg="#6EE7B7")
                 except Exception:
                     pass
+        return True
 
     @staticmethod
     def _planned_trade_config_key(acct_num, firm_code, phase_key):
@@ -17382,6 +17627,10 @@ class TradeOpssAIApp:
                 pass
 
     def _on_app_closing(self):
+        try:
+            self._auto_wake_stop.set()
+        except Exception:
+            pass
         try:
             self._status_poll_active = False
         except Exception:
