@@ -272,6 +272,80 @@ def test_challenge_breach_alert_is_not_held_for_other_accounts():
     assert app._held_challenge_breaches == {}
 
 
+def _stub_derive_app(balance, recorded_floor):
+    app = _scrub_app()
+    acct = "ftdfyslx50828842633"
+    app._breach_floor_by_account = {f"{acct}|funded": recorded_floor}
+    app._trade_outcome_history = lambda force=False: {
+        acct: {
+            "balance": balance,
+            "balance_sod": 50000.0,
+            "daily_pnl": [{"date": "2026-10-12", "trades": 1, "net_pnl": balance - 50000.0}],
+        }
+    }
+    app._breach_balance_account = lambda ev, on_funded: acct
+    app._eval_has_payout = lambda ev: False
+    app._funded_payout_count = lambda ev: 0
+    app._record_breach_alert = lambda *a, **k: None
+    return app
+
+
+def test_flat_funded_stopout_at_min_equity_floor_is_failed():
+    # Stop-out lands at min-equity $48,100, just above the $48,000 detection
+    # constant — must still fail because the position is already flat.
+    app = _stub_derive_app(balance=48100.0, recorded_floor=48100.0)
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX50828842633"}
+
+    status, _reason = app._derive_account_status(row)
+
+    assert status == "Fail"
+
+
+def test_flat_funded_above_min_equity_floor_is_not_failed():
+    app = _stub_derive_app(balance=49000.0, recorded_floor=48100.0)
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX50828842633"}
+
+    status, _reason = app._derive_account_status(row)
+
+    assert status is None
+
+
+def test_record_breach_floor_persists_only_positive_values():
+    app = _scrub_app()
+    app._breach_floor_by_account = {}
+    app._save_breach_state = lambda: None
+    app._record_breach_floor("FTDFYSLX1", 48100.0, on_funded=True)
+    app._record_breach_floor("FTDFYSLX2", 0, on_funded=False)
+    app._record_breach_floor("FTDFYSLX3", None, on_funded=True)
+
+    assert app._recorded_breach_floor("ftdfyslx1", True) == 48100.0
+    assert app._recorded_breach_floor("FTDFYSLX2", False) is None
+    assert app._recorded_breach_floor("FTDFYSLX3", True) is None
+
+
+def test_traded_account_with_unreadable_balance_is_queued_for_retry():
+    app = _scrub_app()
+    app._unresolved_status_accounts = {}
+    app._trade_outcome_history = lambda force=False: {}  # balance unreadable
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999"}
+
+    changed = app._apply_status_update(row)
+
+    assert changed == []
+    assert "ftdfyslx999" in app._unresolved_status_accounts
+
+
+def test_resolved_account_is_cleared_from_retry_queue():
+    app = _stub_derive_app(balance=48100.0, recorded_floor=48100.0)
+    app._unresolved_status_accounts = {"ftdfyslx50828842633": {"attempts": 3}}
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX50828842633"}
+
+    app._apply_status_update(row)
+
+    assert row["Status"] == "Fail"
+    assert "ftdfyslx50828842633" not in app._unresolved_status_accounts
+
+
 def test_tradeify_evaluation_primary_placeholder_is_not_filtered_as_funded():
     app = _scrub_app()
     row = {

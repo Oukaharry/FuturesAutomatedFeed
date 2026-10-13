@@ -1793,6 +1793,15 @@ class TradeOpssAIApp:
         self._pending_breach_alerts = []   # Breaches the dashboard has not announced yet.
         self._breach_alerts_sent = set()
         self._pre_trade_balances = {}      # account → balance a trade started from
+        # account|phase → broker min-equity floor the stop-loss was placed at, so
+        # a flat account that stopped out at that level is failed even when the
+        # detection constant sits a little below it.
+        self._breach_floor_by_account = {}
+        # Flat, traded accounts whose status could not be resolved because the
+        # broker balance was unreadable (rate limit / network). Retried until
+        # every one lands a status — a traded account is never left unresolved.
+        self._unresolved_status_accounts = {}
+        self._resolution_retry_started = False
         self._load_breach_state()
         # Challenge breaches wait here (per firm family) until every challenge
         # account of that firm has closed, so admins get one "Purchase N" ping.
@@ -1923,6 +1932,7 @@ class TradeOpssAIApp:
         self.client_email_entry.insert(0, email)
         self.root.after(200, self.lookup_client)
         self._start_auto_wake_scheduler()
+        self._start_resolution_retry()
         
     # ── Helper: create a section card ──
     def _section_card(self, parent, title="", icon="", **kw):
@@ -5150,6 +5160,12 @@ class TradeOpssAIApp:
         changed = []
         changed.extend(self._promote_graduated_eval_to_pass(ev))
         changed.extend(self._promote_hit_tp_to_pass_if_complete(ev))
+        account = self._primary_trade_account(ev)
+        on_funded = self._on_funded_leg(ev)
+        phase = "Funded" if on_funded else "Challenge"
+        traded = (self._has_taken_funded_trade1(ev) if on_funded
+                  else self._has_taken_challenge_trade1(ev))
+        balance = self._account_balance(self._breach_balance_account(ev, on_funded))
         try:
             status, reason = self._derive_account_status(ev)
         except Exception:
@@ -5160,10 +5176,15 @@ class TradeOpssAIApp:
             except Exception:
                 status, reason = None, None
         if not status:
+            # A traded, flat account we could not resolve because the broker
+            # balance was unreadable is queued and retried until it lands.
+            if traded and balance is None:
+                self._queue_unresolved_status(account, phase, on_funded)
             return changed
         field = self._status_field_for_derived_update(ev, status)
         current = self._cell(ev.get(field)).strip().lower()
         if current in ("fail", "completed") and status not in ("Fail", "Completed"):
+            self._clear_unresolved_status(account)
             return changed
         # Already Pass on Status P1 — do not overwrite with a Hit TP marker.
         if field == "Status P1" and current.startswith("pass") and status != "Pass":
@@ -5174,6 +5195,7 @@ class TradeOpssAIApp:
             and not terminal_broker_verdict):
             return changed
         if current == status.lower():
+            self._clear_unresolved_status(account)
             return changed
         ev[field] = status
         note_field = f"_derived_{field}"
@@ -5190,8 +5212,68 @@ class TradeOpssAIApp:
             self._queue_outcome_ledger_event(ev, status)
         except Exception:
             pass
-        self.log(f"📌 {self._primary_trade_account(ev)}: {field} → {status} ({reason})")
+        self._clear_unresolved_status(account)
+        self._log_balance_status(account, phase, "close", balance, status,
+                                 floor=self._recorded_breach_floor(account, on_funded))
+        self.log(f"📌 {account}: {field} → {status} ({reason})")
         return changed
+
+    def _account_balance(self, account):
+        """Current broker balance for an account, or None when unreadable."""
+        key = str(account or "").strip().lower()
+        if not key:
+            return None
+        entry = (self._trade_outcome_history() or {}).get(key)
+        if not entry:
+            return None
+        try:
+            bal = float(entry.get("balance"))
+        except (TypeError, ValueError):
+            return None
+        return bal if bal > 0 else None
+
+    def _log_balance_status(self, account, phase, when, balance, status, floor=None):
+        """One greppable balance+status line (open/close) for the AI and debugging."""
+        bal = f"${balance:,.2f}" if isinstance(balance, (int, float)) else "unavailable"
+        flr = f" floor=${float(floor):,.2f}" if floor is not None else ""
+        self.log(f"💹 {account} [{phase}] {when}: balance={bal} "
+                 f"status={status or '—'}{flr}")
+        try:
+            audit("companion.balance_status", account=str(account or ""),
+                  phase=str(phase or ""), when=str(when),
+                  balance=(round(float(balance), 2)
+                           if isinstance(balance, (int, float)) else None),
+                  status=str(status or ""),
+                  floor=(round(float(floor), 2) if floor is not None else None))
+        except Exception:
+            pass
+
+    def _queue_unresolved_status(self, account, phase, on_funded):
+        """Remember a traded, flat account whose balance we could not read."""
+        key = str(account or "").strip().lower()
+        if not key:
+            return
+        store = getattr(self, "_unresolved_status_accounts", None)
+        if store is None:
+            store = {}
+            self._unresolved_status_accounts = store
+        rec = store.get(key)
+        if rec is None:
+            store[key] = {"account": str(account), "phase": phase,
+                          "on_funded": bool(on_funded), "attempts": 1,
+                          "since": kenya_now().isoformat(timespec="seconds")}
+            self._log_balance_status(account, phase, "close", None, "unresolved",
+                                     floor=self._recorded_breach_floor(account, on_funded))
+            self.log(f"⏳ {account}: balance unreadable at close — queued for "
+                     f"retry until a status lands", "WARN")
+        else:
+            rec["attempts"] = rec.get("attempts", 1) + 1
+
+    def _clear_unresolved_status(self, account):
+        key = str(account or "").strip().lower()
+        store = getattr(self, "_unresolved_status_accounts", None)
+        if key and store:
+            store.pop(key, None)
 
     def _queue_outcome_ledger_event(self, ev, status):
         """Ledger outcome for the account's latest resolved trade (deduped)."""
@@ -6722,6 +6804,16 @@ class TradeOpssAIApp:
             balance=balance,
             has_trades=has_trades,
         )
+        # A flat account (derivation never runs while a position is open) whose
+        # realized balance is at or below the broker min-equity we placed the
+        # stop-loss at is a breach — catch the stop-out that lands in the gap
+        # between that min-equity and a lower per-firm detection constant.
+        if not blown and has_trades and balance > 0:
+            min_eq_floor = self._recorded_breach_floor(account, on_funded)
+            if min_eq_floor is not None and balance <= float(min_eq_floor):
+                blown = True
+                if floor is None or float(min_eq_floor) > float(floor):
+                    floor = float(min_eq_floor)
         payouts = self._funded_payout_count(ev)
         target = rules.get("payout_count")
 
@@ -6801,6 +6893,7 @@ class TradeOpssAIApp:
         # the rest of the firm's batch. Ignore stale hold state from older runs.
         self._held_challenge_breaches = {}
         self._pre_trade_balances = dict(state.get("pre_trade_balances") or {})
+        self._breach_floor_by_account = dict(state.get("breach_floors") or {})
         self._pending_day_cell_marks = list(state.get("day_cell_marks") or [])
         if self._pending_breach_alerts:
             try:
@@ -6816,6 +6909,7 @@ class TradeOpssAIApp:
                 "sent_keys": sorted(getattr(self, "_breach_alerts_sent", set()) or set()),
                 "held_challenge": dict(getattr(self, "_held_challenge_breaches", {}) or {}),
                 "pre_trade_balances": dict(getattr(self, "_pre_trade_balances", {}) or {}),
+                "breach_floors": dict(getattr(self, "_breach_floor_by_account", {}) or {}),
                 "day_cell_marks": list(getattr(self, "_pending_day_cell_marks", []) or []),
             }
             with open(self._breach_state_path(), "w") as f:
@@ -6875,6 +6969,40 @@ class TradeOpssAIApp:
             target=lambda: self._apply_outcome_corrections(force_history=True),
             daemon=True).start()
         self.root.after(self._STATUS_POLL_INTERVAL_MS, self._run_status_poll)
+
+    # ── Keep retrying unresolved traded accounts until a status lands ──
+    _RESOLUTION_RETRY_SEC = 90
+
+    def _start_resolution_retry(self):
+        if getattr(self, "_resolution_retry_started", False):
+            return
+        self._resolution_retry_started = True
+        threading.Thread(
+            target=self._resolution_retry_loop, daemon=True,
+            name="status-resolution-retry").start()
+
+    def _resolution_retry_loop(self):
+        """Re-run reconciliation while any traded account is still unresolved.
+
+        A flat account whose balance could not be read (rate limit / network)
+        stays queued; this retries until every traded account has a status.
+        """
+        while True:
+            time.sleep(self._RESOLUTION_RETRY_SEC)
+            try:
+                if not getattr(self, "_unresolved_status_accounts", None):
+                    continue
+                if not self._dashboard_credentials_ready():
+                    continue
+                pending = len(self._unresolved_status_accounts)
+                self.root.after(0, lambda c=pending: self.log(
+                    f"🔁 Retrying {c} unresolved traded account(s) — "
+                    f"balance was unreadable, status still pending", "WARN"))
+                threading.Thread(
+                    target=lambda: self._apply_outcome_corrections(force_history=True),
+                    daemon=True).start()
+            except Exception:
+                return
 
     _HIT_TRADE_RE = re.compile(r"hit\s*(?:tp|sl)\s*(\d+)", re.I)
     _DAY_MARK_MAX_TRIES = 48  # ~4 hours of 5-minute polls
@@ -8037,6 +8165,36 @@ class TradeOpssAIApp:
                     or self._primary_trade_account(ev))
         return self._cell_account(ev.get("Account #")) or self._primary_trade_account(ev)
 
+    def _breach_floor_key(self, account, on_funded: bool) -> str:
+        return f"{str(account or '').strip().lower()}|{'funded' if on_funded else 'challenge'}"
+
+    def _record_breach_floor(self, account, floor, *, on_funded: bool):
+        """Remember the broker min-equity a stop-loss was placed at.
+
+        Status derivation runs only on flat accounts, so a realized balance at
+        or below this level is a genuine breach — even when the per-firm
+        detection constant sits a little under the broker's min-equity.
+        """
+        acct = str(account or "").strip().lower()
+        if not acct:
+            return
+        try:
+            floor = float(floor)
+        except (TypeError, ValueError):
+            return
+        if floor <= 0:
+            return
+        if not hasattr(self, "_breach_floor_by_account"):
+            self._breach_floor_by_account = {}
+        key = self._breach_floor_key(acct, on_funded)
+        if self._breach_floor_by_account.get(key) != floor:
+            self._breach_floor_by_account[key] = floor
+            self._save_breach_state()
+
+    def _recorded_breach_floor(self, account, on_funded: bool):
+        store = getattr(self, "_breach_floor_by_account", None) or {}
+        return store.get(self._breach_floor_key(account, on_funded))
+
     _VANISH_TIER_RANK = {"ch1": 1, "ft1": 2, "ft2": 3}
 
     def _dashboard_accounts_present(self, evaluations) -> set:
@@ -9135,6 +9293,15 @@ class TradeOpssAIApp:
         if not self._cell(evaluation.get(started_field)):
             evaluation[started_field] = kenya_today().strftime("%Y-%m-%d")
             changed.append(started_field)
+        try:
+            acct = self._primary_trade_account(evaluation)
+            self._log_balance_status(
+                acct, "Funded" if on_funded else "Challenge", "open",
+                self._account_balance(self._breach_balance_account(evaluation, on_funded)),
+                evaluation.get(status_field),
+                floor=self._recorded_breach_floor(acct, on_funded))
+        except Exception:
+            pass
         return changed
 
     def _use_funded_trade_account(self, row_data, ev=None):
@@ -10444,6 +10611,13 @@ class TradeOpssAIApp:
                 f"SOD=${account_min_eq.get('net_liq_sod')} minEq=${account_min_eq.get('min_equity')} "
                 f"TMDL=${account_min_eq.get('trailing_max_drawdown_limit')} "
                 f"TMD=${account_min_eq.get('trailing_max_drawdown')} mode={account_min_eq.get('trailing_mode')}")
+            # Persist the breach floor so a flat stop-out at min-equity is failed
+            # even when a lower per-firm constant would miss it.
+            try:
+                self._record_breach_floor(
+                    acct_num, account_min_eq.get('min_equity'), on_funded=bool(is_funded))
+            except Exception:
+                pass
         audit("trader.adjust.scope", acct_num=str(acct_num or ""), firm=str(firm_code or ""),
               phase_key=str(phase_key or ""), phase=str(current_phase or ""),
               is_funded=bool(is_funded), is_farming=bool(is_farming),
