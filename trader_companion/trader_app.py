@@ -6363,6 +6363,11 @@ class TradeOpssAIApp:
         "fundednextrapiddaily": "Funded Next",
         "mffu": "MFFU",
         "my funded futures": "MFFU",
+        # Builder shares the same Tradovate login as core MFFU — without this
+        # it looks for a separate "MFFU Builder" connection and skips all rows
+        # even when MFFU Tradovate is already open (Angel Islas / Gideon).
+        "mffu builder": "MFFU",
+        "mffu builder 50k": "MFFU",
         # Same firm, same direction — MFFU Live only differs by broker login.
         "mffu live": "MFFU",
         "my funded futures live": "MFFU",
