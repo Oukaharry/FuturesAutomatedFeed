@@ -1950,14 +1950,46 @@ def _eval_dashboard_payout_count(ev) -> int:
     return count
 
 
+def _purchase_breach_end_date_iso(breach, evaluations):
+    """YYYY-MM-DD from the phase Date Ended cell, or None if blank / no row."""
+    if not isinstance(breach, dict):
+        return None
+    ev = _existing_eval_for_account(evaluations, breach.get('account'))
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return None
+    phase = str(breach.get('phase') or '').strip().lower()
+    if phase.startswith('fund'):
+        raw = ev.get('Date Ended.1') or ev.get('Date Ended')
+    else:
+        raw = ev.get('Date Ended')
+    if _date_ended_blank(raw):
+        return None
+    return _parse_date_str(raw)
+
+
+def _purchase_breach_failed_today(breach, evaluations, today=None):
+    """True only for same-day fails (Kenya EAT).
+
+    Stale Date Ended (Harry / Tangara: Fail weeks ago re-queued) must not Slack.
+    Blank end date is allowed — same-day Fail often stamps Date Ended on save.
+    Vanish with no row is treated as live (no sheet date to compare).
+    """
+    today = today or _kenya_today_str()
+    ended = _purchase_breach_end_date_iso(breach, evaluations)
+    if ended is None:
+        return True
+    return ended == today
+
+
 def _breach_alert_disposition(breach, evaluations):
     """send = Fail or Completed-with-payout (buy it). hold = still live.
-    discard = Pass / Completed-without-payout, not a buy.
+    discard = Pass / Completed-without-payout / stale Date Ended, not a buy.
 
     Dropping Hit TP/SL used to throw away the rest of the firm batch. Abby
     sent Purchase 2 because two rows were still Hit TP1 after a real Fail.
     Funded rows that banked ≥1 payout and then breached are Status=Completed
     but still need a replacement purchase (Chad Gines / Funded Next).
+    Purchase Slack only fires when Date Ended is Kenya today (or blank/vanish).
     """
     if not isinstance(breach, dict):
         return 'discard'
@@ -1973,14 +2005,14 @@ def _breach_alert_disposition(breach, evaluations):
     else:
         status = ev.get('Status P1') or ''
     if is_eval_phase_failed(status):
-        return 'send'
+        return 'send' if _purchase_breach_failed_today(breach, evaluations) else 'discard'
     # Completed after payout(s) still replaces the account.
     if (phase.startswith('fund')
             and is_funded_phase_ended(status)
             and 'complete' in str(status or '').lower()
             and (_eval_dashboard_payout_count(ev) >= 1
                  or reason == 'completed_with_payout')):
-        return 'send'
+        return 'send' if _purchase_breach_failed_today(breach, evaluations) else 'discard'
     if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
         return 'discard'
     if 'delete' in str(status or '').lower():
@@ -2002,8 +2034,12 @@ def _firm_has_active_trades(evaluations, firm_family):
     return False
 
 
-def _queue_breach_alerts(client_id, breaches):
-    """Persist incoming breach payloads until their firm batch can be sent."""
+def _queue_breach_alerts(client_id, breaches, evaluations=None):
+    """Persist incoming breach payloads until their firm batch can be sent.
+
+    When evaluations are provided, skips accounts whose Date Ended is not
+    Kenya today — stale Fail rows must not sit in the purchase queue.
+    """
     from dashboard.database import (
         get_breach_alert_pending,
         get_breach_alert_sent_accounts,
@@ -2015,11 +2051,20 @@ def _queue_breach_alerts(client_id, breaches):
     already_bought = get_breach_alert_sent_accounts(client_id)
     to_add = []
     added = 0
+    today_eat = _kenya_today_str()
     for breach in breaches or []:
         if not isinstance(breach, dict):
             continue
         key = _breach_alert_item_key(breach)
         if not key or key in seen:
+            continue
+        if (evaluations is not None
+                and not _purchase_breach_failed_today(
+                    breach, evaluations, today=today_eat)):
+            ended = _purchase_breach_end_date_iso(breach, evaluations)
+            app.logger.info(
+                f"🛡️ {client_id}: skip queue for {key} — Date Ended "
+                f"{ended or '(blank)'} is not today ({today_eat})")
             continue
         firm_key = _breach_firm_family(breach.get('prop_firm'))
         sent_key = _breach_account_sent_key(firm_key, key)
@@ -2227,19 +2272,34 @@ def _flush_batched_breach_alerts(client_id, evaluations):
                     f"🛡️ {client_id}: dropped {len(firm_breaches)} {firm_key} purchase "
                     f"alert(s) — client has no recent activity for that firm")
                 continue
-            sendable, hold, discarded = [], [], []
+            sendable, hold, discarded, stale = [], [], [], []
+            today_eat = _kenya_today_str()
             for breach in firm_breaches:
                 kind = _breach_alert_disposition(breach, evaluations)
                 if kind == 'send':
-                    sendable.append(breach)
+                    # Belt-and-suspenders: disposition already gates Date Ended,
+                    # but log stale explicitly when a past Fail is re-queued.
+                    if not _purchase_breach_failed_today(
+                            breach, evaluations, today=today_eat):
+                        stale.append(breach)
+                        discarded.append(breach)
+                    else:
+                        sendable.append(breach)
                 elif kind == 'hold':
                     hold.append(breach)
                 else:
+                    ended = _purchase_breach_end_date_iso(breach, evaluations)
+                    if ended and ended != today_eat:
+                        stale.append(breach)
                     discarded.append(breach)
-            if discarded:
+            if stale:
                 app.logger.info(
-                    f"🚨 {client_id}: dropped {len(discarded)} {firm_key} purchase "
-                    f"alert(s) — row is Pass/Completed without payout buy")
+                    f"🛡️ {client_id}: dropped {len(stale)} {firm_key} purchase "
+                    f"alert(s) — Date Ended is not today ({today_eat})")
+            if discarded and len(discarded) > len(stale):
+                app.logger.info(
+                    f"🚨 {client_id}: dropped {len(discarded) - len(stale)} {firm_key} "
+                    f"purchase alert(s) — row is Pass/Completed without payout buy")
             # A hold stays queued until that row itself fails. A row that is
             # already Fail is a purchase for that account now — sibling rows
             # and open trades on other accounts do not hold it back.
@@ -8444,7 +8504,7 @@ def api_client_push():
     breach_alerts = breach_alerts_sanitized if "evaluations" in data and data["evaluations"] else (data.get('breach_alerts') or [])
     if breach_alerts:
         try:
-            _queue_breach_alerts(client_id, breach_alerts)
+            _queue_breach_alerts(client_id, breach_alerts, evaluations=evaluations)
         except Exception as exc:
             app.logger.error(f"Breach alert queue failed for {client_id}: {exc}")
 
@@ -16307,7 +16367,8 @@ def update_data():
                     server_purchases = _merge_purchase_breach_lists(
                         fail_purchases, payout_completed)
                     if server_purchases:
-                        _queue_breach_alerts(client_id, server_purchases)
+                        _queue_breach_alerts(
+                            client_id, server_purchases, evaluations=evaluations)
                         app.logger.warning(
                             f"🚨 {client_id}: {len(server_purchases)} account(s) "
                             f"Fail/Completed-with-payout on dashboard — "
