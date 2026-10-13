@@ -11,8 +11,10 @@ def mgr():
 
 
 def test_blueprint_registered_with_spec_constants(mgr):
-    bp = mgr.firm_blueprints["MyFundedPerps Elite"]
+    bp = mgr.firm_blueprints["MyFundedPerps"]
     r = bp["risk_rules"]
+    assert bp["name"] == "MyFundedPerps Elite 50K"
+    assert "MyFundedPerps Elite" not in mgr.firm_blueprints  # single MFP blueprint
     assert bp["execution"] == "api" and bp["asset_class"] == "perps"
     assert bp["account_sizes"] == ["$50,000"]
     assert bp["profit_split"] == 0.80
@@ -21,7 +23,8 @@ def test_blueprint_registered_with_spec_constants(mgr):
     assert r["stop_ladder"] == [1000, 1000, 450]
     assert r["funded_target_band"] == [3500, 6000]
     assert r["daily_loss_limit"] == 1500
-    assert mgr.DETECTED_TO_BLUEPRINT["MFP Elite"] == "MyFundedPerps Elite"
+    for alias in ("MFP Elite", "MyFundedPerps Elite", "MyFundedPerps", "MFP"):
+        assert mgr.DETECTED_TO_BLUEPRINT[alias] == "MyFundedPerps"
 
 
 # ── evaluation ladder: $50,000 → $55,000 ───────────────────────────────
@@ -103,6 +106,7 @@ def test_funded_at_or_above_target_requests_payout_instead_of_trading(mgr):
 
 
 def test_is_mfp_elite_code_variants(mgr):
-    for c in ("MyFundedPerps Elite", "MyFundedPerps Elite 50K", "MFP Elite", "mfp_elite"):
+    for c in ("MyFundedPerps", "MyFundedPerps Elite", "MyFundedPerps Elite 50K", "MFP Elite", "mfp_elite", "MFP"):
         assert mgr.is_mfp_elite_code(c)
-    assert not mgr.is_mfp_elite_code("MyFundedPerps")
+    assert not mgr.is_mfp_elite_code("Tradeify247")
+    assert not mgr.is_mfp_elite_code("MFFU")

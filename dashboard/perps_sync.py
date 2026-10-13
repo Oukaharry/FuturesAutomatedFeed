@@ -30,12 +30,14 @@ def _sandbox_allowed() -> bool:
 
 
 # The API has no billing endpoints, so the fee comes from the published
-# challenge pricing (Select tier, PERPS code) keyed by starting balance.
+# challenge pricing keyed by starting balance. The only MFP blueprint is
+# Elite $50K ($495 list less 30% = $346.50, Golden Spike Oct 2026); other
+# sizes keep the older Select-tier figures for legacy rows.
 # Only stamped at row creation — edits for other tiers/promos are kept.
 _CHALLENGE_FEE_BY_SIZE = {
     10000: "28",
     25000: "70",
-    50000: "133",
+    50000: "346.50",
     100000: "252",
 }
 

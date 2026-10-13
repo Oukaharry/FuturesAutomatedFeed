@@ -328,7 +328,9 @@ def test_traded_account_with_unreadable_balance_is_queued_for_retry():
     app._unresolved_status_accounts = {}
     app._trade_outcome_history = lambda force=False: {}  # balance unreadable
     app._firm_broker_connected = lambda ev: True  # broker up, read failed
-    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999"}
+    # A funded leg that has actually traded (start date + hedge result).
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999",
+           "Date Started.1": "2026-10-12", "Hedge Result 1.1": "$0.00"}
 
     changed = app._apply_status_update(row)
 
@@ -341,7 +343,8 @@ def test_unreadable_balance_not_queued_when_broker_disconnected():
     app._unresolved_status_accounts = {}
     app._trade_outcome_history = lambda force=False: {}
     app._firm_broker_connected = lambda ev: False  # no broker — never flood
-    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999"}
+    row = {"Prop Firm": "Tradeify Select", "Account #.1": "FTDFYSLX999",
+           "Date Started.1": "2026-10-12", "Hedge Result 1.1": "$0.00"}
 
     app._apply_status_update(row)
 

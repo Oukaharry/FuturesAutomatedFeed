@@ -86,9 +86,9 @@ class PropFirmManager:
         "MyFundedPerps": "MyFundedPerps",
         "My Funded Perps": "MyFundedPerps",
         "MFP": "MyFundedPerps",
-        "MyFundedPerps Elite": "MyFundedPerps Elite",
-        "MyFundedPerps Elite 50K": "MyFundedPerps Elite",
-        "MFP Elite": "MyFundedPerps Elite",
+        "MyFundedPerps Elite": "MyFundedPerps",
+        "MyFundedPerps Elite 50K": "MyFundedPerps",
+        "MFP Elite": "MyFundedPerps",
         "Tradeify247": "Tradeify247",
         "Tradeify 247": "Tradeify247",
     }
@@ -2440,33 +2440,17 @@ class PropFirmManager:
 
         self._wire_topstep_rtp_p2_hedge_configs()
 
-        # API-executed perps firm — added after the futures size-scaling loop
-        # so its sizes and configs are not rewritten. Risk numbers mirror the
-        # live GET /accounts/{id} risk snapshot (1-step eval).
+        # MyFundedPerps — the ONLY MFP blueprint: Elite $50K (3% DLL, 80% split),
+        # Golden Spike Capital, Oct 12 2026. API-executed perps; added after the
+        # futures size-scaling loop so its sizes/configs are not rewritten.
+        # $-denominated first-hit model: fixed stop ladder, eval TP = distance
+        # to $55K, funded TP = T drawn per cycle (uniform $3,500–$6,000, whole
+        # dollars, never a multiple of $100). Static floor $47,500; the model
+        # spends $2,450 of the $2,500 room and never trades into the $50
+        # reserve. One attempt per daily reset (midnight New York). Withdraw all
+        # profit on every win, then restart at $50,000 and redraw T.
+        # See plan_mfp_elite_attempt().
         self.firm_blueprints["MyFundedPerps"] = {
-            "name": "MyFundedPerps",
-            "account_sizes": ["$10,000", "$25,000", "$50,000", "$100,000"],
-            "trading_phases": ["Evaluation Phase", "Funded Phase"],
-            "execution": "api",
-            "asset_class": "perps",
-            "risk_rules": {
-                "evaluation_steps": 1,
-                "profit_target_pct": 8,
-                "daily_loss_pct": 4,
-                "max_drawdown_pct": 6,
-            },
-            "strategy_configs": {},
-        }
-
-        # MyFundedPerps Elite $50K (3% DLL, 80% split) — Golden Spike Capital
-        # blueprint, Oct 12 2026. $-denominated first-hit model: fixed stop
-        # ladder, eval TP = distance to $55K, funded TP = T drawn per cycle
-        # (uniform $3,500–$6,000, whole dollars, never a multiple of $100).
-        # Static floor $47,500; the model spends $2,450 of the $2,500 room and
-        # never trades into the $50 reserve. One attempt per daily reset
-        # (midnight New York). Withdraw all profit on every win, then restart
-        # at $50,000 and redraw T. See plan_mfp_elite_attempt().
-        self.firm_blueprints["MyFundedPerps Elite"] = {
             "name": "MyFundedPerps Elite 50K",
             "account_sizes": ["$50,000"],
             "trading_phases": ["Evaluation Phase", "Funded Phase"],
@@ -2580,15 +2564,12 @@ class PropFirmManager:
                     static_room=round(static_room, 2))
         return plan
 
-    # ── MyFundedPerps Elite 50K planner ─────────────────────────────────
-
-    _MFP_ELITE_CODES = ("MyFundedPerps Elite", "MyFundedPerps Elite 50K",
-                        "MFP Elite", "MFP_Elite")
+    # ── MyFundedPerps (Elite 50K) planner ────────────────────────────────────
 
     def is_mfp_elite_code(self, firm_code: str) -> bool:
+        """Every MyFundedPerps label is the Elite 50K blueprint now."""
         compact = str(firm_code or "").lower().replace(" ", "").replace("_", "")
-        return compact in ("myfundedperpselite", "myfundedperpselite50k",
-                           "mfpelite", "mfpelite50k")
+        return "myfundedperp" in compact or compact in ("mfp", "mfpelite", "mfpelite50k")
 
     def _draw_mfp_elite_target(self, lo: float, hi: float) -> float:
         """Whole-dollar uniform draw, re-drawn if it lands on a multiple of $100."""
@@ -2601,7 +2582,7 @@ class PropFirmManager:
     def mfp_elite_cycle_target(self, account_key: str, cycle_index: int,
                                redraw: bool = False) -> float:
         """T for a funded cycle (stored per account+cycle; redraw on new cycle)."""
-        rules = self.firm_blueprints["MyFundedPerps Elite"]["risk_rules"]
+        rules = self.firm_blueprints["MyFundedPerps"]["risk_rules"]
         lo, hi = rules["funded_target_band"]
         state = self._account_random_state.setdefault(str(account_key or "default"), {})
         key = f"mfp_elite_T_cycle_{int(cycle_index)}"
@@ -2620,7 +2601,7 @@ class PropFirmManager:
         reserve_floor, T}. `allowed` is False when the ladder is exhausted, the
         reserve would be breached, or an attempt already resolved today.
         """
-        bp = self.firm_blueprints["MyFundedPerps Elite"]
+        bp = self.firm_blueprints["MyFundedPerps"]
         r = bp["risk_rules"]
         start = float(r["starting_balance"])
         floor = float(r["static_loss_floor"])

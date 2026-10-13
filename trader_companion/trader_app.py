@@ -6399,9 +6399,9 @@ class TradeOpssAIApp:
         "MyFundedPerps": "MyFundedPerps",
         "My Funded Perps": "MyFundedPerps",
         "MyFundedPerpetuals": "MyFundedPerps",
-        "MyFundedPerps Elite": "MyFundedPerps Elite",
-        "MyFundedPerps Elite 50K": "MyFundedPerps Elite",
-        "MFP Elite": "MyFundedPerps Elite",
+        "MyFundedPerps Elite": "MyFundedPerps",
+        "MyFundedPerps Elite 50K": "MyFundedPerps",
+        "MFP Elite": "MyFundedPerps",
         "Tradeify247": "Tradeify247",
         "Tradeify 247": "Tradeify247",
         "Tradeify247 (DXtrade)": "Tradeify247",
@@ -15632,7 +15632,7 @@ class TradeOpssAIApp:
         snap = unwrap(client.get_account(acct["id"])) or {}
         risk = snap.get("risk") or {}
         equity = float(risk.get("equity") or snap.get("balance") or 0)
-        rules = mgr.firm_blueprints["MyFundedPerps Elite"]["risk_rules"]
+        rules = mgr.firm_blueprints["MyFundedPerps"]["risk_rules"]
         start = float(rules["starting_balance"])
         ladder = list(rules["stop_ladder"])
         losses = max(0.0, start - equity)
@@ -15719,36 +15719,27 @@ class TradeOpssAIApp:
 
         market = self._perps_market_for_now()
         executor = PerpsTradeExecutor(client, account_id=acct["id"])
-        elite = self._is_mfp_elite_row(row_data)
         try:
-            if elite:
-                eplan, snap = self._mfp_elite_plan(client, acct, row_data)
-                if not eplan.get("allowed"):
-                    messagebox.showinfo(
-                        "MFP Elite", f"{acct.get('account_number')}: no attempt today — "
+            # Every MyFundedPerps account runs the Elite 50K $-ladder blueprint.
+            eplan, snap = self._mfp_elite_plan(client, acct, row_data)
+            if not eplan.get("allowed"):
+                messagebox.showinfo(
+                    "MyFundedPerps", f"{acct.get('account_number')}: no attempt today — "
                                      f"{eplan.get('reason')}")
-                    self.log(f"⏭ {acct.get('account_number')}: Elite attempt skipped — "
-                             f"{eplan.get('reason')}", "WARN")
-                    return
-                tp_usd, sl_usd = eplan["tp_usd"], eplan["sl_usd"]
-                plan = executor.plan_bracket(market, side, tp_usd=tp_usd, sl_usd=sl_usd)
-                plan["elite"] = eplan
-            else:
-                snap = unwrap(client.get_account(acct["id"]))
-                risk = snap.get("risk") or {}
-                tp_usd = float(risk.get("remaining_profit") or 0) or \
-                    float(snap.get("starting_balance") or 0) * 0.08
-                plan = executor.plan_bracket(market, side, tp_usd=tp_usd)
+                self.log(f"⏭ {acct.get('account_number')}: MFP attempt skipped — "
+                         f"{eplan.get('reason')}", "WARN")
+                return
+            plan = executor.plan_bracket(market, side, tp_usd=eplan["tp_usd"],
+                                         sl_usd=eplan["sl_usd"])
+            plan["elite"] = eplan
         except Exception as exc:
             messagebox.showerror("Error", f"MyFundedPerps trade plan failed: {exc}")
             return
 
-        elite_line = ""
-        if plan.get("elite"):
-            e = plan["elite"]
-            elite_line = (f"Elite {e['stage']} attempt {e['attempt']}"
-                          + (f" — cycle T ${e['T']:,.0f} → payout ${e['payout_cash']:,.0f}"
-                             if e.get("T") else "") + "\n")
+        e = plan["elite"]
+        elite_line = (f"{e['stage'].title()} attempt {e['attempt']}"
+                      + (f" — cycle T ${e['T']:,.0f} → payout ${e['payout_cash']:,.0f}"
+                         if e.get("T") else "") + "\n")
         confirm = messagebox.askyesno(
             "Confirm Trade",
             f"{elite_line}{side.upper()} {plan['size']} {market}\n"
@@ -15777,8 +15768,7 @@ class TradeOpssAIApp:
                 if status == "rejected":
                     raise RuntimeError(
                         f"order rejected: {order.get('reject_reason') or 'unknown'}")
-                if plan.get("elite"):
-                    self._mark_mfp_elite_attempt(acct["id"])
+                self._mark_mfp_elite_attempt(acct["id"])
                 self.log(f"✅ MyFundedPerps {side.upper()} filled @ "
                          f"{order.get('fill_price')} — bracket live "
                          f"(TP {final_plan['tp_price']} / SL {final_plan['sl_price']})")
@@ -15847,24 +15837,18 @@ class TradeOpssAIApp:
                 return False
             executor = PerpsTradeExecutor(client, account_id=acct["id"])
             market = self._perps_market_for_now()
-            if self._is_mfp_elite_row(row_data):
-                eplan, _snap = self._mfp_elite_plan(client, acct, row_data)
-                if not eplan.get("allowed"):
-                    _ulog(f"⏭ {acct_num}: Elite attempt skipped — {eplan.get('reason')}", "WARN")
-                    return False
-                _ulog(f"🎯 {acct_num}: Elite {eplan['stage']} attempt {eplan['attempt']} — "
-                      f"SL ${eplan['sl_usd']:,.0f} / TP ${eplan['tp_usd']:,.0f}"
-                      + (f" (cycle T ${eplan['T']:,.0f})" if eplan.get("T") else ""))
-                order, plan = executor.enter_bracket(
-                    market, side, tp_usd=eplan["tp_usd"], sl_usd=eplan["sl_usd"])
-                if str(order.get("status") or "").lower() != "rejected":
-                    self._mark_mfp_elite_attempt(acct["id"])
-            else:
-                snap = unwrap(client.get_account(acct["id"]))
-                risk = snap.get("risk") or {}
-                tp_usd = float(risk.get("remaining_profit") or 0) or \
-                    float(snap.get("starting_balance") or 0) * 0.08
-                order, plan = executor.enter_bracket(market, side, tp_usd=tp_usd)
+            # Every MyFundedPerps account runs the Elite 50K $-ladder blueprint.
+            eplan, _snap = self._mfp_elite_plan(client, acct, row_data)
+            if not eplan.get("allowed"):
+                _ulog(f"⏭ {acct_num}: MFP attempt skipped — {eplan.get('reason')}", "WARN")
+                return False
+            _ulog(f"🎯 {acct_num}: {eplan['stage']} attempt {eplan['attempt']} — "
+                  f"SL ${eplan['sl_usd']:,.0f} / TP ${eplan['tp_usd']:,.0f}"
+                  + (f" (cycle T ${eplan['T']:,.0f})" if eplan.get("T") else ""))
+            order, plan = executor.enter_bracket(
+                market, side, tp_usd=eplan["tp_usd"], sl_usd=eplan["sl_usd"])
+            if str(order.get("status") or "").lower() != "rejected":
+                self._mark_mfp_elite_attempt(acct["id"])
             if str(order.get("status") or "").lower() == "rejected":
                 _ulog(f"❌ {acct_num}: perps order rejected — "
                       f"{order.get('reject_reason') or 'unknown'}", "ERROR")

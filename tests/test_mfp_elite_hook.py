@@ -31,7 +31,7 @@ def _plan(equity, stage="evaluation", fills=None, ev=None):
     app = _app()
     app._funded_payout_count = lambda ev: 0
     app._on_funded_leg = lambda ev: stage == "funded"
-    row = {"firm_code": "MyFundedPerps Elite", "eval": ev or {"Prop Firm": "MyFundedPerps Elite"}}
+    row = {"firm_code": "MyFundedPerps", "eval": ev or {"Prop Firm": "MyFundedPerps"}}
     plan, _ = app._mfp_elite_plan(_Client(equity, stage, fills), {"id": "a1", "account_number": "MFP-1"}, row)
     return plan
 
@@ -79,15 +79,16 @@ def test_funded_stage_uses_cycle_target():
     app.prop_firm_mgr._account_random_state["MFP-1"] = {"mfp_elite_T_cycle_0": 4000.0}
     app._funded_payout_count = lambda ev: 0
     app._on_funded_leg = lambda ev: True
-    row = {"firm_code": "MyFundedPerps Elite", "eval": {"Prop Firm": "MyFundedPerps Elite"}}
+    row = {"firm_code": "MyFundedPerps", "eval": {"Prop Firm": "MyFundedPerps"}}
     plan, _ = app._mfp_elite_plan(_Client(50000, "funded"), {"id": "a1", "account_number": "MFP-1"}, row)
     assert plan["stage"] == "funded" and plan["T"] == 4000
     assert plan["tp_usd"] == 4000 and plan["payout_cash"] == 3200
 
 
-def test_elite_rows_are_still_perps_rows_and_detected_as_elite():
+def test_every_mfp_label_is_a_perps_row_and_elite():
     app = _app()
-    assert app._is_perps_firm("MyFundedPerps Elite")       # routes via perps path
-    assert app._is_mfp_elite_row({"firm_code": "MyFundedPerps Elite", "eval": {}})
-    assert app._is_mfp_elite_row({"firm_code": "x", "eval": {"Prop Firm": "MFP Elite"}})
-    assert not app._is_mfp_elite_row({"firm_code": "MyFundedPerps", "eval": {}})
+    for label in ("MyFundedPerps", "MyFundedPerps Elite", "MFP Elite"):
+        assert app._is_perps_firm(label) or label == "MFP Elite"
+        assert app._is_mfp_elite_row({"firm_code": label, "eval": {}})
+    assert app._is_mfp_elite_row({"firm_code": "x", "eval": {"Prop Firm": "MyFundedPerps"}})
+    assert not app._is_mfp_elite_row({"firm_code": "Tradeify247", "eval": {}})
