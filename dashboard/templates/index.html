@@ -6703,9 +6703,10 @@
                 table.parentElement.style.display = 'block'; // Show container
                 
                 // Predefined Prop Firms
+                // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
                 const firms = [
-                    'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'
+                    'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay',
+                    'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6717,8 +6718,11 @@
 
                     const row = document.createElement('tr');
                     
-                    // Prop Firm Select
-                    let firmOptions = firms.map(f => 
+                    // Prop Firm Select (keep current value if legacy / not in list)
+                    const firmChoices = (selectedFirm && !firms.includes(selectedFirm))
+                        ? [...firms, selectedFirm]
+                        : firms;
+                    let firmOptions = firmChoices.map(f => 
                         `<option value="${f}" ${selectedFirm === f ? 'selected' : ''}>${f}</option>`
                     ).join('');
 
@@ -7902,7 +7906,8 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'].filter(f => !isFirmHidden(f)),
+            // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -7979,7 +7984,11 @@
                 return `<span style="${colorStyle}">${value}</span>`;
             }
 
-            const options = dropdownOptions[type] || [];
+            const options = [...(dropdownOptions[type] || [])];
+            // Keep legacy / unknown current value visible so existing rows still render
+            if (type === 'Prop Firm' && value && !options.includes(value)) {
+                options.push(value);
+            }
             
             // Map items with styles
             const items = options.map(opt => {
@@ -8416,7 +8425,8 @@
             const p4 = u.slice(0, 4);
             if (['FFFF', 'FFFU', 'FDFM', 'FFFA'].includes(p4)) return 'Funded Futures Family';
             if (p4.startsWith('MFFU')) return 'My Funded Futures';
-            if (p4.startsWith('FNFT') || p4.startsWith('FTFN')) return 'FundedNext';
+            // Legacy "FundedNext" removed from selectors — default new FN accounts to Flex
+            if (p4.startsWith('FNFT') || p4.startsWith('FTFN')) return 'Funded Next Flex';
             if (p4.startsWith('V2-')) return 'Topstep';
             if (p4.startsWith('TDFY') || p4.startsWith('FTDF')) return 'Tradeify';
             if (p4.startsWith('ELTD') || p4.startsWith('TDFU')) return 'TradeDay';
@@ -8503,9 +8513,13 @@
                     const currentPf = String(currentData.evaluations[index]['Prop Firm'] || '').trim();
                     const currentKey = currentPf.toLowerCase().replace(/[\s_]/g, '');
 
-                    // FNFT/FTFN prefixes map to generic FundedNext only. If the
-                    // user already selected Funded Next Flex, keep it.
-                    if (!(detected === 'FundedNext' && currentKey === 'fundednextflex')) {
+                    // FNFT/FTFN prefixes map to Funded Next Flex. Keep Flex / Rapid Daily if already set.
+                    const keepFnVariant = detected === 'Funded Next Flex' && (
+                        currentKey === 'fundednextflex' ||
+                        currentKey === 'fundednextrapiddaily' ||
+                        currentKey === 'fundednext'
+                    );
+                    if (!keepFnVariant) {
                         let firm = detected;
                         if (firm === 'Tradeify' && shouldDefaultTradeifyToAddon(row)) {
                             firm = 'Tradeify (50% Add-On)';
@@ -10232,7 +10246,8 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
+        // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};

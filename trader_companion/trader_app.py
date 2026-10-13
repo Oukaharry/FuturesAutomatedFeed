@@ -6165,7 +6165,13 @@ class TradeOpssAIApp:
         blueprint_row = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
                         tk.Frame(broker_card, bg="#161B22")
         blueprint_row.pack(fill="x", padx=10, pady=(2, 4))
-        blueprint_names = list(self.prop_firm_mgr.firm_blueprints) if self.prop_firm_mgr else ["MFFU_Flex"]
+        # "Funded Next" is the legacy FN blueprint — keep in firm_blueprints for
+        # existing accounts, but hide from the selectable Blueprint dropdown.
+        _hidden_blueprints = {"Funded Next"}
+        blueprint_names = (
+            [n for n in self.prop_firm_mgr.firm_blueprints if n not in _hidden_blueprints]
+            if self.prop_firm_mgr else ["MFFU_Flex"]
+        )
         if CTK_AVAILABLE:
             ctk.CTkLabel(blueprint_row, text="Blueprint:", font=("Segoe UI", 11),
                          text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))

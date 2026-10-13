@@ -1714,8 +1714,9 @@ class PropFirmManager:
             },
         }
 
-        # Funded Next has two selectable blueprints in the UI. Flex starts as
-        # an independent clone so values can diverge safely later.
+        # Funded Next (legacy) remains in firm_blueprints for existing accounts
+        # but is hidden from the UI dropdown. Flex is an independent clone so
+        # values can diverge safely; Rapid Daily is a separate blueprint.
         self.firm_blueprints["Funded Next Flex"] = copy.deepcopy(self.firm_blueprints["Funded Next"])
         self.firm_blueprints["Funded Next Flex"]["name"] = "Funded Next Flex"
         self.firm_blueprints["Funded Next Flex"]["account_sizes"] = ["$50,000", "$100,000", "$150,000"]
