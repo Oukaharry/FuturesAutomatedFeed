@@ -196,8 +196,10 @@ def email_login(d, email, symbol="NDX-USD-PERP", otp_prompt=input) -> bool:
     _click_text(d, ["Continue with email", "Email", "Use email"])
     time.sleep(1.5)
     inp = _find_email_input(d)
-    if inp is None:
-        print("Could not find the email field — please complete login manually in Chrome.")
+    manual = inp is None
+    if manual:
+        print("Could not find the email field — please complete login manually in Chrome "
+              "(waiting up to 4 minutes)…")
     else:
         inp.click(); inp.send_keys(Keys.COMMAND, "a"); inp.send_keys(Keys.BACKSPACE)
         inp.send_keys(email)
@@ -216,7 +218,7 @@ def email_login(d, email, symbol="NDX-USD-PERP", otp_prompt=input) -> bool:
                 boxes[0].send_keys(code)
             else:
                 print("No OTP inputs found — type the code in Chrome.")
-    for _ in range(60):
+    for _ in range(240 if manual else 60):
         if _logged_in(d):
             break
         time.sleep(1)
