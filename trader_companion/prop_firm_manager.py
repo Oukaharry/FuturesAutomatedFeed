@@ -2282,7 +2282,7 @@ class PropFirmManager:
             "strategy_configs": {
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
-                    "tradovate_tp_ticks": 301, "tradovate_sl_ticks": 100,
+                    "tradovate_tp_ticks": 302, "tradovate_sl_ticks": 100,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                     "disable_tp_adjustment": True, "no_hedge": True,
                 }},
@@ -3651,7 +3651,7 @@ class PropFirmManager:
     _PROFIT_TARGETS: Dict[str, Dict[str, float]] = {
         "MFFU":             {"Challenge": 3020, "Funded": 1020},
         "MFFU_Flex":        {"Challenge": 3020, "Funded": 4500},
-        "MFFU Builder 50K": {"Challenge": 3000, "Funded": 4100},
+        "MFFU Builder 50K": {"Challenge": 3020, "Funded": 4100},
         "Funded Next":      {"Challenge": 3050, "Funded": 5200},
         "Funded Next Flex": {"Challenge": 2500, "Funded": 3050},
         "TopStep":          {"Challenge": 3020, "Funded": 5400},
