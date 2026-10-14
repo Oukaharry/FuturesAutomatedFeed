@@ -15481,8 +15481,21 @@ class TradeOpssAIApp:
             sod = float((sess.get_min_equity(code) or {}).get("net_liq_sod") or 0) or None
         except Exception:
             pass
+        # Attempt index from losses this stage: attempt 1 risks risk_1, so
+        # equity more than (risk_1 − $1) below start means attempt 2.
+        tr = mgr.tradeify247_rules_for_balance(start)
+        losses = max(0.0, tr["starting_balance"] - equity)
+        attempt_index = 1 if losses >= tr["risk_1"] - 1.0 else 0
+        cycle_index = 0
+        try:
+            cycle_index = int(self._funded_payout_count(ev) or 0)
+        except Exception:
+            pass
         bplan = mgr.plan_tradeify247_attempt(
             equity=equity, balance_sod=sod, starting_balance=start, on_funded=on_funded,
+            attempt_index=attempt_index, account_key=str(code), cycle_index=cycle_index,
+            traded_today=self._dxtrade_traded_today(sess, code),
+            trade_cost=rules.get("dxtrade_trade_cost_usd"),
             target_profit=rules.get("dxtrade_funded_target_usd"))
         if not bplan.get("allowed"):
             raise RuntimeError(f"Tradeify247 plan: {bplan.get('reason')}")
@@ -15494,7 +15507,58 @@ class TradeOpssAIApp:
                                      max_margin_usd=float(max_margin) if max_margin else None,
                                      quantity=rules.get("dxtrade_quantity"))
         plan["blueprint"] = bplan
+        try:
+            logging.getLogger("TradeOpssAI.dxtrade").info(
+                "[Tradeify247 Standard] account=%s stage=%s cycle=%s attempt=%s T=%s budget=$%.2f "
+                "price_stop=$%.2f price_target=$%.2f notional=$%.2f equity=$%.2f",
+                code, bplan["stage"], cycle_index, bplan["attempt"], bplan.get("T"),
+                bplan.get("risk_budget", 0), plan["sl_usd"], plan["tp_usd"], plan["notional"], equity)
+        except Exception:
+            pass
         return executor, code, plan
+
+    @staticmethod
+    def _utc_window_start_ms(hour: int, minute: int = 0) -> float:
+        """Epoch ms of the most recent HH:MM UTC."""
+        now = datetime.now(timezone.utc)
+        last = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if now < last:
+            last -= timedelta(days=1)
+        return last.timestamp() * 1000
+
+    def _dxtrade_traded_today(self, sess, code) -> bool:
+        """True when an order filled or a position is open since the 22:00 UTC reset."""
+        reset_ms = self._utc_window_start_ms(22, 0)
+        try:
+            if sess.api.list_positions(code):
+                return True
+        except Exception:
+            pass
+        try:
+            for o in sess.api.list_order_history(code) or []:
+                status = str(o.get("status") or "").upper()
+                if status not in ("COMPLETED", "FILLED", "EXECUTED"):
+                    continue
+                ts = str(o.get("transactionTime") or o.get("updateTime") or o.get("issueTime") or "")
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt.timestamp() * 1000 >= reset_ms:
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        marker = (getattr(self, "_dxtrade_last_attempt", {}) or {}).get(str(code))
+        return bool(marker and marker >= reset_ms)
+
+    def _mark_dxtrade_attempt(self, code):
+        store = getattr(self, "_dxtrade_last_attempt", None)
+        if store is None:
+            store = {}
+            self._dxtrade_last_attempt = store
+        store[str(code)] = time.time() * 1000
 
     def _tradeify247_starting_balance(self, row_data, balance_fallback: float) -> float:
         """Starting balance from the account id (1S10K… → 10,000) or the row."""
@@ -15585,6 +15649,8 @@ class TradeOpssAIApp:
 
     def _after_dxtrade_fill(self, row_data, code, plan):
         """Mark the row In Progress, record the SL as the breach floor, drop the row."""
+        if ":" in str(code):            # DXtrade account codes are "domain:account"
+            self._mark_dxtrade_attempt(code)
         _ev = row_data.get("eval")
         if _ev:
             try:

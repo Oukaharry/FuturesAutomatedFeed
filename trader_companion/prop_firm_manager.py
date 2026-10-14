@@ -2489,14 +2489,19 @@ class PropFirmManager:
         }
 
         # Tradeify247 — Tradeify's 24/7 tokenized-perps product on DXtrade
-        # (dx.tradeify247.co). Published 1-Step rules, Oct 2026: static
-        # drawdown, Daily Loss Limit is a hard breach, no min trading days,
-        # no payout lock. Verified live on the account: XYZ100/USD (Nasdaq-100
-        # perp) marginRate 0.5 (2:1), BTC/USD 0.2 (5:1), min 0.01 lot, 1 lot
-        # = $1/pt. Per-size $ figures drive DXTradeExecutor via
-        # tradeify247_rules_for_balance(); the strategy ladder/randomization
-        # spec is TBD — until then the executor uses the conservative
-        # defaults below (TP = remaining target, SL = usable daily room).
+        # (dx.tradeify247.co). Blueprint = **Standard 1-Step $50K** (Golden
+        # Spike model, Oct 13 2026): +12% target ($56,000), $3,000 static
+        # loss ($47,000 floor), FIXED $1,500 daily loss below the reset
+        # balance (hard breach, 22:00 UTC), 80/20, no add-ons, 20-second
+        # minimum hold, 30-day inactivity breach. Two attempts per stage:
+        # all-in $1,450 (DLL − $50) then the full $1,500 DLL; retire after
+        # two losses. Per-trade COST estimate ($200) comes off the price stop
+        # and goes on the price target, never on top of the budgets. Funded
+        # T ~ uniform($3,500, $6,000) whole dollars (no multiples of $100),
+        # drawn once per cycle; withdraw T, restart at $50K once the balance
+        # is restored with full daily headroom. The published per-size table
+        # below is this spec scaled by size/50K. Verified live: XYZ100/USD
+        # marginRate 0.5 (2:1), BTC/USD 0.2 (5:1), min 0.01 lot, 1 lot = $1/pt.
         self.firm_blueprints["Tradeify247"] = {
             "name": "Tradeify247",
             "account_sizes": ["$10,000", "$25,000", "$50,000", "$100,000"],
@@ -2507,12 +2512,24 @@ class PropFirmManager:
             "market": "XYZ100/USD",
             "weekend_market": "BTC/USD",
             "profit_split": 0.80,
+            "purchase_fee": 258.60,              # OCT 40% offer; $431 list
             "risk_rules": {
                 "evaluation_steps": 1,
                 "drawdown_type": "static",
                 "daily_loss_is_hard_breach": True,
+                "daily_loss_fixed": True,         # $ figure, not % of balance
                 "min_trading_days": 0,
-                "reserve": 50.0,                 # never trade into this
+                "min_hold_seconds": 20,
+                "inactivity_breach_days": 30,
+                "reserve": 0.0,                   # budgets below are all-in
+                "spec_balance": 50000.0,
+                "risk_1": 1450.0,                 # fixed: $1,500 DLL − $50 cushion
+                "risk_2": 1500.0,                 # fixed: full DLL, no cushion
+                "trade_cost": 200.0,              # ESTIMATE — replace with measured
+                "max_attempts": 2,
+                "funded_target_band": [3500.0, 6000.0],
+                "min_payout": 100.0,
+                "daily_reset_utc": "22:00",
                 "sizes": {
                     10000:  {"fee": 100.0, "profit_target": 1200.0,  "daily_loss": 300.0,  "max_loss": 600.0},
                     25000:  {"fee": 231.0, "profit_target": 3000.0,  "daily_loss": 750.0,  "max_loss": 1500.0},
@@ -2852,51 +2869,100 @@ class PropFirmManager:
         return plan
 
     def tradeify247_rules_for_balance(self, starting_balance: float) -> Dict:
-        """Per-size Tradeify247 rules + derived floors for a starting balance."""
+        """Per-size Tradeify247 rules + Standard 1-Step $50K spec scaled to the size.
+
+        The published per-size table IS the $50K spec scaled (12% target, 6%
+        static loss, fixed daily loss = 3% of the initial size), so risk_1 /
+        risk_2 / cost / funded band scale by size/50K exactly.
+        """
         bp = self.firm_blueprints["Tradeify247"]
-        sizes = bp["risk_rules"]["sizes"]
+        rr = bp["risk_rules"]
+        sizes = rr["sizes"]
         start = float(starting_balance or 0)
         key = min(sizes.keys(), key=lambda s: abs(s - start)) if start > 0 else 10000
         r = dict(sizes[key])
+        k = float(key) / rr["spec_balance"]
         r["starting_balance"] = float(key)
+        r["scale"] = k
         r["static_loss_floor"] = float(key) - r["max_loss"]
-        r["reserve"] = float(bp["risk_rules"]["reserve"])
+        r["reserve"] = float(rr["reserve"])
         r["reserve_floor"] = r["static_loss_floor"] + r["reserve"]
         r["evaluation_goal"] = float(key) + r["profit_target"]
+        r["risk_1"] = round(rr["risk_1"] * k, 2)
+        r["risk_2"] = round(rr["risk_2"] * k, 2)
+        r["trade_cost"] = round(rr["trade_cost"] * k, 2)
+        r["max_attempts"] = int(rr["max_attempts"])
+        r["funded_target_band"] = [round(rr["funded_target_band"][0] * k, 2),
+                                   round(rr["funded_target_band"][1] * k, 2)]
         return r
 
-    def plan_tradeify247_attempt(self, *, equity: float, balance_sod: float,
-                                 starting_balance: float, on_funded: bool,
-                                 target_profit: Optional[float] = None) -> Dict:
-        """Conservative $ plan for one Tradeify247 trade.
+    def tradeify247_cycle_target(self, account_key: str, cycle_index: int, scale: float = 1.0,
+                                 redraw: bool = False) -> float:
+        """Funded T for a cycle (whole $, never a multiple of $100; stored per account+cycle)."""
+        lo, hi = self.firm_blueprints["Tradeify247"]["risk_rules"]["funded_target_band"]
+        lo, hi = lo * scale, hi * scale
+        state = self._account_random_state.setdefault(str(account_key or "default"), {})
+        key = f"tradeify247_T_cycle_{int(cycle_index)}"
+        if redraw or key not in state:
+            state[key] = self._draw_vest_target(lo, hi)
+            self.logger.info(f"[Tradeify247 Standard] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
+        return float(state[key])
 
-        TP = remaining distance to the stage target (eval: profit target;
-        funded: `target_profit` or the same profit target). SL = the smaller
-        of today's remaining daily-loss room and the room above the reserve
-        floor, so a stop-out can never be a breach.
+    def plan_tradeify247_attempt(self, *, equity: float, balance_sod: Optional[float],
+                                 starting_balance: float, on_funded: bool,
+                                 attempt_index: int = 0, account_key: str = "default",
+                                 cycle_index: int = 0, traded_today: bool = False,
+                                 trade_cost: Optional[float] = None,
+                                 target_profit: Optional[float] = None) -> Dict:
+        """Price-bracket plan for one Tradeify247 Standard attempt (0-based index).
+
+        All-in budget: attempt 1 = risk_1 ($1,450 @ 50K = DLL − $50);
+        attempt 2 = risk_2 ($1,500 @ 50K = the full fixed DLL). Price stop =
+        budget − COST; price target = (stage goal − equity) + COST. The budget
+        is additionally capped at the room above the static floor and today's
+        daily floor (reset balance − DLL), so a stop-out is never a breach.
         """
         r = self.tradeify247_rules_for_balance(starting_balance)
         start = r["starting_balance"]
+        bp = self.firm_blueprints["Tradeify247"]
+        cost = float(trade_cost) if trade_cost is not None else r["trade_cost"]
         stage = "funded" if on_funded else "evaluation"
-        plan = {"stage": stage, "allowed": True, "reason": "",
-                "reserve_floor": r["reserve_floor"], "market": self.firm_blueprints["Tradeify247"]["market"]}
-        daily_room = (float(balance_sod) - r["daily_loss"]) if balance_sod else None
-        daily_room = (float(equity) - daily_room) if daily_room is not None else r["daily_loss"]
-        static_room = float(equity) - r["reserve_floor"]
-        sl_usd = min(daily_room, static_room)
-        # Keep a sliver of the daily limit for fees/slippage (hard breach).
-        sl_usd = sl_usd - r["reserve"] if sl_usd > r["reserve"] * 2 else sl_usd
-        goal = start + float(target_profit if (on_funded and target_profit) else r["profit_target"])
-        tp_usd = goal - float(equity)
-        if sl_usd <= 0:
-            plan.update(allowed=False, reason="no loss room left today / above the reserve floor")
+        plan = {"stage": stage, "attempt": attempt_index + 1, "allowed": True, "reason": "",
+                "reserve_floor": r["reserve_floor"], "market": bp["market"], "T": None,
+                "split": float(bp["profit_split"]), "scale": r["scale"], "cost": round(cost, 2)}
+        if traded_today:
+            plan.update(allowed=False, reason="one attempt per daily reset (22:00 UTC)")
             return plan
-        if tp_usd <= 0:
+        if attempt_index >= r["max_attempts"]:
+            plan.update(allowed=False, reason="two losses this stage — account retired")
+            return plan
+
+        if on_funded:
+            T = float(target_profit) if target_profit else self.tradeify247_cycle_target(
+                account_key, cycle_index, scale=r["scale"])
+            goal = start + T
+            plan["T"] = T
+        else:
+            goal = r["evaluation_goal"]
+
+        sod = float(balance_sod) if balance_sod else float(equity)
+        budget = r["risk_1"] if attempt_index == 0 else r["risk_2"]
+        static_room = float(equity) - r["reserve_floor"]
+        daily_room = float(equity) - (sod - r["daily_loss"])
+        budget = min(budget, static_room, daily_room)
+        net_goal = goal - float(equity)
+        sl_usd = budget - cost
+        tp_usd = net_goal + cost
+        if budget <= 0 or sl_usd <= 0:
+            plan.update(allowed=False, reason="no loss room left today / above the static floor after costs")
+            return plan
+        if net_goal <= 0:
             plan.update(allowed=False, reason="already at or above target — request payout / pass")
             return plan
-        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2),
-                    target_equity=round(goal, 2), daily_room=round(daily_room, 2),
-                    static_room=round(static_room, 2))
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2), risk_budget=round(budget, 2),
+                    net_goal=round(net_goal, 2), target_equity=round(goal, 2),
+                    daily_room=round(daily_room, 2), static_room=round(static_room, 2),
+                    payout_cash=round(T * float(bp["profit_split"]), 2) if on_funded else None)
         return plan
 
     # ── MyFundedPerps (Elite 50K) planner ────────────────────────────────────
