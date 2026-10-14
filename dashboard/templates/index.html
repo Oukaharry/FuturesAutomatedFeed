@@ -6739,6 +6739,10 @@
                     const isBreakoutFirm = (acc.prop_firm || '').startsWith('Breakout');
                     const userPh = isDxFirm ? 'DXtrade username (tradeify247-…)' : 'Username';
                     const passPh = isDxFirm ? 'DXtrade password' : 'Password';
+                    // Tradeify247: the portal login (app.tradeify247.co) is what the
+                    // companion reads Billing from to fill each account's Fee.
+                    const loginPh = isDxFirm ? 'Portal email (app.tradeify247.co)' : 'Login ID';
+                    const portalPassPh = isDxFirm ? 'Portal password' : 'Password';
                     const emailField = isVestFirm ? 'vest_email' : 'breakout_email';
                     const emailPh = isVestFirm ? 'Vest login email (code is read from the mailbox)'
                                                : 'Breakout login email (sign-in link is read from the mailbox)';
@@ -6778,13 +6782,13 @@
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
                                    value="${escapeHtmlAttr(acc.login || '')}" 
-                                   placeholder="Login ID"
+                                   placeholder="${loginPh}"
                                    onchange="updatePropAccount(${index}, 'login', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
                                    value="${escapeHtmlAttr(acc.password || '')}" 
-                                   placeholder="Password"
+                                   placeholder="${portalPassPh}"
                                    onchange="updatePropAccount(${index}, 'password', this.value)">
                         </td>
                         <td>

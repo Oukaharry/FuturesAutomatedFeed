@@ -120,3 +120,31 @@ def test_plan_refuses_when_trading_status_not_full():
     with pytest.raises(ValueError):
         DXTradeExecutor(c, "a").plan_bracket("XYZ100/USD", "buy", ref_price=30000.0,
                                              tp_usd=10, sl_usd=10)
+
+
+# ── Tradeify247 portal billing → Fee ───────────────────────────────────
+
+def test_portal_fees_by_login_maps_paid_orders():
+    from trader_companion.tradeify247_portal import Tradeify247Portal
+    p = Tradeify247Portal("x@example.com", "pw")
+    p.orders = lambda status="": [
+        {"orderId": 48697, "status": "Paid", "createdAt": "2026-10-14T10:00:00Z", "total": "60.00",
+         "currency_symbol": "$", "propAccount": {"traderAccountLogin": "1S10K2167015", "password": "secret"}},
+        {"orderId": 48600, "status": "Cancelled", "createdAt": "2026-10-13T10:00:00Z", "total": "431",
+         "propAccount": {"traderAccountLogin": "1S50K0000001"}},
+    ]
+    fees = p.fees_by_login()
+    assert fees["1S10K2167015"] == 60.0 and "1S50K0000001" not in fees
+
+
+def test_dxtrade_mirror_row_uses_portal_fee_and_tier_size():
+    from trader_companion.prop_firm_manager import PropFirmManager
+    from trader_companion.trader_app import TradeOpssAIApp
+    app = TradeOpssAIApp.__new__(TradeOpssAIApp)
+    app.prop_firm_mgr = PropFirmManager()
+    class _Sess:
+        def account_codes(self): return ["default:1S10K2167015"]
+    rows = app._dxtrade_mirror_rows("Tradeify247", _Sess(), fees={"1S10K2167015": 60.0})
+    assert rows[0]["Account Size"] == "$10,000" and rows[0]["Fee"] == "60"
+    rows = app._dxtrade_mirror_rows("Tradeify247", _Sess(), fees={})
+    assert rows[0]["Fee"] == "0"

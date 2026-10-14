@@ -13368,10 +13368,14 @@ class TradeOpssAIApp:
                 dx_pass = (pa.get("dxtrade_password") or pa.get("tradovate_password")
                            or os.environ.get("DXTRADE_PASSWORD") or "").strip()
                 dx_host = (pa.get("dxtrade_host") or "").strip() or None
+                # Portal (app.tradeify247.co) login lives in the generic Login ID /
+                # Password cells; it is only used to read purchase prices (Fee).
+                portal = ((pa.get("login") or "").strip(), (pa.get("password") or "").strip())
                 self._broker_connections[firm] = {
                     "account": existing_account,
                     "row_frame": None,
                     "creds_source": "dashboard" if (dx_user and dx_pass) else "missing",
+                    "portal": portal if all(portal) else None,
                 }
                 if existing_account:
                     auto_count += 1
@@ -15524,7 +15528,9 @@ class TradeOpssAIApp:
                 f"{', '.join(c.split(':', 1)[-1] for c in codes) or 'none'}"))
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
-            self._mirror_broker_accounts(firm, sess)
+            fees = self._tradeify247_portal_fees(firm)
+            self._sync_tradeify247_fees(firm, fees)
+            self._mirror_broker_accounts(firm, sess, fees=fees)
             self.root.after(0, self._reconcile_connected_broker_history)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
@@ -16208,10 +16214,32 @@ class TradeOpssAIApp:
                                          fee=bp.get("purchase_fee")))
         return rows
 
-    def _dxtrade_mirror_rows(self, firm, sess):
-        mgr = self.prop_firm_mgr
-        bp = mgr.firm_blueprints.get("Tradeify247") or {}
+    def _tradeify247_portal_fees(self, firm) -> dict:
+        """{login: amount paid} from the Tradeify247 portal, or {} when no portal login."""
+        creds = ((getattr(self, "_broker_connections", {}) or {}).get(firm) or {}).get("portal")
+        if not creds:
+            self.root.after(0, lambda: self.log(
+                f"ℹ {firm}: add the portal email/password (Login ID / Password cells) on the "
+                f"dashboard so purchase prices can be read into Fee", "WARN"))
+            return {}
+        try:
+            from trader_companion.tradeify247_portal import fetch_fees
+        except ImportError:
+            from tradeify247_portal import fetch_fees
+        try:
+            fees = fetch_fees(*creds)
+            self.root.after(0, lambda n=len(fees) // 2: self.log(
+                f"🧾 {firm}: portal billing read — {n} paid order(s)"))
+            return fees
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"⚠ {firm}: portal billing lookup failed: {e}", "WARN"))
+            return {}
+
+    def _dxtrade_mirror_rows(self, firm, sess, fees=None):
         rows = []
+        if fees is None:
+            fees = self._tradeify247_portal_fees(firm)
         for code in sess.account_codes() or []:
             number = str(code).split(":", 1)[-1].strip()
             if not number:
@@ -16227,11 +16255,61 @@ class TradeOpssAIApp:
                     start = float(metrics.get("balance") or 0)
                 except Exception:
                     pass
+            fee = fees.get(number) if fees else None
+            if fee is None and fees:
+                fee = fees.get(number.upper())
             rows.append(self._api_mirror_row("Tradeify247", number, start,
-                                             fee=bp.get("purchase_fee")))
+                                             fee=fee if fee is not None else 0))
         return rows
 
-    def _mirror_broker_accounts(self, firm, broker):
+    def _sync_tradeify247_fees(self, firm, fees: dict):
+        """Correct Fee on existing Tradeify247 rows from the portal's paid orders."""
+        if not fees:
+            return 0
+        updates = []
+        for ev in getattr(self, "_last_dashboard_evaluations", []) or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            if not self._is_dxtrade_firm(ev.get("Prop Firm")):
+                continue
+            acct = self._cell_account(ev.get("Account #"))
+            fee = fees.get(acct) if acct else None
+            if fee is None and acct:
+                fee = fees.get(acct.upper())
+            if fee is None:
+                continue
+            try:
+                current = float(str(ev.get("Fee") or "0").replace("$", "").replace(",", ""))
+            except ValueError:
+                current = None
+            if current is not None and abs(current - fee) < 0.005:
+                continue
+            updates.append({"Prop Firm": ev.get("Prop Firm"), "Account #": ev.get("Account #"),
+                            "Account #.1": ev.get("Account #.1") or "",
+                            "Account Size": ev.get("Account Size") or "", "Fee": f"{fee:g}"})
+        if not updates:
+            return 0
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip("/")
+        if not email or not dashboard_url:
+            return 0
+        try:
+            resp = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json={"email": email, "evaluations": updates, "statistics": {},
+                      "dropdown_options": {}, "force_fields": ["Fee"]},
+                headers=_companion_request_headers(), timeout=120)
+            if resp.status_code != 200:
+                raise RuntimeError(f"HTTP {resp.status_code}")
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"⚠ {firm}: fee update failed: {e}", "WARN"))
+            return 0
+        labels = ", ".join(f"{u['Account #']} → ${float(u['Fee']):,.2f}" for u in updates)
+        self.root.after(0, lambda: self.log(f"🧾 {firm}: Fee updated from portal billing — {labels}"))
+        return len(updates)
+
+    def _mirror_broker_accounts(self, firm, broker, fees=None):
         """Create dashboard rows for live accounts the dashboard does not list
         yet, then rescan so they join today's queue. Runs off the Tk thread."""
         def _ulog(msg, level="INFO"):
@@ -16242,7 +16320,7 @@ class TradeOpssAIApp:
             elif self._is_vest_firm(firm):
                 rows = self._vest_mirror_rows(firm, broker)
             elif self._is_dxtrade_firm(firm):
-                rows = self._dxtrade_mirror_rows(firm, broker)
+                rows = self._dxtrade_mirror_rows(firm, broker, fees=fees)
             else:
                 return 0
         except Exception as exc:
