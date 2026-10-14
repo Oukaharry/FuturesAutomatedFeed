@@ -1,9 +1,17 @@
-"""Pull one-time codes and sign-in links straight from the login mailbox (Gmail IMAP).
+"""Pull one-time codes and sign-in links straight from the login mailbox over IMAP.
 
-Needs a Google App Password (2-Step Verification → App passwords) in .env:
+Works with any IMAP provider. Titan Email (imap.titan.email:993, normal mailbox
+password) is the default; Gmail needs an App Password. Configure in .env:
 
-    GMAIL_IMAP_USER=you@gmail.com
-    GMAIL_IMAP_APP_PASSWORD=xxxx xxxx xxxx xxxx
+    MAIL_IMAP_HOST=imap.titan.email      # default when MAIL_IMAP_USER is set
+    MAIL_IMAP_PORT=993
+    MAIL_IMAP_USER=ops@yourdomain.com
+    MAIL_IMAP_PASSWORD=...
+    # legacy fallback: GMAIL_IMAP_USER / GMAIL_IMAP_APP_PASSWORD (imap.gmail.com)
+
+The firm may send the code to a different address (e.g. a Gmail login that
+auto-forwards to the Titan inbox) — forwarding keeps the sender/subject/body,
+so matching is unaffected.
 
     from trader_companion.email_codes import Mailbox
     mb = Mailbox.from_env()
@@ -29,25 +37,36 @@ from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
-IMAP_HOST = os.environ.get("GMAIL_IMAP_HOST", "imap.gmail.com")
+TITAN_IMAP_HOST = "imap.titan.email"
+GMAIL_IMAP_HOST = "imap.gmail.com"
 CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 LINK_RE = re.compile(r"https?://[^\s\"'<>\]\)]+")
 
 
 class Mailbox:
-    def __init__(self, user: str, app_password: str, host: str = IMAP_HOST, folder: str = "INBOX"):
+    def __init__(self, user: str, password: str, host: str = TITAN_IMAP_HOST, port: int = 993,
+                 folder: str = "INBOX"):
         self.user = user
-        self.password = app_password.replace(" ", "")
+        # Google shows app passwords in 4-char groups; real passwords keep their spaces.
+        self.password = password.replace(" ", "") if host == GMAIL_IMAP_HOST else password
         self.host = host
+        self.port = int(port)
         self.folder = folder
 
     @classmethod
     def from_env(cls) -> Optional["Mailbox"]:
-        user = (os.environ.get("GMAIL_IMAP_USER") or "").strip()
-        pw = (os.environ.get("GMAIL_IMAP_APP_PASSWORD") or "").strip()
-        if not user or not pw:
-            return None
-        return cls(user, pw)
+        user = (os.environ.get("MAIL_IMAP_USER") or "").strip()
+        pw = (os.environ.get("MAIL_IMAP_PASSWORD") or "").strip()
+        host = (os.environ.get("MAIL_IMAP_HOST") or "").strip()
+        if user and pw:
+            return cls(user, pw, host=host or TITAN_IMAP_HOST,
+                       port=int(os.environ.get("MAIL_IMAP_PORT") or 993),
+                       folder=os.environ.get("MAIL_IMAP_FOLDER") or "INBOX")
+        guser = (os.environ.get("GMAIL_IMAP_USER") or "").strip()
+        gpw = (os.environ.get("GMAIL_IMAP_APP_PASSWORD") or "").strip()
+        if guser and gpw:
+            return cls(guser, gpw, host=os.environ.get("GMAIL_IMAP_HOST") or GMAIL_IMAP_HOST)
+        return None
 
     @staticmethod
     def configured() -> bool:
@@ -56,7 +75,7 @@ class Mailbox:
     # ── IMAP ─────────────────────────────────────────────────────────
 
     def _connect(self) -> imaplib.IMAP4_SSL:
-        m = imaplib.IMAP4_SSL(self.host)
+        m = imaplib.IMAP4_SSL(self.host, self.port)
         m.login(self.user, self.password)
         m.select(self.folder)
         return m
@@ -185,11 +204,11 @@ def _main():
     logging.basicConfig(level=logging.INFO)
     mb = Mailbox.from_env()
     if mb is None:
-        raise SystemExit("set GMAIL_IMAP_USER and GMAIL_IMAP_APP_PASSWORD in .env")
+        raise SystemExit("set MAIL_IMAP_USER / MAIL_IMAP_PASSWORD (Titan) or GMAIL_IMAP_USER / GMAIL_IMAP_APP_PASSWORD in .env")
     since = time.time() - a.minutes * 60
     match = [s for s in a.match.split(",") if s]
     if a.cmd == "check":
-        print("IMAP login OK" if mb.check() else "failed")
+        print(f"IMAP login OK ({mb.user} @ {mb.host}:{mb.port}, folder {mb.folder})" if mb.check() else "failed")
     elif a.cmd == "recent":
         for r in mb.recent(since):
             print(time.strftime("%H:%M:%S", time.localtime(r["ts"])), "|", r["from"][:40], "|", r["subject"][:70])

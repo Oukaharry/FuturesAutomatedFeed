@@ -6,13 +6,24 @@ from trader_companion.email_codes import Mailbox
 
 
 def _mb(records):
-    mb = Mailbox("u@example.com", "abcd efgh ijkl mnop")
+    mb = Mailbox("u@example.com", "secret")
     mb.recent = lambda since, lookback_sec=900: [r for r in records if r["ts"] >= since - 90]
     return mb
 
 
-def test_password_spaces_stripped():
-    assert Mailbox("u", "abcd efgh ijkl mnop").password == "abcdefghijklmnop"
+def test_gmail_app_password_spaces_stripped_titan_password_kept():
+    assert Mailbox("u", "abcd efgh ijkl mnop", host="imap.gmail.com").password == "abcdefghijklmnop"
+    assert Mailbox("u", "p@ss word").password == "p@ss word" and Mailbox("u", "x").host == "imap.titan.email"
+
+
+def test_from_env_prefers_titan_vars_then_gmail(monkeypatch):
+    for k in ("MAIL_IMAP_USER", "MAIL_IMAP_PASSWORD", "MAIL_IMAP_HOST", "GMAIL_IMAP_USER", "GMAIL_IMAP_APP_PASSWORD"):
+        monkeypatch.delenv(k, raising=False)
+    assert Mailbox.from_env() is None
+    monkeypatch.setenv("GMAIL_IMAP_USER", "g@gmail.com"); monkeypatch.setenv("GMAIL_IMAP_APP_PASSWORD", "a b c d")
+    mb = Mailbox.from_env(); assert mb.host == "imap.gmail.com" and mb.password == "abcd"
+    monkeypatch.setenv("MAIL_IMAP_USER", "ops@titan.test"); monkeypatch.setenv("MAIL_IMAP_PASSWORD", "t p")
+    mb = Mailbox.from_env(); assert mb.host == "imap.titan.email" and mb.port == 993 and mb.password == "t p"
 
 
 def test_find_code_prefers_matching_sender_and_subject():
