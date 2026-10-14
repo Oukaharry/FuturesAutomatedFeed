@@ -111,6 +111,31 @@ class Mailbox:
             parts.append(html.unescape(txt))
         return "\n".join(parts)
 
+    @staticmethod
+    def _html(msg: email.message.Message) -> str:
+        for part in msg.walk():
+            if part.get_content_type() == "text/html":
+                try:
+                    return (part.get_payload(decode=True) or b"").decode(
+                        part.get_content_charset() or "utf-8", errors="replace")
+                except Exception:
+                    return ""
+        return ""
+
+    @staticmethod
+    def numbered_links(html_body: str, link_match: str) -> dict:
+        """{label: url} for anchors whose visible text is a number (Descope 'click the
+        number that matches your screen' emails)."""
+        out = {}
+        for a in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html_body, flags=re.S | re.I):
+            href = html.unescape(a.group(1))
+            if link_match.lower() not in href.lower():
+                continue
+            label = re.sub(r"\s+", "", html.unescape(re.sub(r"<[^>]+>", " ", a.group(2))))
+            if label.isdigit():
+                out.setdefault(label, href)
+        return out
+
     def recent(self, since: float, lookback_sec: int = 900) -> list:
         """[{ts, from, subject, text}] newer than `since`, newest first."""
         m = self._connect()
@@ -135,7 +160,7 @@ class Mailbox:
                                                   "Envelope-To", "Cc")
                                  for v in (msg.get_all(h) or []))
                 out.append({"ts": ts, "from": msg.get("From") or "", "subject": subj,
-                            "recipients": rcpts.lower(), "text": self._text(msg)})
+                            "recipients": rcpts.lower(), "text": self._text(msg), "html": self._html(msg)})
             return out
         finally:
             try:
@@ -176,6 +201,31 @@ class Mailbox:
                 if link_match.lower() in url.lower() and not url.lower().endswith((".png", ".jpg", ".gif", ".css")):
                     return url.rstrip(".,;")
         return None
+
+    def find_numbered_links(self, since: float, match: Iterable[str], link_match: str,
+                            recipient: Optional[str] = None) -> dict:
+        """{label: url} from the newest matching mail (empty when none)."""
+        for rec in self.recent(since):
+            if not self._matches(rec, match, recipient):
+                continue
+            links = self.numbered_links(rec.get("html") or "", link_match)
+            if links:
+                return links
+        return {}
+
+    def wait_for_numbered_links(self, since: float, match: Iterable[str], link_match: str,
+                                timeout: int = 180, poll: float = 4.0,
+                                recipient: Optional[str] = None) -> dict:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                links = self.find_numbered_links(since, match, link_match, recipient)
+                if links:
+                    return links
+            except Exception as exc:
+                logger.warning("mailbox poll failed: %s", exc)
+            time.sleep(poll)
+        return {}
 
     def wait_for_code(self, since: float, match: Iterable[str], timeout: int = 180, poll: float = 4.0,
                       recipient: Optional[str] = None) -> Optional[str]:

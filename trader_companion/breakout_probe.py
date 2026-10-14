@@ -25,38 +25,152 @@ import urllib.request
 from trader_companion.cdp_capture import CDPCapture
 
 
-def _open_helper_tab(url: str):
+def _open_helper_tab(url: str, port: int = None):
     """Open `url` in a new tab of the plain Chrome (same as clicking it); return its target id."""
-    req = urllib.request.Request(f"http://localhost:{PORT}/json/new?{url}", method="PUT")
+    req = urllib.request.Request(f"http://localhost:{port or PORT}/json/new?{url}", method="PUT")
     with urllib.request.urlopen(req, timeout=5) as r:
         return json.load(r).get("id")
 
 
-def _close_tab(target_id: str):
+def _close_tab(target_id: str, port: int = None):
     try:
-        urllib.request.urlopen(f"http://localhost:{PORT}/json/close/{target_id}", timeout=5)
+        urllib.request.urlopen(f"http://localhost:{port or PORT}/json/close/{target_id}", timeout=5)
     except Exception:
         pass
 
 
-def _mailbox_link(since: float, recipient: str = None, timeout: int = 180):
-    """Breakout/Descope sign-in link addressed to `recipient`, or None."""
+COOKIES_EL = "document.querySelector('#onetrust-accept-btn-handler')"
+
+
+def accept_cookies(cap: "CDPCapture", tries: int = 20) -> bool:
+    """Click the OneTrust 'Accept All Cookies' banner if/when it shows (it blocks the Descope flow)."""
+    for _ in range(tries):
+        try:
+            vis = cap.eval_js(f"(() => {{ const b = {COOKIES_EL}; if (!b) return false; "
+                              f"const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; }})()")
+            if vis and _click_center(cap, COOKIES_EL):
+                time.sleep(0.6)
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def _drive_helper_tab(target_id: str, port: int, wait_sec: int = 60, url: str = None):
+    """Attach to the link tab (before navigating when `url` is given), accept cookies,
+    wait for the verification to settle, and report the Descope calls it made."""
+    helper = CDPCapture(port, HOSTS + ("descope",), OUT + "/helper")
+    try:
+        helper.target = next(t for t in helper._targets() if t.get("id") == target_id)
+    except StopIteration:
+        return
+    import websocket, threading
+    helper.ws = websocket.create_connection(helper.target["webSocketDebuggerUrl"], suppress_origin=True, timeout=30)
+    helper._thread = threading.Thread(target=helper._loop, daemon=True)
+    helper._thread.start()
+    try:
+        helper.send("Network.enable", {})
+        if url:
+            helper.navigate(url)
+        accepted = accept_cookies(helper, tries=30)
+        print("  helper tab: cookies", "accepted" if accepted else "banner not shown")
+        last = ""
+        for _ in range(wait_sec):
+            time.sleep(1)
+            txt = (helper.eval_js(DEEP_TEXT_JS) or "").strip()
+            if txt and txt.lower() != "loading...":
+                last = txt
+                break
+        print("  helper tab says:", (last or helper.eval_js(DEEP_TEXT_JS) or "")[:160])
+        accept_cookies(helper, tries=4)
+    finally:
+        helper.stop()
+    try:
+        for line in open(OUT + "/helper/rest.jsonl"):
+            r = json.loads(line)
+            u = r["url"]
+            if "auth.portal" in u or "descope" in u or "/api/internal/" in u:
+                if r["method"] != "OPTIONS":
+                    print(f"  helper {r['method']} {u.split('?')[0][-60:]} -> {r.get('status')}")
+    except OSError:
+        pass
+
+
+def _mailbox_numbered_links(since: float, recipient: str = None, timeout: int = 180) -> dict:
+    """{number: url} from the Breakout 'click the number that matches your screen' mail."""
     try:
         from trader_companion.email_codes import Mailbox
     except ImportError:
-        return None
+        return {}
     mb = Mailbox.from_env()
     if mb is None:
-        return None
-    print(f"Fetching the sign-in link for {recipient or 'this login'} from the mailbox…")
-    # The mail also carries a plain /sign-in footer link; only the Descope flow URL authenticates.
-    link = mb.wait_for_link(since, match=("breakout",), link_match="descope-login-flow=",
-                            timeout=timeout, recipient=recipient)
-    if not link:
-        link = mb.wait_for_link(since, match=("breakout",), link_match="descope", timeout=15,
-                                recipient=recipient)
-    print("Mailbox link:", "received" if link else "not received in time")
-    return link
+        return {}
+    print(f"Fetching the numbered sign-in links for {recipient or 'this login'} from the mailbox…")
+    links = mb.wait_for_numbered_links(since, match=("breakout",), link_match="descope-login-flow=",
+                                       timeout=timeout, recipient=recipient)
+    print("Mailbox links:", sorted(links) if links else "not received in time")
+    return links
+
+
+# Descope renders inside web components; walk shadow roots for the visible text.
+DEEP_TEXT_JS = """(() => { const out=[]; const skip=new Set(['SCRIPT','STYLE','NOSCRIPT','TEMPLATE']);
+ const walk = (root) => { for (const el of root.querySelectorAll('*')) {
+   if (skip.has(el.tagName)) continue;
+   if (el.shadowRoot) walk(el.shadowRoot);
+   const r=el.getBoundingClientRect(); if (!r.width && !r.height) continue;
+   if (el.children.length===0) { const t=(el.textContent||'').trim(); if (t && t.length<200) out.push(t); } } };
+ walk(document); return out.join(' | '); })()"""
+
+
+def screen_number(cap: CDPCapture, timeout: int = 30):
+    """The number the Descope screen tells the user to click in the email."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        txt = cap.eval_js(DEEP_TEXT_JS) or ""
+        m = re.search(r"click the following number[^|]*\|\s*(\d{1,3})\b", txt, flags=re.I)
+        if m:
+            return m.group(1)
+        time.sleep(1)
+    return None
+
+
+DESCOPE_BASE = "https://auth.portal.breakoutprop.com"
+DESCOPE_PROJECT = "P30ebYsO2pb5jXy4sBRBSn1DHfJa"
+
+
+def verify_link_in_tab(cap: CDPCapture, link: str) -> dict:
+    """Consume the enchanted link without opening it: the link page only ever
+    POSTs /v1/flow/next {executionId, stepId, interactionId:'submit', input:{token}}
+    (captured live). Doing that from the polling tab keeps everything in one tab."""
+    from urllib.parse import urlparse, parse_qs, unquote
+    q = parse_qs(urlparse(link).query)
+    flow = unquote((q.get("descope-login-flow") or [""])[0])      # "<flowId>|#|<execId>_<stepId>"
+    token = (q.get("t") or [""])[0]
+    if "|#|" not in flow or not token:
+        return {"ok": False, "error": "link has no flow/token"}
+    flow_id, rest = flow.split("|#|", 1)
+    exec_id, _, step_id = rest.partition("_")
+    project = cap.eval_js("""(() => { const el = document.querySelector('descope-wc,[project-id]');
+        return (el && el.getAttribute('project-id')) || null; })()""") or DESCOPE_PROJECT
+    body = {"executionId": f"{flow_id}|#|{exec_id}", "stepId": step_id or "8.end",
+            "interactionId": "submit", "version": 7, "componentsVersion": "3.17.0",
+            "input": {"token": token}, "isCustomScreen": False}
+    js = f"""fetch({json.dumps(DESCOPE_BASE + '/v1/flow/next')}, {{method:'POST',
+        headers: {{'authorization': 'Bearer {project}', 'content-type': 'application/json'}},
+        body: {json.dumps(json.dumps(body))}}})
+      .then(async r => ({{status: r.status, text: await r.text()}}))
+      .catch(e => ({{status: -1, text: String(e)}}))"""
+    res = cap.send("Runtime.evaluate", {"expression": js, "awaitPromise": True, "returnByValue": True}, timeout=60)
+    v = ((res or {}).get("result") or {}).get("value") or {}
+    try:
+        data = json.loads(v.get("text") or "{}")
+    except ValueError:
+        data = {}
+    ok = v.get("status") == 200 and not data.get("error")
+    return {"ok": ok, "status": v.get("status"), "stepName": data.get("stepName"),
+            "flowStatus": data.get("status"), "error": (data.get("error") or {}).get("message")
+            if isinstance(data.get("error"), dict) else data.get("error")}
 
 OUT = "/tmp/breakout_capture"
 HOSTS = ("breakoutprop.com", "kraken.com", "payward")
@@ -64,27 +178,41 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9333
 PROFILE = "/tmp/chrome_profiles/breakout_cdp"
 TRADE_URL = "https://trade.breakoutprop.com/app"
+PORTAL_APP = "portal.breakoutprop.com/app"
 SIGNIN_URL = "https://portal.breakoutprop.com/sign-in?redirect=https%3A%2F%2Ftrade.breakoutprop.com%2Fapp"
 log = logging.getLogger("breakout-probe")
 
 
-def _cdp_alive() -> bool:
+def chrome_for(email: str) -> tuple:
+    """(port, profile_dir) for one login — each client gets its own plain Chrome."""
+    import hashlib
+    key = (email or "").strip().lower()
+    if not key:
+        return PORT, PROFILE
+    h = int(hashlib.sha1(key.encode()).hexdigest()[:6], 16)
+    slug = re.sub(r"[^a-z0-9]+", "_", key.split("@")[0])[:24]
+    return 9400 + (h % 400), f"/tmp/chrome_profiles/breakout_{slug}"
+
+
+def _cdp_alive(port: int = None) -> bool:
     try:
-        urllib.request.urlopen(f"http://localhost:{PORT}/json/version", timeout=1.5)
+        urllib.request.urlopen(f"http://localhost:{port or PORT}/json/version", timeout=1.5)
         return True
     except Exception:
         return False
 
 
-def launch_chrome(url=SIGNIN_URL):
-    if _cdp_alive():
+def launch_chrome(url=SIGNIN_URL, port: int = None, profile: str = None):
+    port = port or PORT
+    profile = profile or PROFILE
+    if _cdp_alive(port):
         return
-    os.makedirs(PROFILE, exist_ok=True)
-    subprocess.Popen([CHROME, f"--remote-debugging-port={PORT}", f"--user-data-dir={PROFILE}",
+    os.makedirs(profile, exist_ok=True)
+    subprocess.Popen([CHROME, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
                       "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", url],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
-        if _cdp_alive():
+        if _cdp_alive(port):
             return
         time.sleep(0.5)
     raise RuntimeError("Chrome did not expose the DevTools port")
@@ -129,10 +257,11 @@ def _click_center(cap: CDPCapture, js_selector_expr: str) -> bool:
 
 EMAIL_EL = "document.querySelector(\"input[name='email'],input[autocomplete='email'],input[type='email']\")"
 CONTINUE_EL = ("[...document.querySelectorAll('button')].find(b => /Continue with Email/i.test(b.innerText))")
-COOKIES_EL = "document.querySelector('#onetrust-accept-btn-handler')"
 
 
-def email_login(cap: CDPCapture, email: str) -> bool:
+def email_login(cap: CDPCapture, email: str, otp_prompt=None, port: int = None) -> bool:
+    """portal sign-in: email → Continue → numbered link matched to the screen → trade app."""
+    port = port or cap.port
     if on_trade_app(cap):
         print("Already on the trade app (session persisted).")
         return True
@@ -151,7 +280,7 @@ def email_login(cap: CDPCapture, email: str) -> bool:
             break
     else:
         print("Email field not found — complete the sign-in manually in Chrome.")
-    _click_center(cap, COOKIES_EL)
+    accept_cookies(cap, tries=6)
     time.sleep(0.5)
     sent_at = None
     if _click_center(cap, EMAIL_EL):
@@ -164,25 +293,44 @@ def email_login(cap: CDPCapture, email: str) -> bool:
             cap.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter", "windowsVirtualKeyCode": 13})
         time.sleep(4)
         print("Page now says:", body_text(cap)[:220].replace("\n", " | "))
-    helper = None
-    link = _mailbox_link(sent_at, recipient=email) if sent_at else None
-    if link:
-        print("Opening the sign-in link in a helper tab…")
-        try:
-            helper = _open_helper_tab(link)
-        except Exception as exc:
-            print("  helper tab failed:", exc)
+    links = _mailbox_numbered_links(sent_at, recipient=email) if sent_at else {}
+    if links:
+        want = screen_number(cap)
+        print(f"Screen asks for number {want}; email offers {sorted(links)}")
+        link = links.get(want) if want else None
+        if not link and len(links) == 1:
+            link = next(iter(links.values()))
+        if link:
+            # Replay what the link page would do — one POST to Descope — from the
+            # polling tab itself, so no second tab is ever opened and the polling
+            # tab receives the session and redirects on its own.
+            print(f"Verifying link #{want} from this tab…")
+            res = verify_link_in_tab(cap, link)
+            print("  verify:", res)
+            if not res.get("ok"):
+                print("  falling back to opening the link in this tab…")
+                cap.navigate(link)
+                for i in range(90):
+                    time.sleep(1)
+                    if i % 3 == 0:
+                        accept_cookies(cap, tries=1)
+                    if on_trade_app(cap) or PORTAL_APP in cap.current_url():
+                        break
+                if not on_trade_app(cap):
+                    cap.navigate(TRADE_URL)
+        else:
+            print("  no link matches the on-screen number — click it yourself in the email")
     else:
-        print(f"\nA sign-in link has been emailed to {email}. Click it (any browser/phone) — this tab\n"
+        print(f"\nA sign-in link has been emailed to {email}. Click the number shown on screen — this tab\n"
               f"will authenticate itself. Waiting up to 5 minutes…")
     for i in range(300):
         time.sleep(1)
         if on_trade_app(cap):
             break
+        if i % 5 == 4:
+            accept_cookies(cap, tries=1)      # the sign-in tab can show the banner too
         if i % 30 == 29:
             print(f"  … still waiting ({cap.current_url()[:70]})")
-    if helper:
-        _close_tab(helper)
     ok = on_trade_app(cap)
     print("Logged in:", ok, "|", cap.current_url())
     return ok

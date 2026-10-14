@@ -60,9 +60,11 @@ def symbol_for_now(weekday: Optional[int] = None) -> str:
 class BreakoutSession:
     """Owns the Chrome tab + API facade for one Breakout login."""
 
-    def __init__(self, email: str, port: int = probe.PORT, otp_prompt=None):
+    def __init__(self, email: str, port: int = None, otp_prompt=None):
         self.email = email
-        self.port = port
+        self.port, self.profile = probe.chrome_for(email)
+        if port:
+            self.port = port
         self.otp_prompt = otp_prompt
         self.api: Optional[BreakoutBrowserAPI] = None
         self.lock = threading.RLock()
@@ -100,11 +102,13 @@ class BreakoutSession:
             time.sleep(1)
             if probe.on_trade_app(cap):
                 return True
-            # The button may open a new tab — follow it.
+            # The button may open a new tab — follow it and close the dashboard tab.
             try:
                 for t in cap._targets():
                     if "trade.breakoutprop.com" in (t.get("url") or "") and t.get("id") != cap.target.get("id"):
+                        old = cap.target.get("id")
                         cap.target = t
+                        probe._close_tab(old, port=cap.port)
                         return True
             except Exception:
                 pass
@@ -123,7 +127,7 @@ class BreakoutSession:
     def login(self) -> bool:
         """Open/reuse Chrome, run the enchanted-link sign-in, land on the terminal."""
         with self.lock:
-            probe.launch_chrome()
+            probe.launch_chrome(port=self.port, profile=self.profile)
             time.sleep(1.5)
             if self.api is not None:
                 try:
@@ -144,7 +148,7 @@ class BreakoutSession:
                     except Exception:
                         st_ok = False
                     if not st_ok:
-                        ok = probe.email_login(cap, self.email, otp_prompt=self.otp_prompt or (lambda *_: ""))
+                        ok = probe.email_login(cap, self.email, otp_prompt=self.otp_prompt, port=self.port)
                         if not ok and not probe.on_trade_app(cap):
                             if not self.ensure_terminal(cap):
                                 raise BreakoutError("Breakout sign-in did not complete (click the emailed link)")
@@ -331,7 +335,7 @@ class BreakoutSession:
                 "Equity": f"${self._amt(pf.get('equity')):,.2f}", "Account": a.get("id")}
 
     def is_alive(self) -> bool:
-        return probe._cdp_alive() and self.api is not None
+        return probe._cdp_alive(self.port) and self.api is not None
 
     def keepalive(self) -> bool:
         try:
