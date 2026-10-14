@@ -15521,8 +15521,8 @@ class TradeOpssAIApp:
                 f"{', '.join(c.split(':', 1)[-1] for c in codes) or 'none'}"))
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
-            self.root.after(0, self._reconcile_connected_broker_history)
             self._mirror_broker_accounts(firm, sess)
+            self.root.after(0, self._reconcile_connected_broker_history)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} DXtrade connection failed: {e}", "ERROR"))
@@ -15834,9 +15834,9 @@ class TradeOpssAIApp:
                     f"buy an evaluation on Vest and rescan to get a dashboard row", "WARN"))
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
-            self.root.after(0, self._reconcile_connected_broker_history)
             if cap:
                 self._mirror_broker_accounts(firm, client)
+            self.root.after(0, self._reconcile_connected_broker_history)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Vest connection failed: {e}", "ERROR"))
@@ -16205,21 +16205,54 @@ class TradeOpssAIApp:
         force_fields = ["Prop Firm", "Account #", "Account #.1", "Account Size", "Fee",
                         "Date Purchased", "Date Started", "Status P1", "Status",
                         "Status Funded", "Hedge Result 1", "Hedge Result 1.1"]
-        try:
+        wanted = {self._account_match_key(r.get("Account #")) for r in new_rows}
+        labels = ", ".join(f"{r['Prop Firm']} {r['Account #']} ({r['Account Size']})" for r in new_rows)
+
+        def _push():
             resp = requests.post(
                 f"{dashboard_url}/api/client/push",
                 json={"email": email, "evaluations": new_rows, "statistics": {},
                       "dropdown_options": {}, "force_fields": force_fields},
-                headers=_companion_request_headers(), timeout=30)
-            ok = resp.status_code == 200 and (resp.json() or {}).get("status") in (None, "success")
-        except Exception as exc:
-            _ulog(f"⚠ {firm}: dashboard row sync failed: {exc}", "WARN")
+                headers=_companion_request_headers(), timeout=120)
+            if resp.status_code != 200 or (resp.json() or {}).get("status") not in (None, "success"):
+                raise RuntimeError(f"rejected ({resp.status_code}): {resp.text[:200]}")
+
+        def _landed():
+            resp = requests.post(
+                f"{dashboard_url}/api/client/data", json={"email": email},
+                headers=_companion_request_headers(), timeout=120)
+            if resp.status_code != 200:
+                return None
+            evaluations = (resp.json() or {}).get("evaluations") or []
+            self._last_dashboard_evaluations = list(evaluations)
+            return wanted <= self._dashboard_account_keys()
+
+        # The dashboard stores evaluations as one blob, so a concurrent full
+        # push (outcome corrections fire on connect) can overwrite this append.
+        # Hold the correction lock while writing and confirm the rows landed.
+        lock = getattr(self, "_outcome_correction_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._outcome_correction_lock = lock
+        added = 0
+        with lock:
+            for attempt in range(1, 4):
+                try:
+                    _push()
+                    landed = _landed()
+                except Exception as exc:
+                    _ulog(f"⚠ {firm}: dashboard row sync attempt {attempt} failed: {exc}", "WARN")
+                    landed = False
+                if landed:
+                    added = len(new_rows)
+                    break
+                if landed is None:
+                    added = len(new_rows)   # pushed OK; read-back unavailable
+                    break
+                time.sleep(3 * attempt)
+        if not added:
+            _ulog(f"❌ {firm}: could not add {labels} to the dashboard — rescan to retry", "ERROR")
             return 0
-        if not ok:
-            _ulog(f"⚠ {firm}: dashboard row sync rejected ({resp.status_code}): "
-                  f"{resp.text[:200]}", "WARN")
-            return 0
-        labels = ", ".join(f"{r['Prop Firm']} {r['Account #']} ({r['Account Size']})" for r in new_rows)
         _ulog(f"📋 {firm}: added {len(new_rows)} live account(s) to the dashboard — {labels}; rescanning")
         self.root.after(1500, self._load_active_trades)
         return len(new_rows)
@@ -16243,8 +16276,8 @@ class TradeOpssAIApp:
                 f"🔑 {firm} connected via Breakout terminal — account(s): {', '.join(codes) or 'none'}"))
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
-            self.root.after(0, self._reconcile_connected_broker_history)
             self._mirror_broker_accounts(firm, sess)
+            self.root.after(0, self._reconcile_connected_broker_history)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Breakout connection failed: {e}", "ERROR"))
