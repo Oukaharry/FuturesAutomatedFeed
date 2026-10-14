@@ -72,7 +72,8 @@ exports/
 
 # Editor / agent state (machine-specific)
 .claude/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 
 # Build / release artifacts (binaries, often hundreds of MB)
