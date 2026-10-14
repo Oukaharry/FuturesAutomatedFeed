@@ -72,13 +72,17 @@ exports/
 
 # Editor / agent state (machine-specific)
 .claude/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 
 # Build / release artifacts (binaries, often hundreds of MB)
 Releases/
 build/
 dist/
+
+# PyInstaller build specifications (keep local; do not track)
+*.spec
 
 # Large release binaries
 *.zip
