@@ -2686,6 +2686,14 @@ class PropFirmManager:
                 "min_payout": 50.0,
                 "daily_reset_utc": "00:30",
             },
+            # TEMPORARY live-test cap (user request, Oct 2026): every Turbo
+            # bracket makes or loses $100 at the price level regardless of
+            # the attempt ladder above. Remove to return to the planner's
+            # $125 stop / $470 target.
+            "rules": {
+                "breakout_tp_usd": 100.0,
+                "breakout_sl_usd": 100.0,
+            },
             "strategy_configs": {},
         }
 

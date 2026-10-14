@@ -162,7 +162,8 @@ def test_breakout_plan_for_row_uses_classic_rules_scaled_to_live_account():
     assert code == ACCT and bp["attempt"] == 1
     # Turbo $5K = 0.1 × Classic: budget $145, cost $20 → price stop $125, price target $450+$20
     assert bp["risk_budget"] == 145 and bp["sl_usd"] == 125 and bp["tp_usd"] == 470
-    assert plan["sl_usd"] == pytest.approx(125 * 0.95) and plan["tp_usd"] == 470
+    # Temporary live-test cap: Turbo rules pin the bracket to ±$100 (SL × 0.95 buffer)
+    assert plan["sl_usd"] == pytest.approx(100 * 0.95) and plan["tp_usd"] == 100
 
 
 def test_breakout_plan_blocks_same_window_repeat():
@@ -172,3 +173,39 @@ def test_breakout_plan_blocks_same_window_repeat():
     row = {"acct_num": ACCT, "eval": {"Prop Firm": "Breakout"}, "firm_code": "Breakout"}
     with pytest.raises(RuntimeError, match="00:30 UTC"):
         app._breakout_plan_for_row(s, row, "buy")
+
+
+# ── saved login → live accounts → dashboard rows ──────────────────────
+
+def test_credential_stub_added_when_no_row_exists():
+    app = _app()
+    app._broker_firm_aliases = {}
+    pas = [{"prop_firm": "Breakout Turbo", "breakout_email": "h@example.com"},
+           {"prop_firm": "Breakout", "breakout_email": ""},
+           {"prop_firm": "Topstep", "tradovate_username": "u", "tradovate_password": "p"}]
+    stubs = app._api_credential_stubs([], pas)
+    assert stubs == [{"Prop Firm": "Breakout Turbo", "_credential_stub": True}]
+    # an existing Breakout-family row means no stub is needed
+    assert app._api_credential_stubs([{"Prop Firm": "Breakout", "Account #": ACCT}], pas) == []
+
+
+def test_breakout_mirror_rows_build_tradeable_turbo_row():
+    app = _app()
+    app._last_dashboard_evaluations = []
+    rows = app._breakout_mirror_rows("Breakout Turbo", _session())
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["Prop Firm"] == "Breakout Turbo" and r["Account #"] == ACCT
+    assert r["Account Size"] == "$5,000" and r["Status P1"] == "In Progress"
+    assert r["Hedge Result 1"] == app._api_row_day_placeholder()
+    from trader_companion.trader_app import kenya_today
+    active, connect, skipped = app._partition_evaluations_for_scan(rows, kenya_today().weekday())
+    assert len(active) == 1 and skipped["no_day"] == 0
+
+
+def test_mirror_skips_accounts_already_on_dashboard():
+    app = _app()
+    app._last_dashboard_evaluations = [{"Prop Firm": "Breakout", "Account #": ACCT.replace("-", " ")}]
+    rows = app._breakout_mirror_rows("Breakout Turbo", _session())
+    known = app._dashboard_account_keys()
+    assert app._account_match_key(rows[0]["Account #"]) in known

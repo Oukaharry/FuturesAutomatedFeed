@@ -9659,9 +9659,15 @@ class TradeOpssAIApp:
                 # Populate broker connection rows per prop firm — driven by every
                 # active account, not just the ones queued to trade today.
                 prop_accounts = data.get("prop_accounts", [])
+                # API-only firms (Breakout / Vest / Tradeify247 / MFP) have no
+                # dashboard row until the broker reports its accounts, so a
+                # saved login alone must still open the connection; the
+                # connector then mirrors the live accounts into rows.
+                connect_evals_with_stubs = connect_evals + self._api_credential_stubs(
+                    connect_evals, prop_accounts)
                 self.root.after(
                     0,
-                    lambda ce=connect_evals, pa=prop_accounts, af=active_trade_firms:
+                    lambda ce=connect_evals_with_stubs, pa=prop_accounts, af=active_trade_firms:
                     self._populate_broker_rows(ce, pa, priority_firms=af),
                 )
                 # Queue eligibility excludes $0.00 markers, so recover their
@@ -15510,6 +15516,7 @@ class TradeOpssAIApp:
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
             self.root.after(0, self._reconcile_connected_broker_history)
+            self._mirror_broker_accounts(firm, sess)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} DXtrade connection failed: {e}", "ERROR"))
@@ -15813,6 +15820,7 @@ class TradeOpssAIApp:
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
             self.root.after(0, self._reconcile_connected_broker_history)
+            self._mirror_broker_accounts(firm, client)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Vest connection failed: {e}", "ERROR"))
@@ -16019,6 +16027,187 @@ class TradeOpssAIApp:
                 return c["account"]
         return None
 
+    # ── API-only firms: saved login → live accounts → dashboard rows ──────
+
+    @staticmethod
+    def _api_prop_account_has_login(pa) -> bool:
+        """True when a Prop Firm Accounts entry carries enough to connect."""
+        if not isinstance(pa, dict):
+            return False
+        for key in ("breakout_email", "vest_email", "api_key", "dxtrade_username",
+                    "tradovate_username"):
+            if str(pa.get(key) or "").strip():
+                return True
+        return False
+
+    def _api_credential_stubs(self, connect_evals, prop_accounts):
+        """Placeholder rows so API-only firms with a saved login (but no
+        dashboard row yet) still get a broker connection on scan."""
+        families = {self._broker_login_family(str(ev.get("Prop Firm") or ""))
+                    for ev in (connect_evals or []) if isinstance(ev, dict)}
+        stubs = []
+        for pa in prop_accounts or []:
+            pf = str((pa or {}).get("prop_firm") or "").strip()
+            if not pf or not self._is_api_only_firm(pf):
+                continue
+            if not self._api_prop_account_has_login(pa):
+                continue
+            family = self._broker_login_family(pf)
+            if family in families:
+                continue
+            families.add(family)
+            stubs.append({"Prop Firm": pf, "_credential_stub": True})
+        return stubs
+
+    @staticmethod
+    def _account_match_key(value) -> str:
+        return str(value or "").strip().upper().replace("-", "").replace(" ", "")
+
+    def _dashboard_account_keys(self) -> set:
+        keys = set()
+        for ev in getattr(self, "_last_dashboard_evaluations", []) or []:
+            if not isinstance(ev, dict) or ev.get("_deleted"):
+                continue
+            for field in ("Account #", "Account #.1"):
+                k = self._account_match_key(self._cell_account(ev.get(field)))
+                if k:
+                    keys.add(k)
+        return keys
+
+    def _api_row_day_placeholder(self) -> str:
+        """Perps venues trade every day, so the first trade queues for today."""
+        return self._WEEKDAY_LABELS[kenya_today().weekday()]
+
+    def _api_mirror_row(self, firm_name, account_number, size_usd, *, funded=False,
+                        fee=None, started=None):
+        """Dashboard evaluation row for a live API-only account."""
+        try:
+            size_txt = f"${int(round(float(size_usd))):,}" if size_usd else ""
+        except (TypeError, ValueError):
+            size_txt = ""
+        today = (started or kenya_today()).strftime("%d/%m/%Y")
+        row = {
+            "Prop Firm": firm_name,
+            "Account #": str(account_number),
+            "Account Size": size_txt,
+            "Date Purchased": today,
+            "Date Started": today,
+            "Fee": f"{float(fee):g}" if fee not in (None, "") else "0",
+            "Status P1": "Pass" if funded else "In Progress",
+            "Status": "-",
+            "_api_mirrored": True,
+            "_row_added_at": datetime.utcnow().isoformat(),
+        }
+        if funded:
+            row["Account #.1"] = str(account_number)
+            row["Status Funded"] = "In Progress"
+            row["Hedge Result 1.1"] = self._api_row_day_placeholder()
+        else:
+            row["Hedge Result 1"] = self._api_row_day_placeholder()
+        return row
+
+    def _breakout_mirror_rows(self, firm, sess):
+        mgr = self.prop_firm_mgr
+        rows = []
+        for a in sess.accounts() or []:
+            if str(a.get("status") or "active") != "active":
+                continue
+            code = str(a.get("id") or "").strip()
+            if not code:
+                continue
+            kind = mgr.breakout_plan_kind(a, firm)
+            bp_name = "Breakout Turbo" if kind == "turbo" else "Breakout"
+            bp = mgr.firm_blueprints.get(bp_name) or {}
+            plan = a.get("plan") or {}
+            start = sess._amt(plan.get("initial_size")) or sess._amt((a.get("portfolio") or {}).get("balance"))
+            funded = str(a.get("type") or "").lower().startswith("prop_funded")
+            rows.append(self._api_mirror_row(bp_name, code, start, funded=funded,
+                                             fee=bp.get("purchase_fee")))
+        return rows
+
+    def _vest_mirror_rows(self, firm, client):
+        mgr = self.prop_firm_mgr
+        bp = mgr.firm_blueprints.get("Vest Capital") or {}
+        rows = []
+        try:
+            cap = client.capital_account() or {}
+        except Exception:
+            cap = {}
+        code = str(cap.get("id") or client.account_id or "").strip()
+        if not code:
+            return rows
+        start = float(cap.get("initial_capital") or 0) or client.balance()
+        funded = str(cap.get("stage") or "") == "2"
+        rows.append(self._api_mirror_row("Vest Capital", code, start, funded=funded,
+                                         fee=bp.get("purchase_fee")))
+        return rows
+
+    def _dxtrade_mirror_rows(self, firm, sess):
+        mgr = self.prop_firm_mgr
+        bp = mgr.firm_blueprints.get("Tradeify247") or {}
+        rows = []
+        for code in sess.account_codes() or []:
+            number = str(code).split(":", 1)[-1].strip()
+            if not number:
+                continue
+            start = 0.0
+            try:
+                m = sess.api.get_metrics(code) or {}
+                start = float(m.get("balance") or 0)
+            except Exception:
+                pass
+            rows.append(self._api_mirror_row("Tradeify247", number, start,
+                                             fee=bp.get("purchase_fee")))
+        return rows
+
+    def _mirror_broker_accounts(self, firm, broker):
+        """Create dashboard rows for live accounts the dashboard does not list
+        yet, then rescan so they join today's queue. Runs off the Tk thread."""
+        def _ulog(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, l=level: self.log(m, l))
+        try:
+            if self._is_breakout_firm(firm):
+                rows = self._breakout_mirror_rows(firm, broker)
+            elif self._is_vest_firm(firm):
+                rows = self._vest_mirror_rows(firm, broker)
+            elif self._is_dxtrade_firm(firm):
+                rows = self._dxtrade_mirror_rows(firm, broker)
+            else:
+                return 0
+        except Exception as exc:
+            _ulog(f"⚠ {firm}: could not list live accounts for the dashboard: {exc}", "WARN")
+            return 0
+        known = self._dashboard_account_keys()
+        new_rows = [r for r in rows
+                    if self._account_match_key(r.get("Account #")) not in known]
+        if not new_rows:
+            return 0
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip("/")
+        if not email or not dashboard_url:
+            return 0
+        force_fields = ["Prop Firm", "Account #", "Account #.1", "Account Size", "Fee",
+                        "Date Purchased", "Date Started", "Status P1", "Status",
+                        "Status Funded", "Hedge Result 1", "Hedge Result 1.1"]
+        try:
+            resp = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json={"email": email, "evaluations": new_rows, "statistics": {},
+                      "dropdown_options": {}, "force_fields": force_fields},
+                headers=_companion_request_headers(), timeout=30)
+            ok = resp.status_code == 200 and (resp.json() or {}).get("status") in (None, "success")
+        except Exception as exc:
+            _ulog(f"⚠ {firm}: dashboard row sync failed: {exc}", "WARN")
+            return 0
+        if not ok:
+            _ulog(f"⚠ {firm}: dashboard row sync rejected ({resp.status_code}): "
+                  f"{resp.text[:200]}", "WARN")
+            return 0
+        labels = ", ".join(f"{r['Prop Firm']} {r['Account #']} ({r['Account Size']})" for r in new_rows)
+        _ulog(f"📋 {firm}: added {len(new_rows)} live account(s) to the dashboard — {labels}; rescanning")
+        self.root.after(1500, self._load_active_trades)
+        return len(new_rows)
+
     def _connect_breakout_broker(self, firm, email):
         """Open the Breakout tab, run the emailed-link sign-in, land on the terminal."""
         try:
@@ -16039,6 +16228,7 @@ class TradeOpssAIApp:
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
             self.root.after(0, self._reconcile_connected_broker_history)
+            self._mirror_broker_accounts(firm, sess)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Breakout connection failed: {e}", "ERROR"))
