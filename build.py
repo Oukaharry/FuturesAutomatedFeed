@@ -144,6 +144,8 @@ def build(trader_release: bool = False):
         'trader_companion.dxtrade_executor',
         'dxtrade_connector', 'dxtrade_browser', 'dxtrade_executor',
         'trader_companion.vest_connector', 'vest_connector',
+        'trader_companion.breakout_connector', 'trader_companion.breakout_api',
+        'trader_companion.breakout_probe', 'trader_companion.cdp_capture', 'websocket',
     ]
     if not trader_release:
         hidden_imports.extend([

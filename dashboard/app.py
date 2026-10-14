@@ -1762,6 +1762,7 @@ _BREACH_FIRM_SHORT_NAMES = (
     ('vest capital', 'Vest Capital'),
     ('vestcapital', 'Vest Capital'),
     ('vest markets', 'Vest Capital'),
+    ('breakout', 'Breakout'),
     ('tradeify', 'Tradeify'),
     ('topstep', 'Topstep'),
     ('lucid', 'Lucid'),

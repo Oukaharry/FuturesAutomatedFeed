@@ -137,6 +137,15 @@ class CDPCapture:
             except Exception:
                 pass
 
+    def _write(self, f, rec: dict):
+        if self._stop.is_set() or f.closed:
+            return
+        try:
+            f.write(json.dumps(rec) + "\n")
+            f.flush()
+        except ValueError:
+            pass
+
     def _body(self, rid: str):
         # Must not block the reader thread: fetch on a helper thread.
         def _go(rec):
@@ -148,8 +157,7 @@ class CDPCapture:
                 rec["response"] = body
             except Exception:
                 rec["response"] = None
-            self.rest_f.write(json.dumps(rec) + "\n")
-            self.rest_f.flush()
+            self._write(self.rest_f, rec)
             self.n_rest += 1
         return _go
 
@@ -176,7 +184,7 @@ class CDPCapture:
             rec = self.reqs.pop(rid)
             rec["status"] = f"FAILED:{p.get('errorText')}" + (" (blocked)" if p.get("blockedReason") else "")
             rec["response"] = None
-            self.rest_f.write(json.dumps(rec) + "\n"); self.rest_f.flush(); self.n_rest += 1
+            self._write(self.rest_f, rec); self.n_rest += 1
         elif m == "Network.webSocketCreated":
             self.ws_urls[rid] = p.get("url")
         elif m in ("Network.webSocketFrameSent", "Network.webSocketFrameReceived"):
@@ -185,9 +193,8 @@ class CDPCapture:
                 payload = (p.get("response") or {}).get("payloadData", "")
                 if len(payload) > 6000:
                     payload = payload[:6000] + f"... [{len(payload)} chars]"
-                self.ws_f.write(json.dumps({"dir": "out" if m.endswith("Sent") else "in",
-                                            "url": url, "ts": time.time(), "payload": payload}) + "\n")
-                self.ws_f.flush()
+                self._write(self.ws_f, {"dir": "out" if m.endswith("Sent") else "in",
+                                        "url": url, "ts": time.time(), "payload": payload})
                 self.n_ws += 1
 
     # ── convenience ─────────────────────────────────────────────────
