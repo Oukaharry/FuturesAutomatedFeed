@@ -81,6 +81,9 @@ Releases/
 build/
 dist/
 
+# PyInstaller build specifications (keep local; do not track)
+*.spec
+
 # Large release binaries
 *.zip
 TradeopssAI_v1.5.8/
