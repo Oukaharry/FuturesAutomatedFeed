@@ -6705,10 +6705,9 @@
                 table.parentElement.style.display = 'block'; // Show container
                 
                 // Predefined Prop Firms
-                // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
                 const firms = [
                     'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay',
-                    'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'
+                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -7916,8 +7915,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            // FundedNext (legacy) omitted — use Flex or Rapid Daily for new picks
-            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -8435,7 +8433,7 @@
             const p4 = u.slice(0, 4);
             if (['FFFF', 'FFFU', 'FDFM', 'FFFA'].includes(p4)) return 'Funded Futures Family';
             if (p4.startsWith('MFFU')) return 'My Funded Futures';
-            // Legacy "FundedNext" removed from selectors — default new FN accounts to Flex
+            // Default new FN accounts to Flex; other variants remain selectable.
             if (p4.startsWith('FNFT') || p4.startsWith('FTFN')) return 'Funded Next Flex';
             if (p4.startsWith('V2-')) return 'Topstep';
             if (p4.startsWith('TDFY') || p4.startsWith('FTDF')) return 'Tradeify';
@@ -10256,7 +10254,6 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        // Daily summaries must still cover existing legacy FundedNext rows (only removed from selection dropdowns)
         const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
