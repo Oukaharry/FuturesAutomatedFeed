@@ -24,6 +24,37 @@ import urllib.request
 
 from trader_companion.cdp_capture import CDPCapture
 
+
+def _open_helper_tab(url: str):
+    """Open `url` in a new tab of the plain Chrome (same as clicking it); return its target id."""
+    req = urllib.request.Request(f"http://localhost:{PORT}/json/new?{url}", method="PUT")
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.load(r).get("id")
+
+
+def _close_tab(target_id: str):
+    try:
+        urllib.request.urlopen(f"http://localhost:{PORT}/json/close/{target_id}", timeout=5)
+    except Exception:
+        pass
+
+
+def _mailbox_link(since: float, timeout: int = 180):
+    """Breakout/Descope sign-in link from the mailbox, or None."""
+    try:
+        from trader_companion.email_codes import Mailbox
+    except ImportError:
+        return None
+    mb = Mailbox.from_env()
+    if mb is None:
+        return None
+    print("Fetching the sign-in link from the mailbox…")
+    link = mb.wait_for_link(since, match=("breakout",), link_match="breakoutprop.com", timeout=timeout)
+    if not link:
+        link = mb.wait_for_link(since, match=("breakout",), link_match="descope", timeout=15)
+    print("Mailbox link:", "received" if link else "not received in time")
+    return link
+
 OUT = "/tmp/breakout_capture"
 HOSTS = ("breakoutprop.com", "kraken.com", "payward")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -119,23 +150,36 @@ def email_login(cap: CDPCapture, email: str) -> bool:
         print("Email field not found — complete the sign-in manually in Chrome.")
     _click_center(cap, COOKIES_EL)
     time.sleep(0.5)
+    sent_at = None
     if _click_center(cap, EMAIL_EL):
         cap.eval_js(f"{EMAIL_EL}.value=''")
         _type(cap, email)
         time.sleep(0.4)
+        sent_at = time.time()
         if not _click_center(cap, CONTINUE_EL):
             cap.send("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Enter", "windowsVirtualKeyCode": 13})
             cap.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter", "windowsVirtualKeyCode": 13})
         time.sleep(4)
         print("Page now says:", body_text(cap)[:220].replace("\n", " | "))
-    print(f"\nA sign-in link has been emailed to {email}. Click it (any browser/phone) — this tab\n"
-          f"will authenticate itself. Waiting up to 5 minutes…")
+    helper = None
+    link = _mailbox_link(sent_at) if sent_at else None
+    if link:
+        print("Opening the sign-in link in a helper tab…")
+        try:
+            helper = _open_helper_tab(link)
+        except Exception as exc:
+            print("  helper tab failed:", exc)
+    else:
+        print(f"\nA sign-in link has been emailed to {email}. Click it (any browser/phone) — this tab\n"
+              f"will authenticate itself. Waiting up to 5 minutes…")
     for i in range(300):
         time.sleep(1)
         if on_trade_app(cap):
             break
         if i % 30 == 29:
             print(f"  … still waiting ({cap.current_url()[:70]})")
+    if helper:
+        _close_tab(helper)
     ok = on_trade_app(cap)
     print("Logged in:", ok, "|", cap.current_url())
     return ok

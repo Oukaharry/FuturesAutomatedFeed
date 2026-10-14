@@ -185,6 +185,21 @@ def _logged_in(d):
         return False
 
 
+def _mailbox_code(since: float, timeout: int = 180):
+    """6-digit Privy code from the login mailbox, or None when not configured / not received."""
+    try:
+        from trader_companion.email_codes import Mailbox
+    except ImportError:
+        return None
+    mb = Mailbox.from_env()
+    if mb is None:
+        return None
+    print("Fetching the code from the mailbox…")
+    code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout)
+    print("Mailbox code:", "received" if code else "not received in time")
+    return code
+
+
 def email_login(d, email, symbol="NDX-USD-PERP", otp_prompt=input) -> bool:
     """Walk the Privy email login on an open driver; returns logged-in state."""
     url = f"https://next.vestmarkets.com/trade/{symbol}"
@@ -209,11 +224,14 @@ def email_login(d, email, symbol="NDX-USD-PERP", otp_prompt=input) -> bool:
         inp.click(); inp.send_keys(Keys.COMMAND, "a"); inp.send_keys(Keys.BACKSPACE)
         inp.send_keys(email)
         time.sleep(0.5)
+        sent_at = time.time()
         if not _click_text(d, ["Submit", "Continue", "Send code", "Next"]):
             inp.send_keys(Keys.ENTER)
         print(f"Email submitted for {email}. Waiting for the one-time code…")
         time.sleep(3)
-        code = otp_prompt("Enter the 6-digit code from the email (or press Enter if you typed it in Chrome): ").strip()
+        code = _mailbox_code(sent_at) or ""
+        if not code:
+            code = otp_prompt("Enter the 6-digit code from the email (or press Enter if you typed it in Chrome): ").strip()
         if code:
             boxes = _otp_inputs(d)
             if len(boxes) >= 6:
