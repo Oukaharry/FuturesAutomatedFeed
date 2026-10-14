@@ -88,6 +88,27 @@ def bootstrap(email: str, token_file: str = None, profile: str = None, settle: i
     return client
 
 
+def observer_profile(email: str) -> str:
+    import re
+    return "vest_view_" + re.sub(r"[^a-z0-9]+", "_", email.strip().lower().split("@")[0])[:32]
+
+
+def open_observer(email: str, symbol: str = "NDX-USD-PERP", otp_prompt=None):
+    """Visible Chrome on the Vest terminal so trades can be watched.
+
+    Uses its own persistent profile, i.e. its own Privy session and token
+    chain, so it never races the bot's harvested chain. Logs in through the
+    mailbox code on first use; later launches reuse the profile. Returns
+    (driver, logged_in) — the caller owns the driver and must quit it.
+    """
+    d = _driver(observer_profile(email))
+    try:
+        ok = email_login(d, email, symbol=symbol, otp_prompt=otp_prompt or (lambda *_: ""))
+    except Exception:
+        ok = False
+    return d, ok
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--email", required=True)

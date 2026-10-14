@@ -13412,6 +13412,9 @@ class TradeOpssAIApp:
                 }
                 if existing_account:
                     auto_count += 1
+                    if vest_email and not self._vest_observer_alive(vest_email):
+                        threading.Thread(target=self._open_vest_observer,
+                                         args=(firm, vest_email), daemon=True).start()
                 elif have_session or vest_email:
                     auto_count += 1
                     threading.Thread(target=self._connect_vest_broker,
@@ -15837,9 +15840,56 @@ class TradeOpssAIApp:
             if cap:
                 self._mirror_broker_accounts(firm, client)
             self.root.after(0, self._reconcile_connected_broker_history)
+            if email:
+                self._open_vest_observer(firm, email)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Vest connection failed: {e}", "ERROR"))
+
+    def _vest_observer_alive(self, email) -> bool:
+        d = (getattr(self, "_vest_observers", {}) or {}).get(email.lower())
+        if d is None:
+            return False
+        try:
+            d.title  # raises once the window was closed
+            return True
+        except Exception:
+            self._vest_observers.pop(email.lower(), None)
+            return False
+
+    def _open_vest_observer(self, firm, email):
+        """Visible Vest terminal (own browser login) alongside the API connection."""
+        if self._vest_observer_alive(email):
+            return
+        try:
+            from trader_companion.vest_login import open_observer
+            from trader_companion.vest_connector import symbol_for_now
+        except ImportError:
+            from vest_login import open_observer
+            from vest_connector import symbol_for_now
+        self.root.after(0, lambda: self.log(
+            f"🪟 {firm}: opening the Vest terminal in Chrome for {email}"))
+        try:
+            driver, ok = open_observer(email, symbol=symbol_for_now(kenya_now().weekday()))
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"⚠ {firm}: could not open the Vest window: {e}", "WARN"))
+            return
+        store = getattr(self, "_vest_observers", None)
+        if store is None:
+            store = {}
+            self._vest_observers = store
+        store[email.lower()] = driver
+        self.root.after(0, lambda: self.log(
+            f"🪟 {firm}: Vest window {'ready' if ok else 'open — finish the sign-in in Chrome'}"))
+
+    def _close_vest_observers(self):
+        for _email, d in list((getattr(self, "_vest_observers", {}) or {}).items()):
+            try:
+                d.quit()
+            except Exception:
+                pass
+        self._vest_observers = {}
 
     def _vest_plan_for_row(self, client, row_data, side):
         """(executor, account_id, plan) for a dashboard row, or raises."""
@@ -19244,6 +19294,11 @@ class TradeOpssAIApp:
 
         self.tradovate_account = None
         self.topstepx_account = None
+
+        try:
+            self._close_vest_observers()
+        except Exception:
+            pass
 
         if shutdown_debug_chrome_spawned:
             try:
