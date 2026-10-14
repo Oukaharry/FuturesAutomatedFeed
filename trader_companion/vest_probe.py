@@ -125,6 +125,11 @@ class Capture:
                     a = rec["headers"].get("Authorization") or rec["headers"].get("authorization")
                     rec["headers"]["Authorization"] = a[:24] + "…(redacted)"
                 self.rest.write(json.dumps(rec) + "\n"); self.rest.flush(); self.n_rest += 1
+            elif m == "Network.loadingFailed" and rid in self.reqs:
+                rec = self.reqs.pop(rid)
+                rec["status"] = f"FAILED:{p.get('errorText')}" + (" (blocked)" if p.get("blockedReason") else "")
+                rec["response"] = None
+                self.rest.write(json.dumps(rec) + "\n"); self.rest.flush(); self.n_rest += 1
             elif m == "Network.webSocketCreated":
                 self.ws_urls[rid] = p.get("url")
             elif m in ("Network.webSocketFrameSent", "Network.webSocketFrameReceived"):

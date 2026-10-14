@@ -95,6 +95,10 @@ class PropFirmManager:
         "VestCapital": "Vest Capital",
         "Vest Markets": "Vest Capital",
         "Vest": "Vest Capital",
+        "Breakout": "Breakout",
+        "Breakout Prop": "Breakout",
+        "BreakoutProp": "Breakout",
+        "Breakout Classic": "Breakout",
     }
 
     def __init__(self):
@@ -2566,8 +2570,173 @@ class PropFirmManager:
             },
             "strategy_configs": {},
         }
+        self._init_breakout_blueprint()
 
-    # ── Vest Platinum $25K planner ────────────────────────────────────────────
+    # ── Vest Platinum $25K planner ─────────────────────────────────────────
+
+    def _init_breakout_blueprint(self):
+        # Breakout (breakoutprop.com, Kraken-backed CFD-style perps).
+        # Blueprint = **Breakout Classic 1-Step $50K** (Golden Spike model,
+        # Oct 13 2026): $5,000 profit target ($55,000), $3,000 static loss
+        # allowance ($47,000 floor), DLL 3% of the reset balance incl. open
+        # losses, reset 00:30 UTC, $400 fee, 80/20. Two attempts per stage:
+        # all-in loss $1,450 ($1,500 DLL − $50 cushion) then 3% × reset
+        # balance (≈$1,456.50, no cushion); retire after two losses. A fixed
+        # per-trade COST estimate ($200 = 0.08% round-trip on $200K + ~$11
+        # financing + ~$29 spread) comes OFF the price stop and goes ON the
+        # price target; never on top of the all-in budgets. Funded T ~
+        # uniform($3,500, $6,000) whole dollars (no multiples of $100),
+        # re-drawn each cycle; withdraw T, restart at $50,000 after approval.
+        # Dollar figures scale by initial_capital/50,000 for other tiers;
+        # the live account record's floors always win.
+        self.firm_blueprints["Breakout"] = {
+            "name": "Breakout",
+            "account_sizes": ["$50,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "platform": "Breakout",
+            "asset_class": "perps",
+            "market": "XYZ100/USD",
+            "weekend_market": "BTC/USD",
+            "profit_split": 0.80,
+            "purchase_fee": 400.0,
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "drawdown_type": "static",
+                "daily_loss_is_hard_breach": True,
+                "daily_loss_includes_open": True,
+                "min_trading_days": 0,
+                "starting_balance": 50000.0,
+                "evaluation_goal": 55000.0,
+                "static_loss_floor": 47000.0,
+                "daily_loss_pct": 0.03,
+                "max_drawdown_pct": 0.06,
+                "profit_target_pct": 0.10,
+                "max_leverage": 10.0,
+                "risk_1": 1450.0,                 # fixed: $1,500 DLL − $50 cushion
+                "risk_2_pct": 0.03,               # fixed: 3% × reset balance, no cushion
+                "trade_cost": 200.0,              # ESTIMATE — replace with measured cost
+                "max_attempts": 2,
+                "funded_target_band": [3500.0, 6000.0],
+                "reserve": 0.0,
+                "min_payout": 50.0,
+                "daily_reset_utc": "00:30",
+            },
+            "strategy_configs": {},
+        }
+
+    def breakout_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
+        """Breakout Classic rules scaled to the live account size.
+
+        `live` is the /breakout/v1/accounts/get record (plan + portfolio);
+        its max_drawdown_equity_value / max_daily_loss_equity_value /
+        target_equity_value override the scaled blueprint values.
+        """
+        bp = self.firm_blueprints["Breakout"]
+        rr = bp["risk_rules"]
+        live = live or {}
+        plan = live.get("plan") or live
+        amt = lambda v: float((v or {}).get("amount") if isinstance(v, dict) else (v or 0))
+        start = amt(plan.get("initial_size")) or float(starting_balance or rr["starting_balance"])
+        k = start / rr["starting_balance"]
+        r = {
+            "starting_balance": start,
+            "scale": k,
+            "risk_1": round(rr["risk_1"] * k, 2),
+            "risk_2_pct": rr["risk_2_pct"],
+            "trade_cost": round(rr["trade_cost"] * k, 2),
+            "max_attempts": int(rr["max_attempts"]),
+            "daily_loss": round(start * rr["daily_loss_pct"], 2),
+            "max_leverage": float(rr["max_leverage"]),
+            "reserve": float(rr["reserve"]),
+            "funded_target_band": [round(rr["funded_target_band"][0] * k, 2),
+                                   round(rr["funded_target_band"][1] * k, 2)],
+        }
+        r["evaluation_goal"] = amt(plan.get("target_equity_value")) or rr["evaluation_goal"] * k
+        r["profit_target"] = r["evaluation_goal"] - start
+        r["static_loss_floor"] = amt(plan.get("max_drawdown_equity_value")) or rr["static_loss_floor"] * k
+        r["max_loss"] = start - r["static_loss_floor"]
+        r["daily_loss_floor"] = amt(plan.get("max_daily_loss_equity_value")) or None
+        r["reserve_floor"] = r["static_loss_floor"] + r["reserve"]
+        return r
+
+    def breakout_cycle_target(self, account_key: str, cycle_index: int, scale: float = 1.0,
+                              redraw: bool = False) -> float:
+        """Funded T for a cycle (whole $, never a multiple of $100; stored per account+cycle)."""
+        lo, hi = self.firm_blueprints["Breakout"]["risk_rules"]["funded_target_band"]
+        lo, hi = lo * scale, hi * scale
+        state = self._account_random_state.setdefault(str(account_key or "default"), {})
+        key = f"breakout_T_cycle_{int(cycle_index)}"
+        if redraw or key not in state:
+            state[key] = self._draw_vest_target(lo, hi)
+            self.logger.info(f"[Breakout Classic] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
+        return float(state[key])
+
+    def plan_breakout_attempt(self, *, equity: float, balance_sod: Optional[float],
+                              starting_balance: float, on_funded: bool,
+                              live: Optional[Dict] = None, attempt_index: int = 0,
+                              account_key: str = "default", cycle_index: int = 0,
+                              traded_today: bool = False, trade_cost: Optional[float] = None,
+                              target_profit: Optional[float] = None) -> Dict:
+        """Price-bracket plan for one Breakout Classic attempt (0-based index).
+
+        All-in budget: attempt 1 = risk_1 ($1,450 @ 50K); attempt 2 = 3% ×
+        reset balance. Price stop = budget − COST; price target = (stage
+        goal − equity) + COST, so the net outcome at either bracket equals
+        the modelled figure after costs. The all-in budget is additionally
+        capped at the room above the static floor and today's daily floor.
+        """
+        r = self.breakout_rules_for_balance(starting_balance, live=live)
+        start = r["starting_balance"]
+        bp = self.firm_blueprints["Breakout"]
+        cost = float(trade_cost) if trade_cost is not None else r["trade_cost"]
+        stage = "funded" if on_funded else "evaluation"
+        plan = {"stage": stage, "attempt": attempt_index + 1, "allowed": True, "reason": "",
+                "reserve_floor": r["reserve_floor"], "market": bp["market"],
+                "leverage": r["max_leverage"], "T": None, "split": float(bp["profit_split"]),
+                "scale": r["scale"], "cost": round(cost, 2)}
+        if traded_today:
+            plan.update(allowed=False, reason="one attempt per daily reset (00:30 UTC)")
+            return plan
+        if attempt_index >= r["max_attempts"]:
+            plan.update(allowed=False, reason="two losses this stage — account retired")
+            return plan
+
+        if on_funded:
+            T = float(target_profit) if target_profit else self.breakout_cycle_target(
+                account_key, cycle_index, scale=r["scale"])
+            goal = start + T
+            plan["T"] = T
+        else:
+            goal = r["evaluation_goal"]
+
+        sod = float(balance_sod) if balance_sod else float(equity)
+        budget = r["risk_1"] if attempt_index == 0 else round(sod * r["risk_2_pct"], 2)
+        static_room = float(equity) - r["reserve_floor"]
+        daily_floor = r["daily_loss_floor"] if r.get("daily_loss_floor") else sod - r["daily_loss"]
+        daily_room = float(equity) - daily_floor
+        budget = min(budget, static_room, daily_room)
+        net_goal = goal - float(equity)
+        sl_usd = budget - cost
+        tp_usd = net_goal + cost
+        if budget <= 0 or sl_usd <= 0:
+            plan.update(allowed=False, reason="no loss room left today / above the static floor after costs")
+            return plan
+        if net_goal <= 0:
+            plan.update(allowed=False, reason="already at or above target — request payout / pass")
+            return plan
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2), risk_budget=round(budget, 2),
+                    net_goal=round(net_goal, 2), target_equity=round(goal, 2),
+                    daily_room=round(daily_room, 2), static_room=round(static_room, 2),
+                    payout_cash=round(T * float(bp["profit_split"]), 2) if on_funded else None)
+        return plan
+
+    @staticmethod
+    def _looks_like_breakout_account(username: str) -> bool:
+        """True for Breakout account ids like W3M6-SHMX-Y67Z-MELW (4×4 upper alnum)."""
+        s = str(username or "").strip().upper().replace(" ", "-")
+        parts = s.split("-")
+        return len(parts) == 4 and all(len(p) == 4 and p.isalnum() for p in parts)
 
     def vest_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
         """Vest Platinum rules scaled to the live account size.
@@ -2913,6 +3082,9 @@ class PropFirmManager:
         # Vest Capital accounts are UUIDs (875c7864-2672-5a3f-890b-a9f594ef1c32).
         elif self._looks_like_vest_account(username):
             return "Vest Capital"
+        # Breakout accounts are 4×4 blocks (W3M6-SHMX-Y67Z-MELW).
+        elif self._looks_like_breakout_account(username):
+            return "Breakout"
         elif any(prefix.startswith(var) for var in ["ELTD", "TDFU"]):
             return "Trade Day"
         elif any(prefix.startswith(var) for var in ["FNFT", "FTFN"]):
