@@ -13391,13 +13391,19 @@ class TradeOpssAIApp:
                 token_file = (pa.get("vest_token_file") or "").strip() or None
                 vest_acct = (pa.get("vest_account_id") or "").strip() or None
                 try:
-                    from trader_companion.vest_connector import default_token_file as _vest_tf
+                    from trader_companion.vest_connector import (
+                        default_token_file as _vest_tf, session_file_email as _vest_sess_email)
                 except ImportError:
-                    from vest_connector import default_token_file as _vest_tf
+                    from vest_connector import (
+                        default_token_file as _vest_tf, session_file_email as _vest_sess_email)
                 if not token_file:
                     token_file = _vest_tf(vest_email) if vest_email else _vest_tf()
-                    if vest_email and not os.path.exists(token_file) and os.path.exists(_vest_tf()):
-                        token_file = _vest_tf()      # legacy single-session file
+                    # Legacy single-session file: reuse only when it is this login's
+                    # (untagged files predate per-email sessions and may be anyone's).
+                    if (vest_email and not os.path.exists(token_file)
+                            and os.path.exists(_vest_tf())
+                            and _vest_sess_email(_vest_tf()) == vest_email.lower()):
+                        token_file = _vest_tf()
                 have_session = os.path.exists(token_file)
                 self._broker_connections[firm] = {
                     "account": existing_account,
@@ -15794,20 +15800,25 @@ class TradeOpssAIApp:
         except ImportError:
             from vest_connector import VestClient
         try:
-            client = VestClient(token_file=token_file, account_id=account_id)
-            if not client.logged_in:
+            client = VestClient(token_file=token_file, account_id=account_id, email=email)
+            saved_email = (getattr(client, "email", None) or "").lower()
+            wrong_login = bool(email and saved_email and saved_email != email.lower())
+            if not client.logged_in or wrong_login:
                 if not email:
                     raise RuntimeError(
                         f"no Vest session at {client.token_file} — add the login email on the "
                         "dashboard or run `python -m trader_companion.vest_login --email …`")
                 self.root.after(0, lambda: self.log(
-                    f"🔗 {firm}: no saved session — signing in as {email} "
+                    f"🔗 {firm}: no saved session for {email} — opening Chrome to sign in "
                     f"(one-time code read from the mailbox)"))
                 try:
                     from trader_companion.vest_login import bootstrap as _vest_bootstrap
+                    from trader_companion.vest_connector import default_token_file as _vest_tf
                 except ImportError:
                     from vest_login import bootstrap as _vest_bootstrap
-                client = _vest_bootstrap(email, token_file=client.token_file)
+                    from vest_connector import default_token_file as _vest_tf
+                target_file = _vest_tf(email) if wrong_login else client.token_file
+                client = _vest_bootstrap(email, token_file=target_file)
                 if account_id:
                     client.account_id = account_id
             client.login()
@@ -15817,10 +15828,15 @@ class TradeOpssAIApp:
             self.root.after(0, lambda: self.log(
                 f"🔑 {firm} connected via Vest API — account {client.account_id} "
                 f"(${client.balance():,.2f}, {cap.get('plan_name') or 'plan n/a'})"))
+            if not cap:
+                self.root.after(0, lambda: self.log(
+                    f"⚠ {firm}: {email or 'this login'} has no active Vest Capital plan — "
+                    f"buy an evaluation on Vest and rescan to get a dashboard row", "WARN"))
             self.root.after(0, self._start_broker_idle_keepalive)
             self.root.after(0, self._start_status_poll)
             self.root.after(0, self._reconcile_connected_broker_history)
-            self._mirror_broker_accounts(firm, client)
+            if cap:
+                self._mirror_broker_accounts(firm, client)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Vest connection failed: {e}", "ERROR"))

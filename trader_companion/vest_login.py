@@ -77,7 +77,7 @@ def bootstrap(email: str, token_file: str = None, profile: str = None, settle: i
             pass
     if not user and not account:
         raise RuntimeError("no Vest auth responses captured — login flow may have changed")
-    client = VestClient(token_file=token_file or default_token_file(email))
+    client = VestClient(token_file=token_file or default_token_file(email), email=email)
     client.import_tokens(user=user, account=account)
     client.login()
     for name in ("rest.jsonl", "ws.jsonl"):

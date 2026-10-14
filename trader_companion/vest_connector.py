@@ -59,6 +59,15 @@ def default_token_file(email: Optional[str] = None) -> str:
     return os.path.join(here, "vest_session.json")
 
 
+def session_file_email(path: str) -> Optional[str]:
+    """Login email recorded in a session file, or None for untagged/legacy files."""
+    try:
+        with open(path) as f:
+            return (json.load(f).get("email") or "").strip().lower() or None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 class VestError(Exception):
     def __init__(self, message, status=None, code=None, payload=None):
         super().__init__(message)
@@ -71,11 +80,12 @@ class VestClient:
     """REST client holding the rotating user/account token chains."""
 
     def __init__(self, token_file: Optional[str] = None, account_id: Optional[str] = None,
-                 base_url: str = REST_URL, timeout: float = 20.0):
+                 base_url: str = REST_URL, timeout: float = 20.0, email: Optional[str] = None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.token_file = token_file or default_token_file()
         self.account_id = account_id or os.environ.get("VEST_ACCOUNT_ID") or None
+        self.email = (email or "").strip().lower() or None
         self.user: dict = {}
         self.account: dict = {}
         self._lock = threading.RLock()
@@ -96,12 +106,14 @@ class VestClient:
         self.account = dict(data.get("account") or {})
         if not self.account_id:
             self.account_id = self.account.get("accountId") or data.get("accountId")
+        if not self.email:
+            self.email = (data.get("email") or "").strip().lower() or None
 
     def _save(self):
         tmp = self.token_file + ".tmp"
         with open(tmp, "w") as f:
             json.dump({"user": self.user, "account": self.account,
-                       "accountId": self.account_id,
+                       "accountId": self.account_id, "email": self.email,
                        "saved_at": datetime.now(timezone.utc).isoformat()}, f, indent=1)
         os.replace(tmp, self.token_file)
         try:
