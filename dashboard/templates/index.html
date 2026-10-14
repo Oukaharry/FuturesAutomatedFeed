@@ -5992,6 +5992,7 @@
                         'tradeify247': 'Tradeify247', 'tradeify247dxtrade': 'Tradeify247',
                         'vestcapital': 'Vest Capital', 'vestmarkets': 'Vest Capital', 'vest': 'Vest Capital',
                         'breakout': 'Breakout', 'breakoutprop': 'Breakout', 'breakoutclassic': 'Breakout',
+                        'breakoutturbo': 'Breakout Turbo', 'breakoutturbo5k': 'Breakout Turbo',
                         'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
                         'fundedfuturesfamily': 'Funded Futures Family', 'fff': 'Funded Futures Family',
                         'goatfunded': 'Goat Funded Futures', 'goatfundedfutures': 'Goat Funded Futures', 'gff': 'Goat Funded Futures',
@@ -6708,7 +6709,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'MFFU Builder', 'Funding Ticks', 'TradeDay',
-                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout', 'Other'
+                    'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout', 'Breakout Turbo', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6732,21 +6733,27 @@
                     const isPerpsFirm = (acc.prop_firm || '') === 'MyFundedPerps';
                     // DXtrade firm: same two cells, but they are the DXtrade terminal login
                     const isDxFirm = (acc.prop_firm || '') === 'Tradeify247';
-                    // Vest: login is a token file created once by vest_login; cells hold the Privy email
+                    // Vest / Breakout: emailed one-time code / sign-in link — the companion
+                    // reads it from the ops mailbox, so only the login email is needed.
                     const isVestFirm = (acc.prop_firm || '') === 'Vest Capital';
-                    // Breakout: login is an emailed link; the cells hold the login email
-                    const isBreakoutFirm = (acc.prop_firm || '') === 'Breakout';
-                    const userPh = isDxFirm ? 'DXtrade username (tradeify247-…)'
-                                 : isVestFirm ? 'Vest login email (token via vest_login)'
-                                 : isBreakoutFirm ? 'Breakout login email (magic link)' : 'Username';
-                    const passPh = isDxFirm ? 'DXtrade password'
-                                 : (isVestFirm || isBreakoutFirm) ? 'n/a — emailed sign-in' : 'Password';
+                    const isBreakoutFirm = (acc.prop_firm || '').startsWith('Breakout');
+                    const userPh = isDxFirm ? 'DXtrade username (tradeify247-…)' : 'Username';
+                    const passPh = isDxFirm ? 'DXtrade password' : 'Password';
+                    const emailField = isVestFirm ? 'vest_email' : 'breakout_email';
+                    const emailPh = isVestFirm ? 'Vest login email (code is read from the mailbox)'
+                                               : 'Breakout login email (sign-in link is read from the mailbox)';
                     const credentialCells = isPerpsFirm ? `
                         <td colspan="2">
                             <input type="text" class="cell-input" style="width:100%" 
                                    value="${escapeHtmlAttr(acc.api_key || '')}" 
                                    placeholder="API Key fp_live_... (Read And Trade)"
                                    onchange="updatePropAccount(${index}, 'api_key', this.value)">
+                        </td>` : (isVestFirm || isBreakoutFirm) ? `
+                        <td colspan="2">
+                            <input type="email" class="cell-input" style="width:100%" 
+                                   value="${escapeHtmlAttr(acc[emailField] || acc.tradovate_username || '')}" 
+                                   placeholder="${emailPh}"
+                                   onchange="updatePropAccount(${index}, '${emailField}', this.value)">
                         </td>` : `
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
@@ -7919,7 +7926,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout', 'Breakout Turbo', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Live', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Live', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -10258,7 +10265,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'MFFU Builder', 'FundedNext', 'Funded Next Flex', 'FundedNext Rapid Daily', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Tradeify (50% Add-On)', 'Tradeify247', 'FTMO Futures Pro', 'Blue Guardian Reserve', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Goat Funded Futures', 'The 5%ers', 'MyFundedPerps', 'Vest Capital', 'Breakout', 'Breakout Turbo'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections(clientId) {
             const d = {};

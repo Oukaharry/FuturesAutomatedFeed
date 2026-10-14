@@ -1762,6 +1762,7 @@ _BREACH_FIRM_SHORT_NAMES = (
     ('vest capital', 'Vest Capital'),
     ('vestcapital', 'Vest Capital'),
     ('vest markets', 'Vest Capital'),
+    ('breakout turbo', 'Breakout Turbo'),
     ('breakout', 'Breakout'),
     ('tradeify', 'Tradeify'),
     ('topstep', 'Topstep'),
@@ -12514,10 +12515,12 @@ def _quality_row_has_payout_in_hedge(ev) -> bool:
 
 
 def _prop_account_has_credentials(pa) -> bool:
-    """True if a prop_accounts row has portal login/password or Tradovate user/pass (Prop Firm tab)."""
+    """True if a prop_accounts row carries any login the companion can use
+    (portal/Tradovate user+pass, MFP api_key, DXtrade login, Vest/Breakout email)."""
     if not isinstance(pa, dict):
         return False
-    for key in ('login', 'password', 'tradovate_username', 'tradovate_password'):
+    for key in ('login', 'password', 'tradovate_username', 'tradovate_password',
+                'api_key', 'dxtrade_username', 'vest_email', 'vest_token_file', 'breakout_email'):
         if str(pa.get(key, '') or '').strip():
             return True
     return False

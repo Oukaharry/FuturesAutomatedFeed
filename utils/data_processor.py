@@ -389,6 +389,8 @@ _FIRM_MAP = {
     "breakout": "Breakout",
     "breakoutprop": "Breakout",
     "breakoutclassic": "Breakout",
+    "breakoutturbo": "Breakout Turbo",
+    "breakoutturbo5k": "Breakout Turbo",
     "topstep": "Topstep",
     "topsteprtp": "TopStep RTP",
     "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",

@@ -99,6 +99,8 @@ class PropFirmManager:
         "Breakout Prop": "Breakout",
         "BreakoutProp": "Breakout",
         "Breakout Classic": "Breakout",
+        "Breakout Turbo": "Breakout Turbo",
+        "Breakout Turbo 5K": "Breakout Turbo",
     }
 
     def __init__(self):
@@ -2642,14 +2644,77 @@ class PropFirmManager:
             "strategy_configs": {},
         }
 
-    def breakout_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
-        """Breakout Classic rules scaled to the live account size.
+        # Breakout Turbo $5K — the small 1-step product seen live ("Turbo Eval 1",
+        # account WFAU-…): $5,000 start, target $5,450 (+9%), max drawdown AND
+        # daily loss both $150 (3%) → both floors at $4,850, 00:30 UTC reset.
+        # With DLL == MDD there is room for exactly ONE attempt: all-in loss
+        # $145 (= $150 − $5 cushion); a second attempt would have $5 of room, so
+        # the account is retired after one loss. COST is the Classic $200
+        # estimate scaled by size ($20): price stop = $125, eval price target =
+        # $450 + $20 = $470. Funded target T ~ uniform($350, $600) whole dollars,
+        # re-drawn each cycle (Classic band × 0.1). Live floors always win.
+        self.firm_blueprints["Breakout Turbo"] = {
+            "name": "Breakout Turbo",
+            "account_sizes": ["$5,000"],
+            "trading_phases": ["Evaluation Phase", "Funded Phase"],
+            "execution": "api",
+            "platform": "Breakout",
+            "asset_class": "perps",
+            "market": "XYZ100/USD",
+            "weekend_market": "BTC/USD",
+            "profit_split": 0.80,
+            "purchase_fee": 0.0,                 # set from checkout
+            "risk_rules": {
+                "evaluation_steps": 1,
+                "drawdown_type": "static",
+                "daily_loss_is_hard_breach": True,
+                "daily_loss_includes_open": True,
+                "min_trading_days": 0,
+                "starting_balance": 5000.0,
+                "evaluation_goal": 5450.0,
+                "static_loss_floor": 4850.0,
+                "daily_loss_pct": 0.03,
+                "max_drawdown_pct": 0.03,
+                "profit_target_pct": 0.09,
+                "max_leverage": 10.0,
+                "risk_1": 145.0,                  # fixed: $150 DD − $5 cushion
+                "risk_2_pct": 0.03,
+                "trade_cost": 20.0,               # ESTIMATE (Classic $200 × 0.1)
+                "max_attempts": 1,                # DLL == MDD leaves no room for a second
+                "funded_target_band": [350.0, 600.0],
+                "reserve": 0.0,
+                "min_payout": 50.0,
+                "daily_reset_utc": "00:30",
+            },
+            "strategy_configs": {},
+        }
+
+    @staticmethod
+    def breakout_plan_kind(live: Optional[Dict] = None, firm_code: str = None) -> str:
+        """'turbo' when the firm code says so or the live plan has DLL == max DD
+        (the Turbo signature); otherwise 'classic'."""
+        if "turbo" in str(firm_code or "").lower():
+            return "turbo"
+        live = live or {}
+        if "turbo" in str(live.get("name") or "").lower():
+            return "turbo"
+        plan = live.get("plan") or {}
+        amt = lambda v: float((v or {}).get("amount") if isinstance(v, dict) else (v or 0))
+        dll, mdd = amt(plan.get("max_daily_drawdown_value")), amt(plan.get("max_drawdown_value"))
+        if dll and mdd and abs(dll - mdd) < 0.01:
+            return "turbo"
+        return "classic"
+
+    def breakout_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None,
+                                   firm_code: str = None) -> Dict:
+        """Breakout rules (Classic or Turbo) scaled to the live account size.
 
         `live` is the /breakout/v1/accounts/get record (plan + portfolio);
         its max_drawdown_equity_value / max_daily_loss_equity_value /
         target_equity_value override the scaled blueprint values.
         """
-        bp = self.firm_blueprints["Breakout"]
+        kind = self.breakout_plan_kind(live, firm_code)
+        bp = self.firm_blueprints["Breakout Turbo" if kind == "turbo" else "Breakout"]
         rr = bp["risk_rules"]
         live = live or {}
         plan = live.get("plan") or live
@@ -2657,6 +2722,8 @@ class PropFirmManager:
         start = amt(plan.get("initial_size")) or float(starting_balance or rr["starting_balance"])
         k = start / rr["starting_balance"]
         r = {
+            "kind": kind,
+            "blueprint": bp["name"],
             "starting_balance": start,
             "scale": k,
             "risk_1": round(rr["risk_1"] * k, 2),
@@ -2678,15 +2745,16 @@ class PropFirmManager:
         return r
 
     def breakout_cycle_target(self, account_key: str, cycle_index: int, scale: float = 1.0,
-                              redraw: bool = False) -> float:
+                              redraw: bool = False, kind: str = "classic") -> float:
         """Funded T for a cycle (whole $, never a multiple of $100; stored per account+cycle)."""
-        lo, hi = self.firm_blueprints["Breakout"]["risk_rules"]["funded_target_band"]
+        bp = self.firm_blueprints["Breakout Turbo" if kind == "turbo" else "Breakout"]
+        lo, hi = bp["risk_rules"]["funded_target_band"]
         lo, hi = lo * scale, hi * scale
         state = self._account_random_state.setdefault(str(account_key or "default"), {})
-        key = f"breakout_T_cycle_{int(cycle_index)}"
+        key = f"breakout_{kind}_T_cycle_{int(cycle_index)}"
         if redraw or key not in state:
             state[key] = self._draw_vest_target(lo, hi)
-            self.logger.info(f"[Breakout Classic] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
+            self.logger.info(f"[{bp['name']}] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
         return float(state[key])
 
     def plan_breakout_attempt(self, *, equity: float, balance_sod: Optional[float],
@@ -2694,34 +2762,36 @@ class PropFirmManager:
                               live: Optional[Dict] = None, attempt_index: int = 0,
                               account_key: str = "default", cycle_index: int = 0,
                               traded_today: bool = False, trade_cost: Optional[float] = None,
-                              target_profit: Optional[float] = None) -> Dict:
-        """Price-bracket plan for one Breakout Classic attempt (0-based index).
+                              target_profit: Optional[float] = None, firm_code: str = None) -> Dict:
+        """Price-bracket plan for one Breakout attempt (0-based index), Classic or Turbo.
 
-        All-in budget: attempt 1 = risk_1 ($1,450 @ 50K); attempt 2 = 3% ×
-        reset balance. Price stop = budget − COST; price target = (stage
-        goal − equity) + COST, so the net outcome at either bracket equals
-        the modelled figure after costs. The all-in budget is additionally
-        capped at the room above the static floor and today's daily floor.
+        All-in budget: attempt 1 = risk_1 ($1,450 @ 50K Classic; $145 Turbo 5K);
+        attempt 2 (Classic only) = 3% × reset balance. Price stop = budget −
+        COST; price target = (stage goal − equity) + COST, so the net outcome at
+        either bracket equals the modelled figure after costs. The budget is
+        additionally capped at the room above the static floor and today's
+        daily floor.
         """
-        r = self.breakout_rules_for_balance(starting_balance, live=live)
+        r = self.breakout_rules_for_balance(starting_balance, live=live, firm_code=firm_code)
         start = r["starting_balance"]
-        bp = self.firm_blueprints["Breakout"]
+        bp = self.firm_blueprints["Breakout Turbo" if r["kind"] == "turbo" else "Breakout"]
         cost = float(trade_cost) if trade_cost is not None else r["trade_cost"]
         stage = "funded" if on_funded else "evaluation"
         plan = {"stage": stage, "attempt": attempt_index + 1, "allowed": True, "reason": "",
                 "reserve_floor": r["reserve_floor"], "market": bp["market"],
                 "leverage": r["max_leverage"], "T": None, "split": float(bp["profit_split"]),
-                "scale": r["scale"], "cost": round(cost, 2)}
+                "scale": r["scale"], "cost": round(cost, 2), "kind": r["kind"], "blueprint": bp["name"]}
         if traded_today:
             plan.update(allowed=False, reason="one attempt per daily reset (00:30 UTC)")
             return plan
         if attempt_index >= r["max_attempts"]:
-            plan.update(allowed=False, reason="two losses this stage — account retired")
+            plan.update(allowed=False, reason=("one loss on Turbo — account retired" if r["kind"] == "turbo"
+                                               else "two losses this stage — account retired"))
             return plan
 
         if on_funded:
             T = float(target_profit) if target_profit else self.breakout_cycle_target(
-                account_key, cycle_index, scale=r["scale"])
+                account_key, cycle_index, scale=r["scale"], kind=r["kind"])
             goal = start + T
             plan["T"] = T
         else:

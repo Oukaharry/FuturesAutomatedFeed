@@ -772,6 +772,8 @@ def normalize_prop_firm_name(name):
         "breakout": "Breakout",
         "breakoutprop": "Breakout",
         "breakoutclassic": "Breakout",
+        "breakoutturbo": "Breakout Turbo",
+        "breakoutturbo5k": "Breakout Turbo",
         "fundednext": "FundedNext",
         "fundednextflex": "FundedNext",
         "fundednextrapiddaily": "FundedNext Rapid Daily",

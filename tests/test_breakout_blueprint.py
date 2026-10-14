@@ -90,11 +90,47 @@ def test_measured_cost_override_and_blocks():
 
 
 def test_turbo_5k_live_floors_cap_the_budget():
-    # 0.1 × Classic → risk_1 $145, cost $20; live floor at 4,850 leaves $150 room.
-    p = PropFirmManager().plan_breakout_attempt(equity=5000, balance_sod=5000, starting_balance=5000,
-                                                on_funded=False, live=LIVE_TURBO5K)
-    assert p["allowed"] and p["risk_budget"] == 145 and p["sl_usd"] == 125 and p["tp_usd"] == 470
-    # after a $145 loss the Turbo's shared $150 floor leaves only $5 → cannot fund a second attempt
-    p2 = PropFirmManager().plan_breakout_attempt(equity=4855, balance_sod=4855, starting_balance=5000,
-                                                 on_funded=False, live=LIVE_TURBO5K, attempt_index=1)
-    assert not p2["allowed"]
+    # Turbo signature (DLL == MDD) → Turbo blueprint: single attempt, $145 all-in, $20 cost.
+    live = {"name": "Turbo Eval 1", "plan": dict(LIVE_TURBO5K["plan"],
+                                                  max_daily_drawdown_value=USD(150), max_drawdown_value=USD(150))}
+    m = PropFirmManager()
+    assert m.breakout_plan_kind(live) == "turbo" and m.breakout_plan_kind(LIVE50) == "classic"
+    assert m.breakout_plan_kind(None, "Breakout Turbo") == "turbo"
+    p = m.plan_breakout_attempt(equity=5000, balance_sod=5000, starting_balance=5000,
+                                on_funded=False, live=live)
+    assert p["allowed"] and p["kind"] == "turbo" and p["blueprint"] == "Breakout Turbo"
+    assert p["risk_budget"] == 145 and p["sl_usd"] == 125 and p["tp_usd"] == 470 and p["target_equity"] == 5450
+    # a second attempt is refused outright on Turbo
+    p2 = m.plan_breakout_attempt(equity=4855, balance_sod=4855, starting_balance=5000,
+                                 on_funded=False, live=live, attempt_index=1)
+    assert not p2["allowed"] and "Turbo" in p2["reason"]
+
+
+def test_turbo_blueprint_constants_and_funded_band():
+    m = PropFirmManager()
+    bp = m.firm_blueprints["Breakout Turbo"]
+    rr = bp["risk_rules"]
+    assert bp["account_sizes"] == ["$5,000"] and rr["evaluation_goal"] == 5450 and rr["static_loss_floor"] == 4850
+    assert rr["risk_1"] == 145 and rr["trade_cost"] == 20 and rr["max_attempts"] == 1
+    assert m.DETECTED_TO_BLUEPRINT["Breakout Turbo"] == "Breakout Turbo"
+    seen = set()
+    for i in range(200):
+        T = m.breakout_cycle_target("t", i, kind="turbo")
+        assert 350 <= T <= 600 and T == int(T) and T % 100 != 0
+        seen.add(T)
+    assert len(seen) > 50
+    p = m.plan_breakout_attempt(equity=5000, balance_sod=5000, starting_balance=5000, on_funded=True,
+                                live={"name": "Turbo Eval 1", "plan": LIVE_TURBO5K["plan"]},
+                                account_key="t", cycle_index=0)
+    assert 350 <= p["T"] <= 600 and p["sl_usd"] == 125 and p["tp_usd"] == p["T"] + 20
+
+
+def test_classic_5k_without_turbo_signature_keeps_two_attempts():
+    # A $5K Classic (DLL 3% vs MDD 6%) still scales the Classic ladder.
+    live = {"plan": {"initial_size": USD(5000), "target_equity_value": USD(5500),
+                     "max_drawdown_equity_value": USD(4700), "max_daily_loss_equity_value": USD(4850),
+                     "max_daily_drawdown_value": USD(150), "max_drawdown_value": USD(300)}}
+    m = PropFirmManager()
+    assert m.breakout_plan_kind(live) == "classic"
+    p = m.plan_breakout_attempt(equity=5000, balance_sod=5000, starting_balance=5000, on_funded=False, live=live)
+    assert p["kind"] == "classic" and p["risk_budget"] == 145 and p["tp_usd"] == 520

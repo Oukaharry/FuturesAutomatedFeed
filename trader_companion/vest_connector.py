@@ -45,11 +45,18 @@ SIZE_SAFETY = 0.97
 RISK_BUFFER = 0.95
 
 
-def default_token_file() -> str:
+def default_token_file(email: Optional[str] = None) -> str:
+    """Session file for a login. With an email → one file per account
+    (vest_session_<slug>.json); without → the legacy default / VEST_TOKEN_FILE."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if email:
+        import re
+        slug = re.sub(r"[^a-z0-9]+", "_", email.strip().lower().split("@")[0])[:32]
+        return os.path.join(here, f"vest_session_{slug}.json")
     env = os.environ.get("VEST_TOKEN_FILE")
     if env:
         return env
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "vest_session.json")
+    return os.path.join(here, "vest_session.json")
 
 
 class VestError(Exception):

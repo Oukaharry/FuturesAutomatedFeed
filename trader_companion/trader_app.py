@@ -1655,6 +1655,7 @@ class TradeOpssAIApp:
         "Tradeify247":      "#06B6D4",   # cyan — DXtrade 24/7 perps, distinct from Tradeify teal
         "Vest Capital":     "#A3E635",   # lime — Vest Markets on-chain perps
         "Breakout":         "#F472B6",   # pink — Breakout (Kraken-backed) perps
+        "Breakout Turbo":   "#F9A8D4",   # light pink — Breakout Turbo $5K
     }
 
     PHASE_BADGE = {
@@ -6415,6 +6416,8 @@ class TradeOpssAIApp:
         "Breakout Prop": "Breakout",
         "BreakoutProp": "Breakout",
         "Breakout Classic": "Breakout",
+        "Breakout Turbo": "Breakout Turbo",
+        "Breakout Turbo 5K": "Breakout Turbo",
     }
 
     # ── Broker login sharing ──────────────────────────────────────────
@@ -6470,6 +6473,8 @@ class TradeOpssAIApp:
         "breakout prop": "Breakout",
         "breakoutprop": "Breakout",
         "breakout classic": "Breakout",
+        "breakout turbo": "Breakout",
+        "breakout turbo 5k": "Breakout",
     }
 
     # Families whose live accounts sit behind a SEPARATE broker login, so they
@@ -13373,29 +13378,35 @@ class TradeOpssAIApp:
                              f"dashboard Prop Firm Accounts tab to connect", "WARN")
                 continue
 
-            # ── Vest Capital: persisted token chain — no browser, no password ──
+            # ── Vest Capital: login email → per-account token chain (bootstrapped once) ──
             if self._is_vest_firm(display_firm):
+                vest_email = (pa.get("vest_email") or pa.get("tradovate_username")
+                              or os.environ.get("VEST_EMAIL") or "").strip()
                 token_file = (pa.get("vest_token_file") or "").strip() or None
                 vest_acct = (pa.get("vest_account_id") or "").strip() or None
                 try:
                     from trader_companion.vest_connector import default_token_file as _vest_tf
                 except ImportError:
                     from vest_connector import default_token_file as _vest_tf
-                have_session = os.path.exists(token_file or _vest_tf())
+                if not token_file:
+                    token_file = _vest_tf(vest_email) if vest_email else _vest_tf()
+                    if vest_email and not os.path.exists(token_file) and os.path.exists(_vest_tf()):
+                        token_file = _vest_tf()      # legacy single-session file
+                have_session = os.path.exists(token_file)
                 self._broker_connections[firm] = {
                     "account": existing_account,
                     "row_frame": None,
-                    "creds_source": "token_file" if have_session else "missing",
+                    "creds_source": "token_file" if have_session else ("dashboard" if vest_email else "missing"),
                 }
                 if existing_account:
                     auto_count += 1
-                elif have_session:
+                elif have_session or vest_email:
                     auto_count += 1
                     threading.Thread(target=self._connect_vest_broker,
-                                     args=(firm, token_file, vest_acct), daemon=True).start()
+                                     args=(firm, token_file, vest_acct, vest_email), daemon=True).start()
                 else:
-                    self.log(f"🔑 {display_firm}: no Vest session — run "
-                             f"`python -m trader_companion.vest_login --email …` once", "WARN")
+                    self.log(f"🔑 {display_firm}: add the Vest login email on the dashboard "
+                             f"Prop Firm Accounts tab to connect", "WARN")
                 continue
 
             # ── Breakout: plain Chrome tab + emailed sign-in link, no password ──
@@ -13583,7 +13594,8 @@ class TradeOpssAIApp:
             if conn.get("account"):
                 return
             threading.Thread(target=self._connect_vest_broker,
-                             args=(firm_name,), daemon=True).start()
+                             args=(firm_name, None, None, os.environ.get("VEST_EMAIL", "").strip() or None),
+                             daemon=True).start()
             return
 
         if self._is_breakout_firm(firm_name):
@@ -15767,8 +15779,9 @@ class TradeOpssAIApp:
                 return c["account"]
         return None
 
-    def _connect_vest_broker(self, firm, token_file=None, account_id=None):
-        """Headless Vest login from the persisted token chain; store as broker."""
+    def _connect_vest_broker(self, firm, token_file=None, account_id=None, email=None):
+        """Headless Vest login from the persisted token chain; bootstraps the chain
+        (Chrome + mailbox code) from `email` when no session exists yet."""
         try:
             from trader_companion.vest_connector import VestClient
         except ImportError:
@@ -15776,9 +15789,20 @@ class TradeOpssAIApp:
         try:
             client = VestClient(token_file=token_file, account_id=account_id)
             if not client.logged_in:
-                raise RuntimeError(
-                    f"no Vest session at {client.token_file} — run "
-                    "`python -m trader_companion.vest_login --email …` once")
+                if not email:
+                    raise RuntimeError(
+                        f"no Vest session at {client.token_file} — add the login email on the "
+                        "dashboard or run `python -m trader_companion.vest_login --email …`")
+                self.root.after(0, lambda: self.log(
+                    f"🔗 {firm}: no saved session — signing in as {email} "
+                    f"(one-time code read from the mailbox)"))
+                try:
+                    from trader_companion.vest_login import bootstrap as _vest_bootstrap
+                except ImportError:
+                    from vest_login import bootstrap as _vest_bootstrap
+                client = _vest_bootstrap(email, token_file=client.token_file)
+                if account_id:
+                    client.account_id = account_id
             client.login()
             cap = client.capital_account()
             conn = self._broker_connections.setdefault(firm, {})
@@ -16060,14 +16084,17 @@ class TradeOpssAIApp:
         ev = row_data.get("eval") or {}
         on_funded = self._on_funded_leg(ev) or str(rec.get("type") or "").lower().startswith("prop_funded")
         mgr = self.prop_firm_mgr
+        firm_code = row_data.get("firm_code") or ev.get("Prop Firm") or "Breakout"
+        kind = mgr.breakout_plan_kind(rec, firm_code)
+        bp_name = "Breakout Turbo" if kind == "turbo" else "Breakout"
         rules = {}
         try:
-            rules = (mgr.firm_blueprints.get("Breakout") or {}).get("rules") or {}
+            rules = (mgr.firm_blueprints.get(bp_name) or {}).get("rules") or {}
         except Exception:
             pass
         start = sess._amt((rec.get("plan") or {}).get("initial_size")) or balance
         sod = sess._amt(pf.get("balance_at_rollover")) or None
-        br = mgr.breakout_rules_for_balance(start, live=rec)
+        br = mgr.breakout_rules_for_balance(start, live=rec, firm_code=firm_code)
         losses = max(0.0, start - equity)
         attempt_index = 1 if losses >= br["risk_1"] - 1.0 else 0
         cycle_index = 0
@@ -16080,7 +16107,7 @@ class TradeOpssAIApp:
             live=rec, attempt_index=attempt_index, account_key=str(code), cycle_index=cycle_index,
             traded_today=self._breakout_traded_today(sess, code),
             trade_cost=rules.get("breakout_trade_cost_usd"),
-            target_profit=rules.get("breakout_funded_target_usd"))
+            target_profit=rules.get("breakout_funded_target_usd"), firm_code=firm_code)
         if not bplan.get("allowed"):
             raise RuntimeError(f"Breakout plan: {bplan.get('reason')}")
         tp_usd = float(rules.get("breakout_tp_usd") or 0) or bplan["tp_usd"]
@@ -16094,10 +16121,11 @@ class TradeOpssAIApp:
         plan["blueprint"] = bplan
         try:
             logging.getLogger("TradeOpssAI.breakout").info(
-                "[Breakout Classic] account=%s stage=%s cycle=%s attempt=%s T=%s budget=$%.2f "
+                "[%s] account=%s stage=%s cycle=%s attempt=%s T=%s budget=$%.2f "
                 "price_stop=$%.2f price_target=$%.2f notional=$%.2f equity=$%.2f",
-                code, bplan["stage"], cycle_index, bplan["attempt"], bplan.get("T"),
-                bplan.get("risk_budget", 0), plan["sl_usd"], plan["tp_usd"], plan["notional"], equity)
+                bplan.get("blueprint", "Breakout"), code, bplan["stage"], cycle_index, bplan["attempt"],
+                bplan.get("T"), bplan.get("risk_budget", 0), plan["sl_usd"], plan["tp_usd"],
+                plan["notional"], equity)
         except Exception:
             pass
         return executor, code, plan

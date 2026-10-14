@@ -1363,6 +1363,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
                 "breakout": "Breakout",
                 "breakoutprop": "Breakout",
                 "breakoutclassic": "Breakout",
+                "breakoutturbo": "Breakout Turbo",
+                "breakoutturbo5k": "Breakout Turbo",
                 "topstep": "Topstep",
                 "topsteprtp": "TopStep RTP",
                 "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",

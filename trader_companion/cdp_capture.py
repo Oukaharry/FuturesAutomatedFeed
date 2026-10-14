@@ -51,6 +51,14 @@ class CDPCapture:
     def pick_target(self):
         pages = self._targets()
         if not pages:
+            # Chrome alive but every tab closed — open one so the session can continue.
+            url = self.url_hint if self.url_hint.startswith("http") else "about:blank"
+            req = urllib.request.Request(f"http://localhost:{self.port}/json/new?{url}", method="PUT")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                json.load(r)
+            time.sleep(1)
+            pages = self._targets()
+        if not pages:
             raise RuntimeError("no page targets in Chrome")
         for t in pages:
             if self.url_hint and self.url_hint in (t.get("url") or ""):

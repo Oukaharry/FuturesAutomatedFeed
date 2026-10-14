@@ -54,6 +54,40 @@ def _harvest(rest_jsonl: str):
     return user, account
 
 
+def bootstrap(email: str, token_file: str = None, profile: str = None, settle: int = 12,
+              otp_prompt=None) -> "VestClient":
+    """Chrome + Privy login for `email` (code read from the mailbox when configured),
+    harvest the token chain into `token_file`, quit Chrome, rotate once. Raises on failure."""
+    import trader_companion.vest_probe as probe
+    probe.OUT = os.path.join(tempfile.gettempdir(), "vest_login_capture", str(int(time.time())))
+    os.makedirs(probe.OUT, exist_ok=True)
+    d = _driver(profile or "vest_login_" + str(int(time.time())))
+    cap = Capture(d).start()
+    try:
+        ok = email_login(d, email, otp_prompt=otp_prompt or (lambda *_: ""))
+        if not ok:
+            raise RuntimeError("Vest login did not complete (no code received / typed)")
+        time.sleep(settle)
+        cap.stop()
+        user, account = _harvest(os.path.join(probe.OUT, "rest.jsonl"))
+    finally:
+        try:
+            d.quit()
+        except Exception:
+            pass
+    if not user and not account:
+        raise RuntimeError("no Vest auth responses captured — login flow may have changed")
+    client = VestClient(token_file=token_file or default_token_file(email))
+    client.import_tokens(user=user, account=account)
+    client.login()
+    for name in ("rest.jsonl", "ws.jsonl"):
+        try:
+            os.remove(os.path.join(probe.OUT, name))
+        except OSError:
+            pass
+    return client
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--email", required=True)
@@ -63,50 +97,16 @@ def main():
     p.add_argument("--settle", type=int, default=12, help="seconds to let the app mint tokens")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-    # Keep this capture separate from the probe's default directory.
-    import trader_companion.vest_probe as probe
-    probe.OUT = os.path.join(tempfile.gettempdir(), "vest_login_capture")
-    os.makedirs(probe.OUT, exist_ok=True)
-    for name in ("rest.jsonl", "ws.jsonl"):
-        try:
-            os.remove(os.path.join(probe.OUT, name))
-        except OSError:
-            pass
-
-    d = _driver(a.profile)
-    cap = Capture(d).start()
     try:
-        ok = email_login(d, a.email)
-        if not ok:
-            print("Login did not complete — nothing saved.")
-            return 1
-        time.sleep(a.settle)
-        cap.stop()
-        user, account = _harvest(os.path.join(probe.OUT, "rest.jsonl"))
-    finally:
-        try:
-            d.quit()
-        except Exception:
-            pass
-
-    if not user and not account:
-        print("No Vest auth responses were captured — login flow may have changed.")
-        return 2
-
-    client = VestClient(token_file=a.token_file or default_token_file())
-    client.import_tokens(user=user, account=account)
-    # Rotate now so the browser's copy of the chain is dead and the bot owns it.
-    client.login()
+        client = bootstrap(a.email, token_file=a.token_file, profile=a.profile, settle=a.settle,
+                           otp_prompt=input)
+    except RuntimeError as exc:
+        print(exc)
+        return 1
     cap_rec = client.capital_account()
     print(f"Saved Vest session → {client.token_file}")
     print(f"Account {client.account_id}  balance ${client.balance():,.2f}  "
           f"plan: {cap_rec.get('plan_name') or 'n/a'}")
-    try:
-        for name in ("rest.jsonl", "ws.jsonl"):
-            os.remove(os.path.join(probe.OUT, name))
-    except OSError:
-        pass
     return 0
 
 
