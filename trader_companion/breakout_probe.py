@@ -39,8 +39,8 @@ def _close_tab(target_id: str):
         pass
 
 
-def _mailbox_link(since: float, timeout: int = 180):
-    """Breakout/Descope sign-in link from the mailbox, or None."""
+def _mailbox_link(since: float, recipient: str = None, timeout: int = 180):
+    """Breakout/Descope sign-in link addressed to `recipient`, or None."""
     try:
         from trader_companion.email_codes import Mailbox
     except ImportError:
@@ -48,10 +48,13 @@ def _mailbox_link(since: float, timeout: int = 180):
     mb = Mailbox.from_env()
     if mb is None:
         return None
-    print("Fetching the sign-in link from the mailbox…")
-    link = mb.wait_for_link(since, match=("breakout",), link_match="breakoutprop.com", timeout=timeout)
+    print(f"Fetching the sign-in link for {recipient or 'this login'} from the mailbox…")
+    # The mail also carries a plain /sign-in footer link; only the Descope flow URL authenticates.
+    link = mb.wait_for_link(since, match=("breakout",), link_match="descope-login-flow=",
+                            timeout=timeout, recipient=recipient)
     if not link:
-        link = mb.wait_for_link(since, match=("breakout",), link_match="descope", timeout=15)
+        link = mb.wait_for_link(since, match=("breakout",), link_match="descope", timeout=15,
+                                recipient=recipient)
     print("Mailbox link:", "received" if link else "not received in time")
     return link
 
@@ -162,7 +165,7 @@ def email_login(cap: CDPCapture, email: str) -> bool:
         time.sleep(4)
         print("Page now says:", body_text(cap)[:220].replace("\n", " | "))
     helper = None
-    link = _mailbox_link(sent_at) if sent_at else None
+    link = _mailbox_link(sent_at, recipient=email) if sent_at else None
     if link:
         print("Opening the sign-in link in a helper tab…")
         try:

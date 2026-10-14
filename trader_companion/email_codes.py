@@ -131,7 +131,11 @@ class Mailbox:
                 if ts < since - 90:          # clock skew tolerance
                     continue
                 subj = str(make_header(decode_header(msg.get("Subject") or "")))
-                out.append({"ts": ts, "from": msg.get("From") or "", "subject": subj, "text": self._text(msg)})
+                rcpts = " ".join(str(v) for h in ("To", "Delivered-To", "X-Forwarded-For", "X-Original-To",
+                                                  "Envelope-To", "Cc")
+                                 for v in (msg.get_all(h) or []))
+                out.append({"ts": ts, "from": msg.get("From") or "", "subject": subj,
+                            "recipients": rcpts.lower(), "text": self._text(msg)})
             return out
         finally:
             try:
@@ -142,13 +146,19 @@ class Mailbox:
     # ── extraction ───────────────────────────────────────────────────
 
     @staticmethod
-    def _matches(rec: dict, match: Iterable[str]) -> bool:
+    def _matches(rec: dict, match: Iterable[str], recipient: Optional[str] = None) -> bool:
         hay = (rec["from"] + " " + rec["subject"] + " " + rec["text"][:4000]).lower()
-        return any(k.lower() in hay for k in match)
+        if not any(k.lower() in hay for k in match):
+            return False
+        if recipient:
+            # Forwarded mail keeps the original To/Delivered-To/X-Forwarded-For,
+            # so each client's code is routed by their own login address.
+            return recipient.lower() in (rec.get("recipients") or "")
+        return True
 
-    def find_code(self, since: float, match: Iterable[str]) -> Optional[str]:
+    def find_code(self, since: float, match: Iterable[str], recipient: Optional[str] = None) -> Optional[str]:
         for rec in self.recent(since):
-            if not self._matches(rec, match):
+            if not self._matches(rec, match, recipient):
                 continue
             # Prefer a code in the subject, then the first in the body.
             for src in (rec["subject"], rec["text"]):
@@ -157,20 +167,22 @@ class Mailbox:
                     return m.group(1)
         return None
 
-    def find_link(self, since: float, match: Iterable[str], link_match: str) -> Optional[str]:
+    def find_link(self, since: float, match: Iterable[str], link_match: str,
+                  recipient: Optional[str] = None) -> Optional[str]:
         for rec in self.recent(since):
-            if not self._matches(rec, match):
+            if not self._matches(rec, match, recipient):
                 continue
             for url in LINK_RE.findall(rec["text"]):
                 if link_match.lower() in url.lower() and not url.lower().endswith((".png", ".jpg", ".gif", ".css")):
                     return url.rstrip(".,;")
         return None
 
-    def wait_for_code(self, since: float, match: Iterable[str], timeout: int = 180, poll: float = 4.0) -> Optional[str]:
+    def wait_for_code(self, since: float, match: Iterable[str], timeout: int = 180, poll: float = 4.0,
+                      recipient: Optional[str] = None) -> Optional[str]:
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                code = self.find_code(since, match)
+                code = self.find_code(since, match, recipient)
                 if code:
                     return code
             except Exception as exc:
@@ -179,11 +191,11 @@ class Mailbox:
         return None
 
     def wait_for_link(self, since: float, match: Iterable[str], link_match: str,
-                      timeout: int = 180, poll: float = 4.0) -> Optional[str]:
+                      timeout: int = 180, poll: float = 4.0, recipient: Optional[str] = None) -> Optional[str]:
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                link = self.find_link(since, match, link_match)
+                link = self.find_link(since, match, link_match, recipient)
                 if link:
                     return link
             except Exception as exc:
@@ -199,6 +211,7 @@ def _main():
     p.add_argument("cmd", choices=["check", "recent", "code", "link"])
     p.add_argument("--match", default="vest,privy")
     p.add_argument("--link-match", default="breakoutprop.com")
+    p.add_argument("--recipient", default=None, help="original login email (forwarded To:)")
     p.add_argument("--minutes", type=int, default=30)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO)
@@ -211,11 +224,12 @@ def _main():
         print(f"IMAP login OK ({mb.user} @ {mb.host}:{mb.port}, folder {mb.folder})" if mb.check() else "failed")
     elif a.cmd == "recent":
         for r in mb.recent(since):
-            print(time.strftime("%H:%M:%S", time.localtime(r["ts"])), "|", r["from"][:40], "|", r["subject"][:70])
+            print(time.strftime("%H:%M:%S", time.localtime(r["ts"])), "|", r["from"][:40], "|", r["subject"][:60],
+                  "| to:", r["recipients"][:60])
     elif a.cmd == "code":
-        print(mb.find_code(since, match))
+        print(mb.find_code(since, match, a.recipient))
     elif a.cmd == "link":
-        print(mb.find_link(since, match, a.link_match))
+        print(mb.find_link(since, match, a.link_match, a.recipient))
 
 
 if __name__ == "__main__":

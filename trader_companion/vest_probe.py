@@ -185,8 +185,8 @@ def _logged_in(d):
         return False
 
 
-def _mailbox_code(since: float, timeout: int = 180):
-    """6-digit Privy code from the login mailbox, or None when not configured / not received."""
+def _mailbox_code(since: float, recipient: str = None, timeout: int = 180):
+    """6-digit Privy code addressed to `recipient`, or None when not configured / not received."""
     try:
         from trader_companion.email_codes import Mailbox
     except ImportError:
@@ -194,8 +194,8 @@ def _mailbox_code(since: float, timeout: int = 180):
     mb = Mailbox.from_env()
     if mb is None:
         return None
-    print("Fetching the code from the mailbox…")
-    code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout)
+    print(f"Fetching the code for {recipient or 'this login'} from the mailbox…")
+    code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)
     print("Mailbox code:", "received" if code else "not received in time")
     return code
 
@@ -229,7 +229,7 @@ def email_login(d, email, symbol="NDX-USD-PERP", otp_prompt=input) -> bool:
             inp.send_keys(Keys.ENTER)
         print(f"Email submitted for {email}. Waiting for the one-time code…")
         time.sleep(3)
-        code = _mailbox_code(sent_at) or ""
+        code = _mailbox_code(sent_at, recipient=email) or ""
         if not code:
             code = otp_prompt("Enter the 6-digit code from the email (or press Enter if you typed it in Chrome): ").strip()
         if code:

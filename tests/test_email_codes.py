@@ -56,3 +56,38 @@ def test_wait_for_code_times_out_quickly_when_nothing_arrives():
     t0 = time.time()
     assert mb.wait_for_code(time.time(), match=("vest",), timeout=1, poll=0.2) is None
     assert time.time() - t0 < 3
+
+
+def test_three_clients_logging_in_at_once_each_get_their_own_code():
+    now = time.time()
+    privy = "no-reply@mail.privy.io"
+    recs = [  # newest first, as the mailbox returns them — all forwarded into one Titan inbox
+        {"ts": now + 9, "from": privy, "subject": "Your login code for Vest Markets", "text": "Code: 333333",
+         "recipients": "to: carol@gmail.com delivered-to: carol@gmail.com x-forwarded-for: carol@gmail.com mailcentral@tradeopss.com"},
+        {"ts": now + 6, "from": privy, "subject": "Your login code for Vest Markets", "text": "Code: 222222",
+         "recipients": "bob@gmail.com bob@gmail.com bob@gmail.com mailcentral@tradeopss.com"},
+        {"ts": now + 3, "from": privy, "subject": "Your login code for Vest Markets", "text": "Code: 111111",
+         "recipients": "alice@gmail.com alice@gmail.com alice@gmail.com mailcentral@tradeopss.com"},
+    ]
+    mb = _mb(recs)
+    assert mb.find_code(now, ("vest", "privy"), recipient="alice@gmail.com") == "111111"
+    assert mb.find_code(now, ("vest", "privy"), recipient="bob@gmail.com") == "222222"
+    assert mb.find_code(now, ("vest", "privy"), recipient="Carol@Gmail.com") == "333333"
+    assert mb.find_code(now, ("vest", "privy"), recipient="dave@gmail.com") is None
+    # Without a recipient the newest code wins (legacy behaviour) — callers always pass one.
+    assert mb.find_code(now, ("vest", "privy")) == "333333"
+
+
+def test_links_are_routed_per_recipient_too():
+    now = time.time()
+    recs = [
+        {"ts": now + 2, "from": "Breakout <admin@email.breakoutprop.com>", "subject": "Authenticate with Breakout",
+         "text": "https://portal.breakoutprop.com/sign-in https://portal.breakoutprop.com/sign-in?descope-login-flow=x%7C%23%7CBOB",
+         "recipients": "bob@gmail.com"},
+        {"ts": now + 1, "from": "Breakout <admin@email.breakoutprop.com>", "subject": "Authenticate with Breakout",
+         "text": "https://portal.breakoutprop.com/sign-in https://portal.breakoutprop.com/sign-in?descope-login-flow=x%7C%23%7CALICE",
+         "recipients": "alice@gmail.com"},
+    ]
+    mb = _mb(recs)
+    assert mb.find_link(now, ("breakout",), "descope-login-flow=", recipient="alice@gmail.com").endswith("ALICE")
+    assert mb.find_link(now, ("breakout",), "descope-login-flow=", recipient="bob@gmail.com").endswith("BOB")
