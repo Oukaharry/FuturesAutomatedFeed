@@ -16217,11 +16217,16 @@ class TradeOpssAIApp:
             if not number:
                 continue
             start = 0.0
-            try:
-                m = sess.api.get_metrics(code) or {}
-                start = float(m.get("balance") or 0)
-            except Exception:
-                pass
+            # Tradeify247 codes carry the tier ("1S50K…" = $50K); balance is the fallback.
+            m = re.search(r"(\d+)K", number.upper())
+            if m:
+                start = float(m.group(1)) * 1000
+            if not start:
+                try:
+                    metrics = sess.api.get_metrics(code) or {}
+                    start = float(metrics.get("balance") or 0)
+                except Exception:
+                    pass
             rows.append(self._api_mirror_row("Tradeify247", number, start,
                                              fee=bp.get("purchase_fee")))
         return rows
