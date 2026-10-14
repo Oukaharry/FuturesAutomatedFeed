@@ -69,33 +69,90 @@ def test_vest_detection_does_not_steal_others(acct):
     assert PropFirmManager().detect_prop_firm(acct) != "Vest Capital"
 
 
-# ── blueprint planner ─────────────────────────────────────────────────
+# ── blueprint planner (Vest Platinum $25K) ────────────────────────────
 
-def test_vest_rules_prefer_live_record_over_percentages():
+CAP25 = {"id": ACCT, "initial_capital": "25000.00000000", "target_equity": "27500.00000000",
+         "max_drawdown_limit": "23500.00000000", "daily_loss_floor": "24250.0",
+         "daily_reset_balance": "25000.0", "max_leverage": "5.0000", "stage": 1}
+
+
+def test_vest_rules_platinum_25k():
+    r = PropFirmManager().vest_rules_for_balance(25000, live=CAP25)
+    assert r["evaluation_goal"] == 27500 and r["static_loss_floor"] == 23500
+    assert r["risk_1"] == 700 and r["risk_2_pct"] == 0.03 and r["max_attempts"] == 2
+    assert r["funded_target_band"] == [3500, 5000] and r["scale"] == 1.0
+
+
+def test_vest_rules_scale_to_live_tier():
     r = PropFirmManager().vest_rules_for_balance(5000, live=CAP)
-    assert r["evaluation_goal"] == 5500 and r["static_loss_floor"] == 4700
-    assert r["daily_loss_floor"] == 4850 and r["max_leverage"] == 5.0
-    assert r["reserve_floor"] == 4710
+    assert r["scale"] == 0.2 and r["risk_1"] == 140
+    assert r["evaluation_goal"] == 5500 and r["static_loss_floor"] == 4700 and r["daily_loss_floor"] == 4850
+    assert r["funded_target_band"] == [700, 1000]
 
 
-def test_vest_rules_percentage_fallback():
-    r = PropFirmManager().vest_rules_for_balance(10000)
-    assert r["evaluation_goal"] == 11000 and r["daily_loss"] == 300 and r["static_loss_floor"] == 9400
+def test_vest_eval_attempt1_sl700_tp2500():
+    p = PropFirmManager().plan_vest_attempt(equity=25000, balance_sod=25000, starting_balance=25000,
+                                            on_funded=False, live=CAP25, attempt_index=0)
+    assert p["allowed"] and p["sl_usd"] == 700 and p["tp_usd"] == 2500 and p["attempt"] == 1
 
 
-def test_vest_plan_caps_sl_to_daily_room_minus_reserve():
-    p = PropFirmManager().plan_vest_attempt(equity=5000, balance_sod=5000, starting_balance=5000,
-                                            on_funded=False, live=CAP)
-    assert p["allowed"] and p["tp_usd"] == 500 and p["sl_usd"] == 140  # 150 room − 10 reserve
-    assert p["leverage"] == 5.0
+def test_vest_eval_attempt2_uses_3pct_of_reset_and_tp_grows_by_loss():
+    live = dict(CAP25, daily_loss_floor="23571.0")   # 24300 − 729
+    p = PropFirmManager().plan_vest_attempt(equity=24300, balance_sod=24300, starting_balance=25000,
+                                            on_funded=False, live=live, attempt_index=1)
+    assert p["allowed"] and p["sl_usd"] == 729 and p["tp_usd"] == 3200 and p["attempt"] == 2
 
 
-def test_vest_plan_blocks_when_no_room_or_at_target():
+def test_vest_attempt2_never_breaches_static_floor():
+    # Hypothetical: equity only $500 above the static floor — stop is capped there.
+    live = dict(CAP25, daily_loss_floor="23000.0")
+    p = PropFirmManager().plan_vest_attempt(equity=24000, balance_sod=24000, starting_balance=25000,
+                                            on_funded=False, live=live, attempt_index=1)
+    assert p["allowed"] and p["sl_usd"] == 500
+
+
+def test_vest_blocks_third_attempt_and_same_day_repeat():
     m = PropFirmManager()
-    assert not m.plan_vest_attempt(equity=4850, balance_sod=5000, starting_balance=5000,
-                                   on_funded=False, live=CAP)["allowed"]
-    assert not m.plan_vest_attempt(equity=5500, balance_sod=5000, starting_balance=5000,
-                                   on_funded=False, live=CAP)["allowed"]
+    assert "retired" in m.plan_vest_attempt(equity=23571, balance_sod=23571, starting_balance=25000,
+                                            on_funded=False, live=CAP25, attempt_index=2)["reason"]
+    assert "daily reset" in m.plan_vest_attempt(equity=25000, balance_sod=25000, starting_balance=25000,
+                                                on_funded=False, live=CAP25, traded_today=True)["reason"]
+
+
+def test_vest_blocks_at_target():
+    assert not PropFirmManager().plan_vest_attempt(equity=27500, balance_sod=27500, starting_balance=25000,
+                                                   on_funded=False, live=CAP25)["allowed"]
+
+
+def test_vest_funded_T_drawn_in_band_whole_dollars_not_multiple_of_100():
+    m = PropFirmManager()
+    seen = set()
+    for i in range(200):
+        T = m.vest_cycle_target("acct", i)
+        assert 3500 <= T <= 5000 and T == int(T) and T % 100 != 0
+        seen.add(T)
+    assert len(seen) > 50
+
+
+def test_vest_funded_T_is_stable_per_cycle_and_redrawn_next_cycle():
+    m = PropFirmManager()
+    t0 = m.vest_cycle_target("acct", 0)
+    assert m.vest_cycle_target("acct", 0) == t0
+    p = m.plan_vest_attempt(equity=25000, balance_sod=25000, starting_balance=25000,
+                            on_funded=True, live=CAP25, account_key="acct", cycle_index=0)
+    assert p["T"] == t0 and p["tp_usd"] == t0 and p["sl_usd"] == 700
+    assert p["payout_cash"] == pytest.approx(0.8 * t0)
+    p2 = m.plan_vest_attempt(equity=24300, balance_sod=24300, starting_balance=25000,
+                             on_funded=True, live=dict(CAP25, daily_loss_floor="23571"),
+                             account_key="acct", cycle_index=0, attempt_index=1)
+    assert p2["T"] == t0 and p2["tp_usd"] == t0 + 700 and p2["sl_usd"] == 729
+    assert m.vest_cycle_target("acct", 1) != t0 or m.vest_cycle_target("acct", 2) != t0
+
+
+def test_vest_funded_T_scales_with_tier():
+    m = PropFirmManager()
+    T = m.vest_cycle_target("small", 0, scale=0.2)
+    assert 700 <= T <= 1000
 
 
 # ── client: token chain handling (fake HTTP) ──────────────────────────
@@ -290,13 +347,27 @@ def test_symbol_for_now_weekend_switch(monkeypatch):
 
 # ── companion plan hook ───────────────────────────────────────────────
 
-def test_vest_plan_for_row_uses_live_rules(tmp_path):
+def test_vest_plan_for_row_uses_platinum_rules_scaled_to_tier(tmp_path):
     app = _app()
     app._on_funded_leg = lambda ev: False
+    app._funded_payout_count = lambda ev: 0
     c = _client(tmp_path)
     row = {"acct_num": ACCT, "eval": {"Prop Firm": "Vest Capital"}, "firm_code": "Vest Capital"}
     executor, code, plan = app._vest_plan_for_row(c, row, "buy")
     assert code == ACCT
-    assert plan["blueprint"]["tp_usd"] == 500 and plan["blueprint"]["sl_usd"] == 140
+    bp = plan["blueprint"]
+    # $5K tier = 0.2 × Platinum: attempt-1 risk $140, eval TP $500
+    assert bp["attempt"] == 1 and bp["tp_usd"] == 500 and bp["sl_usd"] == 140
     assert plan["tp_usd"] == 500 and plan["sl_usd"] == pytest.approx(140 * 0.95)
     assert plan["leverage"] == 5.0
+
+
+def test_vest_plan_for_row_blocks_second_attempt_same_day(tmp_path):
+    app = _app()
+    app._on_funded_leg = lambda ev: False
+    app._funded_payout_count = lambda ev: 0
+    c = _client(tmp_path)
+    app._mark_vest_attempt(ACCT)
+    row = {"acct_num": ACCT, "eval": {"Prop Firm": "Vest Capital"}, "firm_code": "Vest Capital"}
+    with pytest.raises(RuntimeError, match="daily reset"):
+        app._vest_plan_for_row(c, row, "buy")

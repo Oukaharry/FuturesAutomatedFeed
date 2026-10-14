@@ -15698,10 +15698,22 @@ class TradeOpssAIApp:
             sod = float((client.get_min_equity(code) or {}).get("net_liq_sod") or 0) or None
         except Exception:
             pass
+        start = float(cap.get("initial_capital") or balance)
+        # Attempt index from losses this stage: attempt 1 risks risk_1, so
+        # equity more than (risk_1 − $1) below start means attempt 2.
+        vr = mgr.vest_rules_for_balance(start, live=cap)
+        losses = max(0.0, start - balance)
+        attempt_index = 1 if losses >= vr["risk_1"] - 1.0 else 0
+        cycle_index = 0
+        try:
+            cycle_index = int(self._funded_payout_count(ev) or 0)
+        except Exception:
+            pass
         bplan = mgr.plan_vest_attempt(
-            equity=balance, balance_sod=sod,
-            starting_balance=float(cap.get("initial_capital") or balance),
-            on_funded=on_funded, live=cap,
+            equity=balance, balance_sod=sod, starting_balance=start,
+            on_funded=on_funded, live=cap, attempt_index=attempt_index,
+            account_key=str(code), cycle_index=cycle_index,
+            traded_today=self._vest_traded_today(client, cap),
             target_profit=rules.get("vest_funded_target_usd"))
         if not bplan.get("allowed"):
             raise RuntimeError(f"Vest plan: {bplan.get('reason')}")
@@ -15714,7 +15726,59 @@ class TradeOpssAIApp:
             max_margin_usd=float(max_margin) if max_margin else None,
             quantity=rules.get("vest_quantity"))
         plan["blueprint"] = bplan
+        try:
+            logging.getLogger("TradeOpssAI.vest").info(
+                "[Vest Platinum] account=%s stage=%s cycle=%s attempt=%s T=%s SL=$%.2f TP=$%.2f "
+                "notional=$%.2f equity=$%.2f", code, bplan["stage"], cycle_index, bplan["attempt"],
+                bplan.get("T"), plan["sl_usd"], plan["tp_usd"], plan["notional"], balance)
+        except Exception:
+            pass
         return executor, code, plan
+
+    def _vest_traded_today(self, client, cap) -> bool:
+        """True when a position opened or closed inside the current daily window.
+
+        The window starts at the later of the blueprint reset (20:00 New York)
+        and the account's own `daily_reset_at`, whichever is EARLIER today —
+        i.e. the conservative choice — ignoring a stale reset stamp (>24h).
+        """
+        now_ms = time.time() * 1000
+        candidates = []
+        try:
+            from zoneinfo import ZoneInfo
+            ny = datetime.now(ZoneInfo("America/New_York"))
+            last = ny.replace(hour=20, minute=0, second=0, microsecond=0)
+            if ny < last:
+                last -= timedelta(days=1)
+            candidates.append(last.timestamp() * 1000)
+        except Exception:
+            pass
+        try:
+            stamp = float(cap.get("daily_reset_at") or 0)
+            if stamp and now_ms - stamp <= 24 * 3600 * 1000:
+                candidates.append(stamp)
+        except Exception:
+            pass
+        if not candidates:
+            return False
+        reset_ms = min(candidates)
+        try:
+            if client.open_positions():
+                return True
+            for p in client.closed_positions(since_ms=int(reset_ms) - 1):
+                if float(p.get("openDate") or 0) >= reset_ms or float(p.get("closeDate") or 0) >= reset_ms:
+                    return True
+        except Exception:
+            pass
+        marker = (getattr(self, "_vest_last_attempt", {}) or {}).get(str(client.account_id))
+        return bool(marker and marker >= reset_ms)
+
+    def _mark_vest_attempt(self, account_id):
+        store = getattr(self, "_vest_last_attempt", None)
+        if store is None:
+            store = {}
+            self._vest_last_attempt = store
+        store[str(account_id)] = time.time() * 1000
 
     def _execute_vest_row_trade(self, side, row_data):
         """Manual BUY/SELL on a Vest Capital row: bracket via the Vest API."""
@@ -15787,6 +15851,14 @@ class TradeOpssAIApp:
 
     def _after_vest_fill(self, row_data, code, plan):
         """Same bookkeeping as a DXtrade fill: In Progress, breach floor, drop row."""
+        self._mark_vest_attempt(code)
+        bp = plan.get("blueprint") or {}
+        try:
+            self.log(f"📒 Vest {code[:8]}… {bp.get('stage')} attempt {bp.get('attempt')}"
+                     + (f" cycle T=${bp['T']:,.0f}" if bp.get("T") else "")
+                     + f" — SL ${plan['sl_usd']:,.0f} / TP ${plan['tp_usd']:,.0f} / notional ${plan['notional']:,.0f}")
+        except Exception:
+            pass
         self._after_dxtrade_fill(row_data, code, plan)
 
     # ── MyFundedPerps Elite 50K: $-ladder planner hook ──────────────────

@@ -2521,16 +2521,22 @@ class PropFirmManager:
         }
 
         # Vest Capital — Vest Markets' on-chain perps prop program
-        # (next.vestmarkets.com, REST api-gateway.hz.vestmarkets.com). Verified
-        # live on a $5K "Silver" evaluation, Oct 2026: 1-step, +10% target,
-        # 3% daily loss (hard floor, resets midnight NY), 6% static max
-        # drawdown, 5x leverage cap on Capital accounts, 80/20 split.
-        # NDX-USD-PERP sizeDecimals 4 → min 0.0001; 1 unit = $1/pt. The live
-        # account record (/v3/capital/accounts/active) is authoritative for
-        # floors; these percentages are the fallback when it is unavailable.
+        # (next.vestmarkets.com, REST api-gateway.hz.vestmarkets.com).
+        # Blueprint = **Vest Platinum $25K** (Golden Spike model, Oct 13 2026):
+        # 1-step +10% eval ($27,500), 3% daily loss limit (hard, resets 20:00
+        # NY), static loss floor $23,500, 80/20 split, $210 fee. Two attempts
+        # per stage: attempt 1 risks $700 ($750 DLL − $50 cushion), attempt 2
+        # risks 3% of the reset balance (≈$729) with no cushion; retire after
+        # two losses. Funded target T ~ uniform($3,500, $5,000) whole dollars,
+        # re-drawn every cycle (no multiples of $100); attempt 2 TP = T + the
+        # actual attempt-1 loss. Claim T on fill; restart at $25,000 next day.
+        # One attempt per daily reset; never carry through the reset.
+        # Dollar figures scale by initial_capital/25,000 when the live
+        # account is a different tier (the 2.8% / 3% geometry is preserved).
+        # Live floors come from /v3/capital/accounts/active when available.
         self.firm_blueprints["Vest Capital"] = {
             "name": "Vest Capital",
-            "account_sizes": ["$500", "$1,000", "$2,500", "$5,000", "$10,000", "$25,000"],
+            "account_sizes": ["$25,000"],
             "trading_phases": ["Evaluation Phase", "Funded Phase"],
             "execution": "api",
             "platform": "Vest",
@@ -2538,87 +2544,142 @@ class PropFirmManager:
             "market": "NDX-USD-PERP",
             "weekend_market": "BTC-PERP",
             "profit_split": 0.80,
+            "purchase_fee": 210.0,
             "risk_rules": {
                 "evaluation_steps": 1,
                 "drawdown_type": "static",
                 "daily_loss_is_hard_breach": True,
                 "min_trading_days": 0,
-                "reserve": 10.0,                 # never trade into this
-                "profit_target_pct": 0.10,
+                "starting_balance": 25000.0,
+                "evaluation_goal": 27500.0,
+                "static_loss_floor": 23500.0,
                 "daily_loss_pct": 0.03,
                 "max_drawdown_pct": 0.06,
+                "profit_target_pct": 0.10,
                 "max_leverage": 5.0,
-                "sizes": [500, 1000, 2500, 5000, 10000, 25000],
+                "risk_1": 700.0,                  # fixed: $750 DLL − $50 cushion
+                "risk_2_pct": 0.03,               # fixed: 3% × reset balance, no cushion
+                "max_attempts": 2,
+                "funded_target_band": [3500.0, 5000.0],
+                "reserve": 0.0,
+                "daily_reset_hour_ny": 20,
             },
             "strategy_configs": {},
         }
 
-    def vest_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
-        """Vest Capital floors/targets for a starting balance.
+    # ── Vest Platinum $25K planner ────────────────────────────────────────────
 
-        `live` is the /v3/capital/accounts/active record; when present its
-        target_equity / max_drawdown_limit / daily_loss_floor override the
-        percentage defaults.
+    def vest_rules_for_balance(self, starting_balance: float, live: Optional[Dict] = None) -> Dict:
+        """Vest Platinum rules scaled to the live account size.
+
+        `live` is the /v3/capital/accounts/active record; its target_equity /
+        max_drawdown_limit / daily_loss_floor / max_leverage override the
+        scaled blueprint values when present.
         """
         bp = self.firm_blueprints["Vest Capital"]
         rr = bp["risk_rules"]
         live = live or {}
-        start = float(live.get("initial_capital") or starting_balance or 0)
-        if start <= 0:
-            start = float(min(rr["sizes"], key=lambda s: abs(s - float(starting_balance or 0))))
+        start = float(live.get("initial_capital") or starting_balance or rr["starting_balance"])
+        k = start / rr["starting_balance"]
         r = {
             "starting_balance": start,
-            "profit_target": start * rr["profit_target_pct"],
-            "daily_loss": start * rr["daily_loss_pct"],
-            "max_loss": start * rr["max_drawdown_pct"],
+            "scale": k,
+            "risk_1": round(rr["risk_1"] * k, 2),
+            "risk_2_pct": rr["risk_2_pct"],
+            "max_attempts": int(rr["max_attempts"]),
+            "daily_loss": round(start * rr["daily_loss_pct"], 2),
             "max_leverage": float(live.get("max_leverage") or rr["max_leverage"]),
             "reserve": float(rr["reserve"]),
+            "funded_target_band": [round(rr["funded_target_band"][0] * k, 2),
+                                   round(rr["funded_target_band"][1] * k, 2)],
         }
-        r["evaluation_goal"] = float(live.get("target_equity") or (start + r["profit_target"]))
+        r["evaluation_goal"] = float(live.get("target_equity") or (rr["evaluation_goal"] * k))
         r["profit_target"] = r["evaluation_goal"] - start
-        r["static_loss_floor"] = float(live.get("max_drawdown_limit") or (start - r["max_loss"]))
+        r["static_loss_floor"] = float(live.get("max_drawdown_limit") or (rr["static_loss_floor"] * k))
         r["max_loss"] = start - r["static_loss_floor"]
         r["daily_loss_floor"] = float(live.get("daily_loss_floor") or 0) or None
         r["reserve_floor"] = r["static_loss_floor"] + r["reserve"]
         return r
 
+    def _draw_vest_target(self, lo: float, hi: float) -> float:
+        """Whole-dollar uniform draw, re-drawn if it lands on a multiple of $100."""
+        for _ in range(50):
+            t = float(int(round(self._draw_uniform(lo, hi))))
+            if t % 100 != 0 and lo <= t <= hi:
+                return t
+        return float(int(round(self._draw_uniform(lo, hi)))) + 1.0
+
+    def vest_cycle_target(self, account_key: str, cycle_index: int, scale: float = 1.0,
+                          redraw: bool = False) -> float:
+        """Funded T for a cycle (stored per account+cycle; redrawn each new cycle)."""
+        lo, hi = self.firm_blueprints["Vest Capital"]["risk_rules"]["funded_target_band"]
+        lo, hi = lo * scale, hi * scale
+        state = self._account_random_state.setdefault(str(account_key or "default"), {})
+        key = f"vest_T_cycle_{int(cycle_index)}"
+        if redraw or key not in state:
+            state[key] = self._draw_vest_target(lo, hi)
+            self.logger.info(f"[Vest Platinum] {account_key}: cycle {cycle_index} target T=${state[key]:,.0f}")
+        return float(state[key])
+
     def plan_vest_attempt(self, *, equity: float, balance_sod: Optional[float],
                           starting_balance: float, on_funded: bool,
-                          live: Optional[Dict] = None,
+                          live: Optional[Dict] = None, attempt_index: int = 0,
+                          account_key: str = "default", cycle_index: int = 0,
+                          traded_today: bool = False,
                           target_profit: Optional[float] = None) -> Dict:
-        """Conservative $ plan for one Vest Capital trade.
+        """$ stop/target for one Vest Platinum attempt (0-based attempt index).
 
-        TP = remaining distance to the stage target. SL = the smaller of
-        today's remaining daily-loss room (from the live daily_loss_floor when
-        known) and the room above the reserve floor, minus a fee sliver.
+        Attempt 1: SL = risk_1 ($700 @ 25K), TP = stage target − equity.
+        Attempt 2: SL = 3% × reset balance (today's SOD), TP = stage target −
+        equity (i.e. T + the actual first loss). Both are capped at the room
+        above the static floor / today's daily floor so a stop-out is never a
+        breach. `allowed` is False after two losses, when an attempt already
+        resolved in this daily window, or when no room is left.
         """
         r = self.vest_rules_for_balance(starting_balance, live=live)
         start = r["starting_balance"]
+        bp = self.firm_blueprints["Vest Capital"]
         stage = "funded" if on_funded else "evaluation"
-        plan = {"stage": stage, "allowed": True, "reason": "",
-                "reserve_floor": r["reserve_floor"], "market": self.firm_blueprints["Vest Capital"]["market"],
-                "leverage": r["max_leverage"]}
-        if r.get("daily_loss_floor"):
-            daily_room = float(equity) - r["daily_loss_floor"]
-        elif balance_sod:
-            daily_room = float(equity) - (float(balance_sod) - r["daily_loss"])
+        plan = {"stage": stage, "attempt": attempt_index + 1, "allowed": True, "reason": "",
+                "reserve_floor": r["reserve_floor"], "market": bp["market"],
+                "leverage": r["max_leverage"], "T": None, "split": float(bp["profit_split"]),
+                "scale": r["scale"]}
+        if traded_today:
+            plan.update(allowed=False, reason="one attempt per daily reset (20:00 New York)")
+            return plan
+        if attempt_index >= r["max_attempts"]:
+            plan.update(allowed=False, reason="two losses this stage — account retired")
+            return plan
+
+        if on_funded:
+            T = float(target_profit) if target_profit else self.vest_cycle_target(
+                account_key, cycle_index, scale=r["scale"])
+            goal = start + T
+            plan["T"] = T
         else:
-            daily_room = r["daily_loss"]
+            goal = r["evaluation_goal"]
+
+        sod = float(balance_sod) if balance_sod else float(equity)
+        if attempt_index == 0:
+            risk = r["risk_1"]
+        else:
+            risk = round(sod * r["risk_2_pct"], 2)
+        # Never into the static floor; never through today's daily floor.
         static_room = float(equity) - r["reserve_floor"]
-        sl_usd = min(daily_room, static_room)
-        if sl_usd > r["reserve"] * 2:
-            sl_usd -= r["reserve"]
-        goal = start + float(target_profit) if (on_funded and target_profit) else r["evaluation_goal"]
+        daily_floor = r["daily_loss_floor"] if r.get("daily_loss_floor") else sod - r["daily_loss"]
+        daily_room = float(equity) - daily_floor
+        sl_usd = min(risk, static_room, daily_room)
         tp_usd = goal - float(equity)
         if sl_usd <= 0:
-            plan.update(allowed=False, reason="no loss room left today / above the reserve floor")
+            plan.update(allowed=False, reason="no loss room left today / above the static floor")
             return plan
         if tp_usd <= 0:
             plan.update(allowed=False, reason="already at or above target — request payout / pass")
             return plan
-        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2),
+        plan.update(sl_usd=round(sl_usd, 2), tp_usd=round(tp_usd, 2), risk_budget=round(risk, 2),
                     target_equity=round(goal, 2), daily_room=round(daily_room, 2),
-                    static_room=round(static_room, 2))
+                    static_room=round(static_room, 2),
+                    payout_cash=round(T * float(bp["profit_split"]), 2) if on_funded else None)
         return plan
 
     def tradeify247_rules_for_balance(self, starting_balance: float) -> Dict:
