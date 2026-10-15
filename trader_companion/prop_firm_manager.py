@@ -2686,14 +2686,6 @@ class PropFirmManager:
                 "min_payout": 50.0,
                 "daily_reset_utc": "00:30",
             },
-            # TEMPORARY live-test cap (user request, Oct 2026): every Turbo
-            # bracket makes or loses $100 at the price level regardless of
-            # the attempt ladder above. Remove to return to the planner's
-            # $125 stop / $470 target.
-            "rules": {
-                "breakout_tp_usd": 100.0,
-                "breakout_sl_usd": 100.0,
-            },
             "strategy_configs": {},
         }
 
@@ -3119,6 +3111,60 @@ class PropFirmManager:
                     target_equity=round(target_equity, 2),
                     payout_cash=round(tp_usd * float(bp["profit_split"]), 2) if on_funded else None)
         return plan
+
+    # ── API-only firms: pass / fail thresholds from the $-ladder blueprints ──
+
+    def api_firm_status_rules(self, firm_code: str, starting_balance: Optional[float] = None,
+                              live: Optional[Dict] = None) -> Optional[Dict]:
+        """Status thresholds for Tradeify247 / Vest / Breakout / MyFundedPerps.
+
+        These firms have no tick blueprints or _PHASE_TRADE_ORDER, so the
+        generic $48k / $50,100 floors do not apply. Returns
+        {blueprint, starting_balance, evaluation_goal, static_loss_floor,
+        daily_loss, daily_loss_floor} scaled to the account size, or None for
+        any other firm.
+        """
+        compact = str(firm_code or "").lower().replace(" ", "").replace("_", "")
+        start = float(starting_balance or 0) or None
+        if self.is_mfp_elite_code(firm_code):
+            r = self.firm_blueprints["MyFundedPerps"]["risk_rules"]
+            return {
+                "blueprint": self.firm_blueprints["MyFundedPerps"]["name"],
+                "starting_balance": float(r["starting_balance"]),
+                "evaluation_goal": float(r["evaluation_goal"]),
+                "static_loss_floor": float(r["static_loss_floor"]),
+                "daily_loss": float(r["daily_loss_limit"]),
+                "daily_loss_floor": None,
+            }
+        if "tradeify247" in compact:
+            r = self.tradeify247_rules_for_balance(start or 0)
+            return {
+                "blueprint": "Tradeify247", "starting_balance": r["starting_balance"],
+                "evaluation_goal": r["evaluation_goal"],
+                "static_loss_floor": r["static_loss_floor"],
+                "daily_loss": float(r["daily_loss"]), "daily_loss_floor": None,
+            }
+        if compact.startswith("vest"):
+            r = self.vest_rules_for_balance(
+                start or self.firm_blueprints["Vest Capital"]["risk_rules"]["starting_balance"], live=live)
+            return {
+                "blueprint": "Vest Capital", "starting_balance": r["starting_balance"],
+                "evaluation_goal": r["evaluation_goal"],
+                "static_loss_floor": r["static_loss_floor"],
+                "daily_loss": float(r["daily_loss"]), "daily_loss_floor": r.get("daily_loss_floor"),
+            }
+        if compact.startswith("breakout"):
+            kind = self.breakout_plan_kind(live, firm_code)
+            default_start = self.firm_blueprints[
+                "Breakout Turbo" if kind == "turbo" else "Breakout"]["risk_rules"]["starting_balance"]
+            r = self.breakout_rules_for_balance(start or default_start, live=live, firm_code=firm_code)
+            return {
+                "blueprint": r["blueprint"], "starting_balance": r["starting_balance"],
+                "evaluation_goal": r["evaluation_goal"],
+                "static_loss_floor": r["static_loss_floor"],
+                "daily_loss": float(r["daily_loss"]), "daily_loss_floor": r.get("daily_loss_floor"),
+            }
+        return None
 
     _TOPSTEP_RTP_PAYOUT2_PHASE_MAP = {
         "funded_trade1": "funded_trade1_p2",

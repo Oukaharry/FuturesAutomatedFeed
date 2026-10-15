@@ -162,8 +162,8 @@ def test_breakout_plan_for_row_uses_classic_rules_scaled_to_live_account():
     assert code == ACCT and bp["attempt"] == 1
     # Turbo $5K = 0.1 × Classic: budget $145, cost $20 → price stop $125, price target $450+$20
     assert bp["risk_budget"] == 145 and bp["sl_usd"] == 125 and bp["tp_usd"] == 470
-    # Temporary live-test cap: Turbo rules pin the bracket to ±$100 (SL × 0.95 buffer)
-    assert plan["sl_usd"] == pytest.approx(100 * 0.95) and plan["tp_usd"] == 100
+    # The planner ladder drives the bracket (SL × 0.95 buffer); no test-time cap.
+    assert plan["sl_usd"] == pytest.approx(125 * 0.95) and plan["tp_usd"] == 470
 
 
 def test_breakout_plan_blocks_same_window_repeat():

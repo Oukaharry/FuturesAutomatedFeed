@@ -6924,6 +6924,8 @@ class TradeOpssAIApp:
         firm_code = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
         if not firm_code:
             return None, None
+        if self._is_api_only_firm(firm_code) or self._is_api_only_firm(ev.get("Prop Firm")):
+            return self._derive_api_firm_status(ev, firm_code)
         rules = (mgr.firm_blueprints.get(firm_code) or {}).get("rules") or {}
 
         # A row carrying only Account #.1 is still funded, so the phase test
@@ -7014,6 +7016,98 @@ class TradeOpssAIApp:
                 goal = None
         if goal and not on_funded and has_trades and balance >= float(goal):
             return "Pass", f"balance {balance:,.2f} reached evaluation goal {float(goal):,.2f}"
+        return None, None
+
+    def _api_firm_broker(self, firm_label):
+        """Connected API-only broker (Breakout / Vest / DXtrade / perps) for a row's firm."""
+        for name, conn in (getattr(self, "_broker_connections", {}) or {}).items():
+            acct = (conn or {}).get("account")
+            if not acct or not self._is_api_only_firm(name):
+                continue
+            if self._broker_login_family(name) == self._broker_login_family(firm_label):
+                return acct
+        return None
+
+    def _derive_api_firm_status(self, ev, firm_code):
+        """Fail / Completed / Pass for Tradeify247, Vest, Breakout, MyFundedPerps.
+
+        Thresholds come from each firm's $-ladder blueprint scaled to the
+        account size (plus the live floor when the connector reports one):
+        static loss floor and the hard daily-loss floor (reset balance − DLL)
+        both fail the account; the evaluation goal passes it.
+        """
+        mgr = self.prop_firm_mgr
+        on_funded = self._on_funded_leg(ev)
+        phase = "Funded" if on_funded else "Challenge"
+        account = self._breach_balance_account(ev, on_funded)
+        entry = self._trade_outcome_history().get(str(account or "").strip().lower())
+        if not entry:
+            return None, None
+        try:
+            balance = float(entry.get("balance") or 0)
+        except (TypeError, ValueError):
+            return None, None
+        if balance <= 0:
+            return None, None
+        try:
+            sod = float(entry.get("balance_sod") or 0)
+        except (TypeError, ValueError):
+            sod = 0.0
+
+        start = None
+        size_str = str(ev.get("Account Size") or "").replace("$", "").replace(",", "").strip().lower()
+        try:
+            if size_str.endswith("k"):
+                start = float(size_str[:-1]) * 1000
+            elif size_str:
+                start = float(size_str)
+        except ValueError:
+            start = None
+
+        live = None
+        broker = self._api_firm_broker(ev.get("Prop Firm") or firm_code)
+        if broker is not None and hasattr(broker, "get_min_equity"):
+            try:
+                live = broker.get_min_equity(account_id=account)
+            except Exception:
+                live = None
+        rules = mgr.api_firm_status_rules(firm_code, start) if hasattr(mgr, "api_firm_status_rules") else None
+        if not rules:
+            return None, None
+
+        floor = float(rules["static_loss_floor"])
+        floor_src = "static loss floor"
+        if rules.get("daily_loss") and sod > 0:
+            daily_floor = sod - float(rules["daily_loss"])
+            if daily_floor > floor:
+                floor, floor_src = daily_floor, "daily loss floor"
+        if isinstance(live, dict) and live.get("min_equity"):
+            try:
+                live_floor = float(live["min_equity"])
+                if live_floor > floor:
+                    floor, floor_src = live_floor, "broker floor"
+            except (TypeError, ValueError):
+                pass
+
+        traded = (self._has_taken_funded_trade1(ev) if on_funded
+                  else self._has_taken_challenge_trade1(ev))
+        if not (self._account_has_trades(entry) or traded):
+            return None, None
+
+        if balance <= floor:
+            payouts = self._funded_payout_count(ev) if on_funded else 0
+            if payouts >= 1:
+                self._record_breach_alert(ev, firm_code, phase, balance, floor,
+                                          reason_code="completed_with_payout")
+                return "Completed", (f"{payouts} payout(s) banked and balance "
+                                     f"{balance:,.2f} at {floor_src} {floor:,.2f}")
+            self._record_breach_alert(ev, firm_code, phase, balance, floor)
+            return "Fail", (f"{phase.lower()} balance {balance:,.2f} at or below "
+                            f"{floor_src} {floor:,.2f} ({rules['blueprint']})")
+        goal = float(rules["evaluation_goal"])
+        if not on_funded and balance >= goal:
+            return "Pass", (f"balance {balance:,.2f} reached evaluation goal "
+                            f"{goal:,.2f} ({rules['blueprint']})")
         return None, None
 
     def _record_breach_alert(self, ev, firm_code, phase, balance, floor, *,
@@ -8134,6 +8228,12 @@ class TradeOpssAIApp:
             # to farming here used to steal the weekday off Hedge Result N.1 for
             # Funded Next / Flex / TopStep — placeholder vanished from the funded
             # columns before that trade was taken, so the row looked undetected.
+            return fields[next_idx]
+
+        if not firm_orders and next_idx < len(fields):
+            # API-only firms (Tradeify247 / Vest / Breakout / MyFundedPerps) plan
+            # from a $-ladder and have no blueprint trade order; walk the phase
+            # columns positionally so the next weekday still gets queued.
             return fields[next_idx]
 
         if traded_phase == "Funded" and farming_keys:
@@ -15914,6 +16014,7 @@ class TradeOpssAIApp:
                 _cur = self._cell(_ev.get("Status P1")).lower()
                 if not _cur or _cur in ("not started", "in progress"):
                     _ev["Status P1"] = "In Progress"
+        self._shift_day_placeholder_after_api_fill(row_data)
         try:
             acct = code.split(":", 1)[-1]
             on_funded = bool(self._cell((_ev or {}).get("Account #.1")))
@@ -15953,6 +16054,40 @@ class TradeOpssAIApp:
             if self._is_perps_firm(f) and c.get("account"):
                 return c["account"]
         return None
+
+    def _shift_day_placeholder_after_api_fill(self, row_data):
+        """API-only firms skip the Tradovate fill hook, so their weekday cell
+        stayed put and the row re-queued the next day. Mirror the futures path:
+        traded cell → $0.00, next blueprint cell → next trading weekday."""
+        ev = row_data.get("eval") or {}
+        if not isinstance(ev, dict) or not ev:
+            return
+        account = self._use_funded_trade_account(row_data, ev)
+        current_phase = row_data.get("current_phase") or ""
+        firm_code = (row_data.get("firm_code")
+                     or self._resolve_firm_code(ev.get("Prop Firm", "")))
+        try:
+            day_field = self._find_day_field_name(ev, current_phase)
+        except Exception:
+            day_field = None
+        if not day_field or not account:
+            self.log(f"⚠ {account or '?'}: no weekday cell found to mark after fill", "WARN")
+            return
+
+        def _work():
+            marked = False
+            try:
+                marked = self._mark_day_cell_traded_on_dashboard(
+                    account, day_field, firm_code=firm_code, current_phase=current_phase)
+            except Exception:
+                marked = False
+            if not marked:
+                self._queue_day_cell_mark(account, day_field, firm_code, current_phase)
+            else:
+                self.root.after(0, lambda: self.log(
+                    f"📅 {account}: {day_field} → $0.00, next weekday queued"))
+
+        threading.Thread(target=_work, daemon=True, name="api-fill-day-cell").start()
 
     # ── Vest Capital (Vest Markets: token-file auth + REST bracket) ──────
 
@@ -16944,6 +17079,7 @@ class TradeOpssAIApp:
                     _cur = self._cell(_ev.get("Status P1")).lower()
                     if not _cur or _cur in ("not started", "in progress"):
                         _ev["Status P1"] = "In Progress"
+                self._shift_day_placeholder_after_api_fill(row_data)
 
                 def _remove():
                     try:
@@ -17029,6 +17165,7 @@ class TradeOpssAIApp:
                 _cur = self._cell(_ev.get("Status P1")).lower()
                 if not _cur or _cur in ("not started", "in progress"):
                     _ev["Status P1"] = "In Progress"
+            self._shift_day_placeholder_after_api_fill(row_data)
             def _remove():
                 try:
                     row_data["frame"].destroy()
