@@ -286,12 +286,30 @@ class VestClient:
     def accounts(self) -> list:
         return self._get("/v3/accounts").get("accounts") or []
 
-    def balance(self) -> float:
+    def free_collateral(self) -> float:
+        """/v3/accounts `amount` — collateral not locked in open positions."""
         for a in self.accounts():
             if str(a.get("account_id")) == str(self.account_id):
                 return float(a.get("amount") or 0)
         accts = self.accounts()
         return float(accts[0].get("amount") or 0) if accts else 0.0
+
+    def balance(self) -> float:
+        """Account balance = free collateral + margin locked in open positions.
+
+        `amount` alone fell to ~$191 on a $5K account the moment a 5x position
+        opened, and the status engine read that as a breach.
+        """
+        free = self.free_collateral()
+        locked = 0.0
+        try:
+            for p in self.open_positions():
+                if str(p.get("accountId") or p.get("account_id") or self.account_id) != str(self.account_id):
+                    continue
+                locked += float(p.get("collateral") or 0)
+        except VestError:
+            pass
+        return free + locked
 
     def capital_account(self) -> dict:
         """Active Vest Capital (eval/funded) record incl. floors and targets."""
@@ -540,6 +558,8 @@ class VestExecutor:
 
         cap = self.client.capital_account()
         balance = self.client.balance()
+        # Margin budget is what is not already locked in a position.
+        margin_available = self.client.free_collateral()
         max_lev = float(cap.get("max_leverage") or 0) or (1.0 / float(spec.get("capitalInitMarginRatio") or 0.02))
         lev = min(float(leverage or max_lev), max_lev)
         if ref_price is None:
@@ -547,7 +567,7 @@ class VestExecutor:
         ref_price = float(ref_price)
 
         if quantity is None:
-            budget = max_margin_usd if max_margin_usd is not None else balance * SIZE_SAFETY
+            budget = max_margin_usd if max_margin_usd is not None else margin_available * SIZE_SAFETY
             quantity = math.floor(budget * lev / ref_price / step) * step
         quantity = round(float(quantity), size_dec)
         if quantity < step:
