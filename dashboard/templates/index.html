@@ -6741,8 +6741,12 @@
                     const passPh = isDxFirm ? 'DXtrade password' : 'Password';
                     // Tradeify247: the portal login (app.tradeify247.co) is what the
                     // companion reads Billing from to fill each account's Fee.
-                    const loginPh = isDxFirm ? 'Portal email (app.tradeify247.co)' : 'Login ID';
-                    const portalPassPh = isDxFirm ? 'Portal password' : 'Password';
+                    // MyFundedPerps: the API key trades; the Login ID email opens the
+                    // visible terminal window (six-digit code read from the mailbox).
+                    const loginPh = isDxFirm ? 'Portal email (app.tradeify247.co)'
+                                  : isPerpsFirm ? 'MyFundedPerps login email (opens the terminal window)'
+                                  : 'Login ID';
+                    const portalPassPh = isDxFirm ? 'Portal password' : isPerpsFirm ? '(not needed)' : 'Password';
                     const emailField = isVestFirm ? 'vest_email' : 'breakout_email';
                     const emailPh = isVestFirm ? 'Vest login email (code is read from the mailbox)'
                                                : 'Breakout login email (sign-in link is read from the mailbox)';

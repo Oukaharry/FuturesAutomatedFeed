@@ -13758,6 +13758,9 @@ class TradeOpssAIApp:
             # ── MyFundedPerps: API-executed — one key, no browser login ──
             if self._is_perps_firm(display_firm):
                 perps_key = (pa.get("api_key") or "").strip()
+                # Observer window only; the API key does the trading.
+                perps_email = (pa.get("mfp_email") or pa.get("tradovate_username")
+                               or pa.get("login") or os.environ.get("MFP_EMAIL") or "").strip()
                 self._broker_connections[firm] = {
                     "account": existing_account,
                     "row_frame": None,
@@ -13766,10 +13769,13 @@ class TradeOpssAIApp:
                 self._start_perps_md_feed()
                 if existing_account:
                     auto_count += 1
+                    if perps_email and not self._perps_observer_alive(perps_email):
+                        threading.Thread(target=self._open_perps_observer,
+                                         args=(firm, perps_email), daemon=True).start()
                 elif perps_key:
                     auto_count += 1
                     threading.Thread(target=self._connect_perps_broker,
-                                     args=(firm, perps_key), daemon=True).start()
+                                     args=(firm, perps_key, perps_email), daemon=True).start()
                 else:
                     self.log(f"🔑 {display_firm}: add the API key on the dashboard "
                              f"Prop Firm Accounts tab to connect", "WARN")
@@ -17123,7 +17129,7 @@ class TradeOpssAIApp:
             self._mfp_elite_last_attempt = store
         store[str(account_id)] = self._ny_today_str()
 
-    def _connect_perps_broker(self, firm, api_key):
+    def _connect_perps_broker(self, firm, api_key, email=None):
         """Verify the API key and store the client as this firm's broker."""
         try:
             from trader_companion.perps_connector import MFPClient, unwrap
@@ -17137,8 +17143,57 @@ class TradeOpssAIApp:
             nums = ", ".join(str(a.get("account_number") or "?") for a in accounts) or "none"
             env = "sandbox" if client.is_sandbox else "live"
             self.log(f"🔑 {firm} connected via API ({env}) — account(s): {nums}")
+            if email:
+                self._open_perps_observer(firm, email)
+            else:
+                self.root.after(0, lambda: self.log(
+                    f"ℹ {firm}: add the MyFundedPerps login email (Login ID cell) on the "
+                    f"dashboard to also open the trading window", "WARN"))
         except Exception as exc:
             self.log(f"❌ {firm} API connection failed: {exc}", "ERROR")
+
+    def _perps_observer_alive(self, email) -> bool:
+        d = (getattr(self, "_perps_observers", {}) or {}).get(str(email or "").lower())
+        if d is None:
+            return False
+        try:
+            d.title  # raises once the window was closed
+            return True
+        except Exception:
+            self._perps_observers.pop(str(email).lower(), None)
+            return False
+
+    def _open_perps_observer(self, firm, email):
+        """Visible MyFundedPerps terminal (own browser login) beside the API connection."""
+        if self._perps_observer_alive(email):
+            return
+        try:
+            from trader_companion.perps_login import open_observer
+        except ImportError:
+            from perps_login import open_observer
+        self.root.after(0, lambda: self.log(
+            f"🪟 {firm}: opening the MyFundedPerps terminal in Chrome for {email}"))
+        try:
+            driver, ok = open_observer(email)
+        except Exception as exc:
+            self.root.after(0, lambda e=str(exc): self.log(
+                f"⚠ {firm}: could not open the MyFundedPerps window: {e}", "WARN"))
+            return
+        store = getattr(self, "_perps_observers", None)
+        if store is None:
+            store = {}
+            self._perps_observers = store
+        store[email.lower()] = driver
+        self.root.after(0, lambda: self.log(
+            f"🪟 {firm}: MyFundedPerps window {'ready' if ok else 'open — finish sign-in in Chrome'}"))
+
+    def _close_perps_observers(self):
+        for _email, d in list((getattr(self, "_perps_observers", {}) or {}).items()):
+            try:
+                d.quit()
+            except Exception:
+                pass
+        self._perps_observers = {}
 
     def _execute_perps_row_trade(self, side, row_data):
         """Max-size bracket on the perps API: TP = remaining target, SL = room."""
@@ -19895,6 +19950,10 @@ class TradeOpssAIApp:
 
         try:
             self._close_vest_observers()
+        except Exception:
+            pass
+        try:
+            self._close_perps_observers()
         except Exception:
             pass
 
