@@ -145,8 +145,14 @@ def build(trader_release: bool = False):
         'dxtrade_connector', 'dxtrade_browser', 'dxtrade_executor',
         'trader_companion.tradeify247_portal', 'tradeify247_portal',
         'trader_companion.vest_connector', 'vest_connector',
+        'trader_companion.vest_login', 'trader_companion.vest_probe', 'vest_login', 'vest_probe',
         'trader_companion.breakout_connector', 'trader_companion.breakout_api',
         'trader_companion.breakout_probe', 'trader_companion.cdp_capture', 'websocket',
+        'trader_companion.perps_connector', 'trader_companion.perps_executor',
+        'trader_companion.perps_md_feed', 'trader_companion.perps_account_stream',
+        'trader_companion.perps_login', 'perps_connector', 'perps_executor', 'perps_login',
+        'trader_companion.email_codes', 'email_codes',
+        'trader_companion.audit_log', 'audit_log',
     ]
     if not trader_release:
         hidden_imports.extend([
