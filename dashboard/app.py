@@ -12505,6 +12505,7 @@ def _clear_system_day_placeholders(ev):
     from utils.data_processor import _is_weekday_or_empty_label
     if not isinstance(ev, dict):
         return []
+    manual = set(ev.get('_manual_push_fields') or [])
     cleared = []
     for key in list(ev.keys()):
         if not isinstance(key, str):
@@ -12514,6 +12515,8 @@ def _clear_system_day_placeholders(ev):
             or key.startswith('Hedge Day')
             or key.startswith('Prop Day')
         ):
+            continue
+        if key in manual:
             continue
         val = ev.get(key)
         if not val or str(val).strip() in ('', '-', '—', '–'):
