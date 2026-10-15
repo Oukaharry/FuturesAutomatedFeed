@@ -3847,12 +3847,13 @@ class PropFirmManager:
             "Payout Cycle":    ["funded_trade2"],
         },
         "FundedNext Rapid Daily": {
-            "Challenge": ["challenge_trade1", "challenge_trade1_recovery"],
-            "Funded":    ["funded_trade1", "funded_trade1_recovery",
-                          "funded_trade2", "funded_trade2_recovery1", "funded_trade2_recovery2",
-                          "funded_trade3", "funded_trade3_recovery",
-                          "funded_trade4", "funded_trade4_recovery",
-                          "funded_trade5", "funded_trade5_recovery"],
+            # Day-cell index maps to the main funded leg only. Recovery keys are
+            # outcome-gated via the state machine — listing them here made the
+            # post-payout Hedge Result 2.1 slot resolve to funded_trade1_recovery
+            # and re-aim the first-cycle ~$4k band instead of FT2's ~$500.
+            "Challenge": ["challenge_trade1"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3",
+                          "funded_trade4", "funded_trade5"],
         },
         "Funded Futures Family": {
             "Challenge": ["challenge_trade1", "challenge_trade2"],
@@ -4923,7 +4924,8 @@ class PropFirmManager:
                                account_key: Optional[str] = None,
                                balance: float = 50000.0,
                                user_key: Optional[str] = None,
-                               purchase_date=None) -> Dict:
+                               purchase_date=None,
+                               funded_payout_count: int = 0) -> Dict:
         """Apply anti-correlation randomization for supported firm blueprints.
 
         Rules implemented from the Slack spec discussions and the propagated
@@ -5006,12 +5008,39 @@ class PropFirmManager:
                 return cfg
 
             friction = 8.80
+            # FT1 / FT1 recovery only — do not treat funded_trade10-style names
+            # as first-cycle (none exist today; keep the match explicit).
+            is_ft1 = (phase == "funded_trade1"
+                      or phase.startswith("funded_trade1_"))
+            try:
+                live_balance = float(balance or 0)
+            except (TypeError, ValueError):
+                live_balance = 0.0
+            payouts = max(0, int(funded_payout_count or 0))
+            # After a payout the next funded leg is the ~$500 cycle (blueprint
+            # FT2+), even if the day cell still resolves as funded_trade1.
+            if is_ft1 and payouts >= 1:
+                is_ft1 = False
             # Band is deliberately above the nominal $54,000 goal; see the
             # FT1 uniqueness tests that pin the 491-599 tick window.
-            target_range = ((54900.0, 56650.0) if phase.startswith("funded_trade1")
+            target_range = ((54900.0, 56650.0) if is_ft1
                             else (53150.0, 53450.0))
             start_balance = 50000.0
             minimum_profit = 263.80
+            # After payout the account sits near payout1_retained_balance
+            # (~$52,800). Callers often pass SOD $50,000 when live equity is
+            # missing, which made T2+ aim ~$3,150 (53150-50000) instead of
+            # the ~$500 post-payout climb to the cycle band.
+            rules = (self.get_firm_info(firm) or {}).get("rules") or {}
+            retained = float(rules.get("payout1_retained_balance") or 52800.0)
+            if is_ft1:
+                equity_for_profit = start_balance
+            elif live_balance > 50500:
+                equity_for_profit = live_balance
+            elif payouts >= 1:
+                equity_for_profit = retained
+            else:
+                equity_for_profit = None  # fall back to ~$500 blueprint profit
 
             def candidate_ticks():
                 """Generate legal whole-position-tick TP values for this draw."""
@@ -5020,9 +5049,23 @@ class PropFirmManager:
                 target = lower
                 candidates = set()
                 while target <= upper + 0.0001:
-                    profit_needed = ((target - start_balance + friction)
-                                     if phase.startswith("funded_trade1")
-                                     else max(target - balance, minimum_profit))
+                    if is_ft1:
+                        profit_needed = target - start_balance + friction
+                    elif equity_for_profit is not None:
+                        profit_needed = max(target - equity_for_profit,
+                                            minimum_profit)
+                    else:
+                        # No reliable equity: keep FT2-sized ~$400–$700 aims.
+                        profit_needed = max(minimum_profit, 400.0)
+                        # One pass is enough when not walking an equity band.
+                        ticks = math.ceil(profit_needed / position_tick_value)
+                        if 0 < ticks <= 600 and ticks % 100 != 0:
+                            candidates.add(ticks)
+                        for dollars in (500.0, 600.0, 700.0):
+                            ticks = math.ceil(dollars / position_tick_value)
+                            if 0 < ticks <= 600 and ticks % 100 != 0:
+                                candidates.add(ticks)
+                        return sorted(candidates)
                     ticks = math.ceil(profit_needed / position_tick_value)
                     if 0 < ticks <= 600 and ticks % 100 != 0:
                         candidates.add(ticks)
@@ -5052,7 +5095,7 @@ class PropFirmManager:
                 return target_ticks
 
             state = self._account_random_state.setdefault(account_id, {})
-            if phase.startswith("funded_trade1"):
+            if is_ft1:
                 state_key = "rapid_daily_ft1_target_ticks"
                 target_ticks = state.get(state_key)
                 if target_ticks not in candidates:
@@ -5073,11 +5116,16 @@ class PropFirmManager:
                 "target_ticks": target_ticks,
                 "friction_dollars": friction,
                 "position_tick_value": position_tick_value,
+                "equity_for_profit": equity_for_profit,
+                "funded_payout_count": payouts,
             })
             self.logger.info(
                 f"[Rapid Daily randomization] account={account_id} trade={phase} "
                 f"draw={draw_name} TP={target_ticks}t "
-                f"SL={cfg.get('tradovate_sl_ticks')}t balance=${balance:,.2f}")
+                f"SL={cfg.get('tradovate_sl_ticks')}t balance=${balance:,.2f} "
+                f"equity_for_profit="
+                f"{equity_for_profit if equity_for_profit is not None else 'blueprint~$500'} "
+                f"payouts={payouts}")
             return cfg
 
         if firm == "MFFU Rapid EOD":
