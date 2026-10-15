@@ -40,6 +40,7 @@ from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
     update_admin_details, update_trader_details, update_client_details, update_client_category,
     get_client_by_email, get_user_by_email, get_client_profile, find_client_entry,
+    find_client_email_conflict,
     find_trader_admin, set_trader_active_status, trader_is_active,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
@@ -9818,6 +9819,11 @@ def api_create_user():
             ),
         })
     
+    if user_type == 'client' and not hierarchy_exists:
+        conflict = find_client_email_conflict(email)
+        if conflict:
+            return jsonify({"status": "error", "message": f"Email already used by client '{conflict}'"}), 400
+
     # Create user in database (auth) if not exists
     created_db_user = False
     if not user_db_exists:
@@ -11047,6 +11053,13 @@ def api_update_client():
     if not admin or not trader:
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
+    # Only block when the email is being changed, so edits to legacy duplicates still save.
+    current_email = ((located[2].get('email') if located else '') or '').strip().lower()
+    if email and email.strip().lower() != current_email:
+        conflict = find_client_email_conflict(email, exclude_client=name)
+        if conflict:
+            return jsonify({"status": "error", "message": f"Email already used by client '{conflict}'"}), 400
+
     # Rename if new_name provided and different
     if new_name and new_name != name:
         if not rename_client(admin, trader, name, new_name, email, category or None):
@@ -11129,6 +11142,10 @@ def api_add_client():
     category = request.json.get('category', '')
     
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    conflict = find_client_email_conflict(email)
+    if conflict:
+        return jsonify({"status": "error", "message": f"Email already used by client '{conflict}'"}), 400
     
     if add_client(admin, trader, name, email, category):
         # IMPORTANT: Initialize database record for new client

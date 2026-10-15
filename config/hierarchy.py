@@ -290,6 +290,23 @@ def find_client_entry(client_name, admin_name=None, trader_name=None):
     return None
 
 
+def find_client_email_conflict(email, exclude_client=None):
+    """Return the name of another client already using *email* (case-insensitive), else None."""
+    em = (email or "").strip().lower()
+    if not em:
+        return None
+    for admin_data in SYSTEM_HIERARCHY.get("admins", {}).values():
+        for trader_data in admin_data.get("traders", {}).values():
+            for client in trader_data.get("clients", []):
+                if not isinstance(client, dict):
+                    continue
+                if client.get("name") == exclude_client:
+                    continue
+                if (client.get("email") or "").strip().lower() == em:
+                    return client.get("name")
+    return None
+
+
 def update_client_details(admin_name, trader_name, client_name, email):
     found = find_client_entry(client_name, admin_name, trader_name)
     if not found:
@@ -394,7 +411,7 @@ def add_client(admin_name, trader_name, client_name, email="", category=""):
         if trader_name in traders:
             # Check if client exists
             existing_clients = [c["name"] for c in traders[trader_name]["clients"]]
-            if client_name not in existing_clients:
+            if client_name not in existing_clients and not find_client_email_conflict(email):
                 traders[trader_name]["clients"].append({
                     "name": client_name,
                     "email": email,
@@ -547,13 +564,26 @@ def get_client_by_email(email):
     """Finds the client profile by email."""
     if not email: return None
     email = email.lower().strip()
+    matches = []
     for admin, admin_data in SYSTEM_HIERARCHY["admins"].items():
         for trader, trader_data in admin_data["traders"].items():
             for client in trader_data["clients"]:
                 client_email = client.get("email", "").lower().strip()
                 if client_email == email:
-                    return {"admin": admin, "trader": trader, "client": client["name"], "email": client.get("email", "")}
-    return None
+                    matches.append({"admin": admin, "trader": trader, "client": client["name"], "email": client.get("email", "")})
+    if len(matches) <= 1:
+        return matches[0] if matches else None
+    # Shared email (e.g. a deactivated account re-created as "Name 2"): prefer the active one.
+    try:
+        from dashboard.database import get_all_client_identities, _normalize_identifier
+        identities = {_normalize_identifier(k): v for k, v in get_all_client_identities().items()}
+        for m in matches:
+            ident = identities.get(_normalize_identifier(m["client"])) or {}
+            if str(ident.get("active_status") or "active").strip().lower() != "inactive":
+                return m
+    except Exception:
+        pass
+    return matches[0]
 
 def get_all_clients():
     """Returns a list of all client names."""
