@@ -2927,6 +2927,9 @@ class TradeOpssAIApp:
                 self._on_mt5_disconnected()
             self.log(msg)
         else:
+            if not self._hedging_active():
+                self.log("Broker Only mode is selected; MT5 connection was not started.", "WARN")
+                return
             login = self.mt5_login.get().strip()
             password = self.mt5_password.get()
             server = self.mt5_server.get().strip()
@@ -2947,6 +2950,13 @@ class TradeOpssAIApp:
                 self.hedge_mode_var.set("BrokerOnly")
                 self.log("🔒 Hedging is locked off on the shared MT5 data account — "
                          "it feeds the AI only", "WARN")
+                return
+            if self.hedge_mode_var.get() == "BrokerOnly" and self.pusher.connected:
+                success, msg = self.pusher.disconnect_mt5()
+                self.mt5_btn.configure(text="Connect MT5")
+                if success:
+                    self._on_mt5_disconnected()
+                self.log(f"Broker Only mode selected; {msg}")
         except Exception:
             pass
 
@@ -2958,6 +2968,8 @@ class TradeOpssAIApp:
     def _auto_connect_mt5(self):
         """Auto-connect to MT5 once credentials are present (e.g. right after the
         dashboard auto-fills them). Runs on the UI thread so MT5 + M1 feed share one thread."""
+        if not self._hedging_active():
+            return
         try:
             if getattr(self.pusher, "connected", False):
                 # Already connected — just make sure the button reflects it.
@@ -17477,7 +17489,7 @@ class TradeOpssAIApp:
 
     def _get_mt5_trading_api(self):
         """Get or create the MT5 trading API from companion's existing MT5 connection."""
-        if TRADOVATE_ONLY_MODE:
+        if TRADOVATE_ONLY_MODE or not self._hedging_active():
             return None
         if self.trading_api and hasattr(self.trading_api, 'is_connected') and self.trading_api.is_connected():
             return self.trading_api
@@ -17507,6 +17519,11 @@ class TradeOpssAIApp:
         Returns:
             bool: True if price data queries can be served.
         """
+        if not self._hedging_active():
+            if self._tradovate_feed_bars_ready():
+                return True
+            self._start_tradovate_md_feed()
+            return False
         if not MT5_AVAILABLE:
             return self._tradovate_feed_bars_ready()
         # Already connected via pusher?
