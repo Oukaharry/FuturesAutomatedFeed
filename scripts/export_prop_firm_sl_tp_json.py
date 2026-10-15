@@ -85,7 +85,7 @@ def _randomization_meta(firm_code: str, phase_key: str, blueprint_tp: float, blu
     if firm in ("FundedNext Rapid Daily", "FundedNext Rapid Daily 50K"):
         if not phase.startswith("funded_trade"):
             return _fixed(blueprint_tp, blueprint_sl)
-        t1 = phase.startswith("funded_trade1")
+        t1 = phase == "funded_trade1" or phase.startswith("funded_trade1_")
         return {
             "tp": {
                 "mode": "randomized",
@@ -95,6 +95,9 @@ def _randomization_meta(firm_code: str, phase_key: str, blueprint_tp: float, blu
                 "max_ticks": 600,
                 "friction_dollars": 8.80,
                 "ft1_persisted_per_account": t1,
+                "note": ("T1 = first funded cycle from $50k; after payout "
+                         "T2+ uses retained ~$52800 → ~$350–$650 profit "
+                         "(not $50k SOD which falsely aimed ~$3k)"),
             },
             "sl": {"mode": "fixed", "ticks": int(blueprint_sl) if blueprint_sl else None,
                    "note": "Blueprint SL; not overwritten by randomizer"},

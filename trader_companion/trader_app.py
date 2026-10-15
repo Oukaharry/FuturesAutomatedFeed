@@ -10753,6 +10753,7 @@ class TradeOpssAIApp:
                     balance=scoped_net_liq if scoped_net_liq is not None else 50000.0,
                     user_key=user_key or None,
                     purchase_date=(row_eval or {}).get("Date Purchased"),
+                    funded_payout_count=self._funded_payout_count(row_eval or {}),
                 )
         except Exception as _rand_err:
             self.log(f"⚠ Trade randomization skipped for {acct_num}: {_rand_err}", "WARN")
@@ -11692,6 +11693,7 @@ class TradeOpssAIApp:
                         user_key=(self.client_email_entry.get().strip().lower()
                                   if hasattr(self, "client_email_entry") else None),
                         purchase_date=(row.get("eval") or {}).get("Date Purchased"),
+                        funded_payout_count=self._funded_payout_count(row.get("eval") or {}),
                     )
                 except Exception as err:
                     self.log(f"⚠ TP/SL plan unavailable for {acct_num}: {err}", "WARN")
