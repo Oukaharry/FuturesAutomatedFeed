@@ -2202,18 +2202,29 @@ def _account_text_says_live_account(raw):
 
 
 def _firm_eval_marked_live_account(firm_family, evaluations):
-    """True when this firm has a real-money row (eval Account # says Live Account).
+    """True when this firm still has an *active* Live Account seat.
 
-    A Fail on that firm is not a replacement buy. Joe Hicken's Apex rows are
-    Live Account, so an Apex purchase alert for him is a false buy.
+    A Fail on a Live Account row is not a replacement buy (Joe Hicken / Apex).
+    Historical Live Account rows that already Failed or Completed must not
+    permanently mute prop-firm purchase Slack for the same firm label
+    (Pilar Cortez / Tradeify still runs TDFYSL challenges alongside old
+    LIVE ACCOUNT fails).
     """
     for ev in evaluations or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
         if _breach_firm_family(ev.get('Prop Firm')) != firm_family:
             continue
-        if _account_text_says_live_account(ev.get('Account #')):
-            return True
+        if not _account_text_says_live_account(ev.get('Account #')):
+            continue
+        # Terminal Live Account seats (Fail / Completed) do not mute the firm.
+        sp1 = str(ev.get('Status P1') or '').strip().lower()
+        funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip().lower()
+        if any(tok in sp1 for tok in _MAX_OUT_INACTIVE_P1):
+            continue
+        if any(tok in funded for tok in _MAX_OUT_INACTIVE_FUNDED):
+            continue
+        return True
     return False
 
 
@@ -3183,7 +3194,9 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
 
     The Tradovate status poll writes Fail onto the sheet and pushes with no
     breach_alerts list. A change to Fail is the breach, for that account.
-    A row that was already Fail is not bought again.
+    A row that was already Fail is not bought again here — use
+    `_unsent_today_fail_purchase_breaches` when a manual save / repair must
+    still Slack a same-day Fail that never made it into sent_accounts.
 
     Funded Fail/Breach with Payout N filled uses reason_code
     completed_with_payout (Status is healed to Completed by server guards).
@@ -3215,6 +3228,61 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
             if account.lower() in seen:
                 continue
             seen.add(account.lower())
+            reason = 'status_fail'
+            if phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1:
+                reason = 'completed_with_payout'
+            breaches.append({
+                'account': account,
+                'prop_firm': ev.get('Prop Firm') or '',
+                'phase': phase,
+                'reason_code': reason,
+            })
+    return breaches
+
+
+def _unsent_today_fail_purchase_breaches(client_id, evaluations):
+    """Same-day Fail rows that still need a purchase Slack (manual / repair).
+
+    Companion may have written Fail already, so a later dashboard save does not
+    transition into Fail and `_fail_status_purchase_breaches` stays empty. If
+    the earlier push never announced (hold, max-out race, flush miss), the
+    admin's manual Fail save must still queue the buy.
+    """
+    from dashboard.database import get_breach_alert_sent_accounts
+
+    already = get_breach_alert_sent_accounts(client_id)
+    today = _kenya_today_str()
+    breaches = []
+    seen = set()
+    legs = (
+        ('Status P1', 'Challenge', 'Account #', 'Date Ended'),
+        ('Status', 'Funded', 'Account #.1', 'Date Ended.1'),
+    )
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        for field, phase, acct_field, ended_field in legs:
+            if not _status_is_fail(ev.get(field)):
+                continue
+            account = str(ev.get(acct_field) or '').strip()
+            if phase == 'Funded' and account in ('', '-', '—', '–'):
+                account = str(ev.get('Account #') or '').strip()
+            if not account or account in ('-', '—', '–'):
+                continue
+            key = account.lower()
+            if key in seen:
+                continue
+            ended = ev.get(ended_field)
+            if phase == 'Funded' and _date_ended_blank(ended):
+                ended = ev.get('Date Ended')
+            ended_iso = None if _date_ended_blank(ended) else _parse_date_str(ended)
+            if ended_iso is not None and ended_iso != today:
+                continue
+            firm_key = _breach_firm_family(ev.get('Prop Firm'))
+            sent_key = _breach_account_sent_key(firm_key, key)
+            if sent_key and sent_key in already:
+                continue
+            seen.add(key)
             reason = 'status_fail'
             if phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1:
                 reason = 'completed_with_payout'
@@ -8493,10 +8561,14 @@ def api_client_push():
         _record_status_change_events(client_id, existing_evals_push, evaluations)
         payout_completed = _completed_with_payout_purchase_breaches(
             existing_evals_push, evaluations)
+        unsent_today = _unsent_today_fail_purchase_breaches(
+            client_id, evaluations)
         breach_alerts_sanitized = _rewrite_fail_breaches_to_completed_with_payout(
             evaluations, breach_alerts_sanitized)
         server_purchases = _merge_purchase_breach_lists(
             fail_purchases, payout_completed)
+        server_purchases = _merge_purchase_breach_lists(
+            server_purchases, unsent_today)
         if server_purchases:
             breach_alerts_sanitized = _merge_purchase_breach_lists(
                 breach_alerts_sanitized, server_purchases)
@@ -16375,8 +16447,12 @@ def update_data():
                 try:
                     payout_completed = _completed_with_payout_purchase_breaches(
                         existing_evals, evaluations)
+                    unsent_today = _unsent_today_fail_purchase_breaches(
+                        client_id, evaluations)
                     server_purchases = _merge_purchase_breach_lists(
                         fail_purchases, payout_completed)
+                    server_purchases = _merge_purchase_breach_lists(
+                        server_purchases, unsent_today)
                     if server_purchases:
                         _queue_breach_alerts(
                             client_id, server_purchases, evaluations=evaluations)
