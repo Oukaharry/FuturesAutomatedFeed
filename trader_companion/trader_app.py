@@ -2755,6 +2755,9 @@ class TradeOpssAIApp:
                                     pass
                             threading.Thread(target=_fetch_hedge_creds, daemon=True).start()
                             self.root.after(400, self._auto_connect_mt5)
+                            # Brokers (Tradovate Chrome + API-only firms) open now,
+                            # not on the first Scan.
+                            self.root.after(1200, self._launch_brokers_now)
                             # Auto-push is OFF by default — user starts it
                             # with the toolbar Auto-Push toggle.
                             self.root.after(2000, lambda: self._update_auto_push_status(
@@ -9770,6 +9773,75 @@ class TradeOpssAIApp:
         except Exception:
             pass
         return None
+
+    def _launch_brokers_now(self):
+        """Open broker sessions as soon as the client is known (no Scan needed).
+
+        Same partition as Scan: Tradovate Chrome opens only for prop firms this
+        client has a live (not failed / completed) account on; API-only firms
+        (Tradeify247 / Vest / Breakout / MyFundedPerps) connect from their saved
+        login. Trade rows are untouched \u2014 Scan still owns those.
+        """
+        if getattr(self, "_broker_launch_in_flight", False):
+            return
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        if not email or not dashboard_url:
+            return
+        self._broker_launch_in_flight = True
+        self.log("\ud83d\udd17 Launching brokers for this client's live prop firms...")
+
+        def _do():
+            try:
+                r = None
+                for attempt in range(3):
+                    r = requests.post(
+                        f"{dashboard_url}/api/client/data",
+                        json={"email": email},
+                        headers=_companion_request_headers(),
+                        timeout=15,
+                    )
+                    if r.status_code != 429:
+                        break
+                    time.sleep(3 if attempt == 0 else 5)
+                if r is None or r.status_code != 200:
+                    code = r.status_code if r is not None else "no response"
+                    self.root.after(0, lambda c=code: self.log(
+                        f"\u26a0 Broker launch: dashboard data unavailable ({c}) \u2014 "
+                        f"Scan will retry", "WARN"))
+                    return
+                data = r.json()
+                evaluations = data.get("evaluations", []) or []
+                self._last_dashboard_evaluations = list(evaluations)
+                active_evals, connect_evals, _skipped = self._partition_evaluations_for_scan(
+                    evaluations, kenya_today().weekday())
+                active_trade_firms = list(dict.fromkeys(
+                    str(ev.get("Prop Firm") or "").strip()
+                    for ev in active_evals if ev.get("Prop Firm")))
+                prop_accounts = data.get("prop_accounts", []) or []
+                connect_evals = connect_evals + self._api_credential_stubs(
+                    connect_evals, prop_accounts)
+                live_firms = sorted({
+                    self._broker_login_family(str(ev.get("Prop Firm") or ""))
+                    for ev in connect_evals if ev.get("Prop Firm")})
+                self.root.after(0, lambda lf=live_firms: self.log(
+                    f"\ud83d\udd17 Live prop firms for this client: "
+                    f"{', '.join(lf) if lf else 'none'}"))
+                if not connect_evals:
+                    return
+                self.root.after(
+                    0,
+                    lambda ce=connect_evals, pa=prop_accounts, af=active_trade_firms:
+                    self._populate_broker_rows(ce, pa, priority_firms=af),
+                )
+                self.root.after(1500, lambda evs=evaluations: self._resume_pending_account_closes(evs))
+            except Exception as exc:
+                self.root.after(0, lambda e=str(exc): self.log(
+                    f"\u26a0 Broker launch failed: {e} \u2014 Scan will retry", "WARN"))
+            finally:
+                self._broker_launch_in_flight = False
+
+        threading.Thread(target=_do, daemon=True, name="broker-launch").start()
 
     def _partition_evaluations_for_scan(self, evaluations, today_wd):
         """Split dashboard rows into (tradeable today, worth connecting, skip counts).
