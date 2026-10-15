@@ -22,9 +22,11 @@ class Config:
     APP_VERSION = '1.0.1'
     # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
     REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.7') or '1.12.7'
-    # Releases require the exact current companion version.
     MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.6') or '1.12.6'
-    COMPANION_VERSION_EXACT = True
+    # Exact pin blocks older builds only; newer (e.g. 1.12.7 vs required 1.12.6) is allowed.
+    COMPANION_VERSION_EXACT = os.getenv('COMPANION_VERSION_EXACT', '0').strip().lower() in (
+        '1', 'true', 'yes',
+    )
     
     # Session Configuration
     SESSION_TYPE = 'filesystem'  # Options: 'filesystem', 'redis', 'sqlalchemy'
