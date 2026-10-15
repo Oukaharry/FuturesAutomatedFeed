@@ -13755,6 +13755,24 @@ class TradeOpssAIApp:
             old_conn = old_connections.get(firm, {})
             existing_account = old_conn.get("account")
 
+            # Dashboard Status on the prop-account row: Active / Live launch,
+            # Inactive / Banned never do (and an existing session is dropped).
+            pa_status = self._prop_account_status(pa)
+            if not self._prop_account_launchable(pa):
+                self.log(f"⏸ {display_firm}: prop account is {pa_status.title()} — not launching", "WARN")
+                if existing_account is not None:
+                    try:
+                        closer = getattr(existing_account, "close", None)
+                        if callable(closer):
+                            closer()
+                    except Exception:
+                        pass
+                self._broker_connections[firm] = {
+                    "account": None, "row_frame": None,
+                    "creds_source": "disabled", "status": pa_status,
+                }
+                continue
+
             # ── MyFundedPerps: API-executed — one key, no browser login ──
             if self._is_perps_firm(display_firm):
                 perps_key = (pa.get("api_key") or "").strip()
@@ -14011,6 +14029,10 @@ class TradeOpssAIApp:
         conn = self._broker_connections.get(firm_name)
         if not conn:
             return
+        if conn.get("creds_source") == "disabled":
+            self.log(f"⏸ {firm_name}: prop account is {str(conn.get('status') or 'inactive').title()} "
+                     f"on the dashboard — set it Active or Live to launch", "WARN")
+            return
 
         # DXtrade rows have no entry widgets — credentials come from the
         # dashboard prop-account row or the environment.
@@ -14250,6 +14272,8 @@ class TradeOpssAIApp:
 
         to_connect = []
         for firm, conn in self._broker_connections.items():
+            if not conn.get("user_entry") or not conn.get("pass_entry"):
+                continue  # API-only firm or status-disabled row — no Tradovate widgets
             user = conn["user_entry"].get().strip()
             pwd = conn["pass_entry"].get().strip()
             if user and pwd and not conn.get("account"):
@@ -14272,6 +14296,10 @@ class TradeOpssAIApp:
         """Auto-connect all broker rows that have dashboard credentials pre-filled."""
         to_connect = []
         for firm, conn in self._broker_connections.items():
+            if conn.get("creds_source") == "disabled":
+                continue  # Inactive / Banned on the dashboard — never launch
+            if not conn.get("user_entry") or not conn.get("pass_entry"):
+                continue  # API-only firms connect from their own branch
             user = conn["user_entry"].get().strip()
             pwd = conn["pass_entry"].get().strip()
             if user and pwd and not conn.get("account"):
@@ -16571,6 +16599,16 @@ class TradeOpssAIApp:
                 return True
         return False
 
+    _PROP_ACCOUNT_LAUNCH_STATUSES = ("active", "live")
+
+    @staticmethod
+    def _prop_account_status(pa) -> str:
+        """Normalised dashboard Status for a Prop Firm Accounts row (missing = active)."""
+        return str((pa or {}).get("status") or "active").strip().lower() or "active"
+
+    def _prop_account_launchable(self, pa) -> bool:
+        return self._prop_account_status(pa) in self._PROP_ACCOUNT_LAUNCH_STATUSES
+
     def _api_credential_stubs(self, connect_evals, prop_accounts):
         """Placeholder rows so API-only firms with a saved login (but no
         dashboard row yet) still get a broker connection on scan."""
@@ -16580,6 +16618,8 @@ class TradeOpssAIApp:
         for pa in prop_accounts or []:
             pf = str((pa or {}).get("prop_firm") or "").strip()
             if not pf or not self._is_api_only_firm(pf):
+                continue
+            if not self._prop_account_launchable(pa):
                 continue
             if not self._api_prop_account_has_login(pa):
                 continue

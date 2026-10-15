@@ -963,6 +963,42 @@
             display: none !important;
         }
 
+        /* Row delete action (Hedge / Prop / VPS tables) */
+        .btn-delete {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 1px solid rgba(248, 113, 113, 0.28);
+            background: rgba(248, 113, 113, 0.08);
+            color: #f87171;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+        }
+        .btn-delete:hover {
+            background: rgba(248, 113, 113, 0.18);
+            border-color: rgba(248, 113, 113, 0.6);
+            color: #fecaca;
+        }
+        .btn-delete:active { transform: scale(0.94); }
+        .btn-delete:focus-visible { outline: 2px solid rgba(248, 113, 113, 0.6); outline-offset: 2px; }
+
+        /* Prop firm account status pill */
+        .prop-status-select {
+            font-weight: 600;
+            border-radius: 999px !important;
+            padding: 4px 10px !important;
+            border: 1px solid transparent !important;
+        }
+        .prop-status-select.prop-status-active   { color: #4ade80 !important; background: rgba(74, 222, 128, 0.10) !important; border-color: rgba(74, 222, 128, 0.35) !important; }
+        .prop-status-select.prop-status-live     { color: #60a5fa !important; background: rgba(96, 165, 250, 0.10) !important; border-color: rgba(96, 165, 250, 0.35) !important; }
+        .prop-status-select.prop-status-inactive { color: #94a3b8 !important; background: rgba(148, 163, 184, 0.10) !important; border-color: rgba(148, 163, 184, 0.30) !important; }
+        .prop-status-select.prop-status-banned   { color: #f87171 !important; background: rgba(248, 113, 113, 0.10) !important; border-color: rgba(248, 113, 113, 0.40) !important; }
+        .prop-status-select option { color: #e5e7eb; background: #0b1220; }
+
         /* 5. Sticky Corners (Intersection of Header + Sticky Col) */
         /* Need higher Z-index to stay on top of both vertical and horizontal scrolling content */
         #evaluations-table thead tr:first-child th:nth-child(1),
@@ -2923,9 +2959,9 @@
                 <thead>
                     <tr>
                         <th style="min-width: 150px;">Prop Firm</th>
+                        <th style="min-width: 110px;">Status</th>
                         <th style="min-width: 150px;">Login</th>
                         <th style="min-width: 150px;">Password</th>
-                        <th style="min-width: 200px;">Notes</th>
                         <th style="min-width: 150px;">Discount Codes</th>
                         <th style="min-width: 150px;">Tradovate User</th>
                         <th style="min-width: 150px;">Tradovate Pass</th>
@@ -6681,7 +6717,7 @@
                                    onchange="updateHedgeAccount(${index}, 'name', this.value)">
                         </td>
                         <td style="text-align:center;">
-                            <button onclick="deleteHedgeAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
+                            <button onclick="deleteHedgeAccount(${index})" class="btn-delete" title="Remove account" aria-label="Remove account"><i class="fas fa-trash-can"></i></button>
                         </td>
                     `;
                     body.appendChild(row);
@@ -6690,6 +6726,14 @@
                 noDataMsg.style.display = 'block';
                 table.style.display = 'none';
             }
+        }
+
+        // Active / Live → the companion launches the broker for this firm;
+        // Inactive / Banned → never launched. Missing status reads as Active.
+        const PROP_ACCOUNT_STATUSES = ['Active', 'Live', 'Inactive', 'Banned'];
+        function propStatusKey(raw) {
+            const k = String(raw || 'active').trim().toLowerCase();
+            return PROP_ACCOUNT_STATUSES.map(s => s.toLowerCase()).includes(k) ? k : 'active';
         }
 
         function renderPropAccounts(data) {
@@ -6784,6 +6828,13 @@
                             </select>
                         </td>
                         <td>
+                            <select class="cell-input prop-status-select prop-status-${propStatusKey(acc.status)}" style="width:100%"
+                                    title="Active / Live: the companion launches this firm. Inactive / Banned: never launched."
+                                    onchange="updatePropAccount(${index}, 'status', this.value)">
+                                ${PROP_ACCOUNT_STATUSES.map(s => `<option value="${s}" ${propStatusKey(acc.status) === s.toLowerCase() ? 'selected' : ''}>${s}</option>`).join('')}
+                            </select>
+                        </td>
+                        <td>
                             <input type="text" class="cell-input" style="width:100%" 
                                    value="${escapeHtmlAttr(acc.login || '')}" 
                                    placeholder="${loginPh}"
@@ -6796,11 +6847,6 @@
                                    onchange="updatePropAccount(${index}, 'password', this.value)">
                         </td>
                         <td>
-                            <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
-                                      placeholder="Notes..."
-                                      onchange="updatePropAccount(${index}, 'notes', this.value)">${escapeHtmlText(acc.notes || '')}</textarea>
-                        </td>
-                        <td>
                             <input type="text" class="cell-input" style="width:100%" 
                                    value="${escapeHtmlAttr(acc.discount_codes || '')}" 
                                    placeholder="Codes"
@@ -6808,7 +6854,7 @@
                         </td>
                         ${credentialCells}
                         <td style="text-align:center;">
-                            <button onclick="deletePropAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
+                            <button onclick="deletePropAccount(${index})" class="btn-delete" title="Remove account" aria-label="Remove account"><i class="fas fa-trash-can"></i></button>
                         </td>
                     `;
                     body.appendChild(row);
@@ -6873,6 +6919,7 @@
                 syncSharedPropCredentials(index);
             }
             if (key === 'prop_firm') renderPropAccounts(currentData); // swap Tradovate/API-key cells
+            if (key === 'status') renderPropAccounts(currentData);    // recolour the status pill
             showPropSaveStatus('saving');
             if (key === 'api_key' && (value || '').trim()) {
                 _pendingSaveCallback = (ok) => {
@@ -6916,6 +6963,7 @@
             if (!currentData.prop_accounts) currentData.prop_accounts = [];
             currentData.prop_accounts.push({
                 prop_firm: 'My Funded Futures',
+                status: 'Active',
                 login: '',
                 password: '',
                 notes: '',
@@ -7006,7 +7054,7 @@
                                       onchange="updateVPSField(${index}, 'notes', this.value)">${escapeHtmlText(acc.notes || '')}</textarea>
                         </td>
                         <td style="text-align:center;">
-                            <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS" ${ro ? 'style="display:none"' : ''}>🗑️</button>
+                            <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS" aria-label="Remove VPS" ${ro ? 'style="display:none"' : ''}><i class="fas fa-trash-can"></i></button>
                         </td>
                     `;
                     body.appendChild(row);
@@ -7141,12 +7189,10 @@
 
                 if (!ro) {
                     const delBtn = document.createElement('button');
-                    delBtn.innerHTML = '&#128465;';
+                    delBtn.innerHTML = '<i class="fas fa-trash-can"></i>';
                     delBtn.title = 'Remove card';
+                    delBtn.setAttribute('aria-label', 'Remove card');
                     delBtn.className = 'btn-delete';
-                    delBtn.style.cssText = 'font-size:0.85em; padding:3px 8px; opacity:0.7; transition:opacity 0.15s;';
-                    delBtn.onmouseenter = () => { delBtn.style.opacity = '1'; };
-                    delBtn.onmouseleave = () => { delBtn.style.opacity = '0.7'; };
                     delBtn.onclick = () => deletePaymentInfo(index);
                     headerBar.appendChild(delBtn);
                 }
