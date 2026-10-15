@@ -1527,7 +1527,7 @@ def normalize_account_size(value):
     return value
 
 
-def normalize_evaluations(evaluations):
+def normalize_evaluations(evaluations, user_changed=None):
     """Normalize field values in evaluations list."""
     if not evaluations:
         return evaluations
@@ -1535,6 +1535,21 @@ def normalize_evaluations(evaluations):
     for ev in evaluations:
         if 'Account Size' in ev and ev['Account Size']:
             ev['Account Size'] = normalize_account_size(ev['Account Size'])
+    for idx, fields in (user_changed or {}).items():
+        if not isinstance(idx, int) or idx < 0 or idx >= len(evaluations):
+            continue
+        ev = evaluations[idx]
+        if not isinstance(ev, dict):
+            continue
+        manual = set(ev.get('_manual_push_fields') or [])
+        for key in fields:
+            if (isinstance(key, str)
+                    and (key.startswith('Hedge Result')
+                         or key.startswith('Hedge Day')
+                         or key.startswith('Prop Day'))):
+                manual.add(key)
+        if manual:
+            ev['_manual_push_fields'] = sorted(manual)
     _apply_server_eval_guards(evaluations)
     return evaluations
 
@@ -16459,10 +16474,21 @@ def update_data():
                 # Get existing data to preserve fields not being updated
                 existing_data = get_client_data(client_id) or {}
                 
+                raw_changed = data.get('_changedFields', {})
+                user_changed = {}
+                if isinstance(raw_changed, dict):
+                    for idx_str, fields in raw_changed.items():
+                        try:
+                            user_changed[int(idx_str)] = (
+                                set(fields) if isinstance(fields, list) else set()
+                            )
+                        except (ValueError, TypeError):
+                            pass
+
                 # Get evaluations and normalize Account Size values
                 evaluations = data.get("evaluations", existing_data.get("evaluations", []))
 
-                evaluations = normalize_evaluations(evaluations)
+                evaluations = normalize_evaluations(evaluations, user_changed)
                 
                 # Deep-merge evaluations: preserve push-sourced fields (Hedge Results, deals, etc.)
                 # that the stale frontend may not have received yet.
@@ -16586,14 +16612,6 @@ def update_data():
 
                 # Fields the user explicitly touched in this edit session
                 # (sent by frontend so we can distinguish intentional clears from stale data)
-                raw_changed = data.get('_changedFields', {})
-                user_changed = {}  # { int(eval_index): set(field_names) }
-                for idx_str, fields in raw_changed.items():
-                    try:
-                        user_changed[int(idx_str)] = set(fields) if isinstance(fields, list) else set()
-                    except (ValueError, TypeError):
-                        pass
-
                 for idx in sorted(user_changed.keys()):
                     flds = user_changed.get(idx) or set()
                     if idx >= len(evaluations):

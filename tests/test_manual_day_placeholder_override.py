@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from dashboard.app import merge_dashboard_update_evaluations
+from dashboard.app import merge_dashboard_update_evaluations, normalize_evaluations
 from trader_companion.trader_app import TradeOpssAIApp
 
 
@@ -54,6 +54,22 @@ def test_dashboard_manual_day_placeholder_survives_terminal_row_cleanup():
 
     assert merged[0]["Hedge Result 1"] == "FRIDAY"
     assert "Hedge Result 1" in merged[0]["_manual_push_fields"]
+
+
+def test_normalization_preserves_manually_added_day_before_save_merge():
+    evaluations = [{
+        "Prop Firm": "TopStep RTP",
+        "Account #": "ACCT-1",
+        "Status P1": "Hit SL1",
+        "Hedge Result 1": "THURSDAY",
+        "Hedge Result 2": "FRIDAY",
+    }]
+
+    normalized = normalize_evaluations(evaluations, {0: {"Hedge Result 2"}})
+
+    assert normalized[0]["Hedge Result 1"] == "THURSDAY"
+    assert normalized[0]["Hedge Result 2"] == "FRIDAY"
+    assert "Hedge Result 2" in normalized[0]["_manual_push_fields"]
 
 
 def test_companion_terminal_cleanup_preserves_manually_entered_day():
