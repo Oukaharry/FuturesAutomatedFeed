@@ -4213,14 +4213,28 @@ class TradovateAccount:
         This cleans up orphaned bracket orders (stop/limit) after a position
         is closed by TP, SL, or manual liquidation.
         """
-        # Only cancel if no active positions
-        positions = self.get_positions_api(account_id)
+        # Never sweep mid-placement: the market order may be filled but its
+        # OCO brackets not yet submitted, so the account looks flat.
+        if getattr(self, "_placing_order", False):
+            return 0
+
+        # A failed /position/list (401/429/network) must NOT read as "flat" —
+        # that would cancel the live TP/SL of an open trade.
+        positions = self._api_fetch("/position/list")
+        if not isinstance(positions, list):
+            msg = (f"[API] orphan sweep skipped for account={account_id}: "
+                   f"/position/list unavailable (not treating as flat)")
+            print(msg)
+            logging.warning(msg)
+            return 0
+        if account_id:
+            positions = [p for p in positions if p.get('accountId') == account_id]
         open_positions = [p for p in positions if p.get('netPos', 0) != 0]
         if open_positions:
             return 0
 
-        orders = self.get_orders_api()
-        if not orders:
+        orders = self._api_fetch("/order/list")
+        if not isinstance(orders, list) or not orders:
             return 0
 
         cancelled = 0

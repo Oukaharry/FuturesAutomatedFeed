@@ -283,6 +283,48 @@ def test_tradovate_farming_does_not_use_unstarted_challenge_account():
     assert not any("Tradovate farming reconciliation" in entry for entry in log)
 
 
+def test_tradovate_farming_match_requires_the_same_account_number():
+    from dashboard.app import _match_tradovate_farming
+
+    tradeify_days = [{"date": "2026-09-16", "net_pnl": 152.40}]
+    payload = [{"account_name": "FTDFYSLX50912349999", "mnq_daily_pnl": tradeify_days}]
+
+    # Exact and punctuation-only differences still match.
+    assert _match_tradovate_farming(payload, "FTDFYSLX50912349999") == tradeify_days
+    assert _match_tradovate_farming(
+        [{"account_name": "TDFY-01419740", "mnq_daily_pnl": tradeify_days}],
+        "01419740") == tradeify_days
+    # A short digit run buried inside another account's number is not a match.
+    assert _match_tradovate_farming(payload, "MFFU-50K-1234") is None
+    assert _match_tradovate_farming(payload, "FNFT-12349") is None
+
+
+def test_funded_only_row_does_not_inherit_another_accounts_farming_days():
+    """PAYOUT lifted on an MFFU row must not pull a Tradeify account's Prop Days."""
+    evaluations = [{
+        "Prop Firm": "My Funded Futures",
+        "Account #.1": "MFFU-1234",
+        "Status": "In Progress",
+        "Hedge Result 1.1": "$0.00",
+        "Hedge Result 2.1": "THURSDAY",
+    }]
+
+    updated, log, _ = update_evaluations_from_aggregated_data(
+        evaluations,
+        raw_deals=[],
+        today="2026-09-16",
+        tradovate_farming_days=[{
+            "account_name": "FTDFYSLX50912349999",
+            "mnq_daily_pnl": [{"date": "2026-09-16", "net_pnl": 152.40}],
+        }],
+    )
+
+    assert "Prop Day 1" not in updated[0]
+    assert "Hedge Day 1" not in updated[0]
+    assert updated[0]["Hedge Result 2.1"] == "THURSDAY"
+    assert not any("farming" in entry.lower() for entry in log)
+
+
 def test_farming_does_not_stamp_payout_date_eight():
     evaluation = _traded({"Date 8": "", "Payout 8": ""}, 1)
     try:

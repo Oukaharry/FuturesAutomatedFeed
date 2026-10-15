@@ -40,7 +40,7 @@ def test_lucid_flex_ft1_is_persistent_and_ft2_uses_cycle_start(monkeypatch):
         account_key="lucid-formula", balance=50000.0)
     assert 53000 <= ft1["_randomization"]["target_dollars"] <= 54000
     assert ft1["tradovate_tp_ticks"] == ft1_repeat["tradovate_tp_ticks"]
-    assert ft1["tradovate_sl_ticks"] == 200
+    assert ft1["tradovate_sl_ticks"] == 204
 
     ft2 = manager.randomize_trade_config(
         "Lucid", "funded_trade2", {**_config(), "cycle_start": 51500.0},

@@ -357,7 +357,7 @@ class PropFirmManager:
                             "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 340,
-                            "topstepx_sl_ticks": 201,
+                            "topstepx_sl_ticks": 204,
                             "mt5_volume": 16,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 89
@@ -400,7 +400,7 @@ class PropFirmManager:
                             "topstepx_symbol": "NQZ26",
                             "topstepx_qty": 2,
                             "topstepx_tp_ticks": 340,
-                            "topstepx_sl_ticks": 201,
+                            "topstepx_sl_ticks": 204,
                             "mt5_volume": 16,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 89
@@ -739,7 +739,7 @@ class PropFirmManager:
                             "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 340,
-                            "tradovate_sl_ticks": 200,
+                            "tradovate_sl_ticks": 204,
                             "mt5_volume": 15,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 89
@@ -1178,7 +1178,7 @@ class PropFirmManager:
                             "tradovate_symbol": "NQZ6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 540,
-                            "tradovate_sl_ticks": 200,
+                            "tradovate_sl_ticks": 204,
                             "mt5_volume": 15,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 139
@@ -3149,6 +3149,9 @@ class PropFirmManager:
             src_cfg = (configs.get(src_key) or {}).get("50k")
             if not p2_cfg or not src_cfg:
                 continue
+            # The 47-tick ($470) payout-2+ TP is the blueprint rule; the funded
+            # cycle-goal adjuster must not re-aim it at the $5,400 first target.
+            p2_cfg["disable_tp_adjustment"] = True
             for field in ("mt5_volume", "mt5_tp_points", "mt5_sl_points"):
                 if not float(p2_cfg.get(field) or 0):
                     p2_cfg[field] = src_cfg.get(field)
@@ -4089,6 +4092,113 @@ class PropFirmManager:
             return None
         machine = (self.firm_blueprints.get(firm_code) or {}).get("state_machine") or {}
         return (machine.get("repeat_limits") or {}).get(phase_key)
+
+    def is_payout_phase_key(self, firm_code: str, phase_key: str) -> bool:
+        """True when a win on this leg banks a payout per the state machine."""
+        if not firm_code or not phase_key:
+            return False
+        machine = (self.firm_blueprints.get(firm_code) or {}).get("state_machine") or {}
+        return f"{phase_key}_win" in (machine.get("payout_transitions") or [])
+
+    # MFFU Builder: 2-lot NQ round-trip fees when the account has no history yet.
+    _BUILDER_DEFAULT_FRICTION = 12.0
+    # Aim under the 50% best-day cap whenever the cycle has room for a margin.
+    _BUILDER_CONSISTENCY_TARGET = 0.49
+
+    def builder_funded_tp_ticks(self, config: Dict, cycle_days,
+                                live_balance: Optional[float] = None,
+                                is_payout_leg: bool = False):
+        """MFFU Builder funded TP sized from the live payout cycle.
+
+        Returns (ticks, reason). `cycle_days` are the account's daily P&L rows
+        since the last payout (net_pnl / fees / trades / balance_eod).
+
+        A payout leg must lift the balance to payout_request_balance AND keep
+        every day — including today's — at or under 50% of the cycle's total
+        profit. Other legs keep the blueprint target but absorb fee drag so
+        the net P&L lands on it. Fixed blueprint ticks cannot do either: after
+        a $1,000 SL the two $2,048 recovery wins leave the best day at 67% and
+        a 101-tick finishing trade only reaches 50.3%.
+        """
+        qty = int(config.get("tradovate_qty", 0) or 0)
+        tp = int(config.get("tradovate_tp_ticks", 0) or 0)
+        symbol = str(config.get("tradovate_symbol") or "")
+        position_tick_value = qty * self.get_tick_value(symbol)
+        if qty <= 0 or tp <= 0 or position_tick_value <= 0:
+            return tp, "blueprint (no sizing inputs)"
+
+        traded = [d for d in (cycle_days or []) if isinstance(d, dict) and d.get("trades")]
+        nets, fees = [], []
+        for day in traded:
+            try:
+                nets.append(float(day.get("net_pnl") or 0))
+            except (TypeError, ValueError):
+                continue
+            try:
+                fee = -float(day.get("fees") or 0)
+            except (TypeError, ValueError):
+                fee = 0.0
+            if fee > 0:
+                fees.append(fee)
+        friction = (sum(fees) / len(fees)) if fees else self._BUILDER_DEFAULT_FRICTION
+
+        def to_ticks(gross_dollars):
+            raw = gross_dollars / position_tick_value
+            ticks = math.ceil(raw - 1e-6)
+            return max(self._TP_MIN_TICKS, min(600, int(ticks)))
+
+        blueprint_gross = tp * position_tick_value
+        if not is_payout_leg:
+            ticks = to_ticks(blueprint_gross + friction)
+            return ticks, (f"blueprint ${blueprint_gross:,.0f} + ${friction:.2f} fees "
+                           f"→ {ticks}t")
+
+        cycle_profit = sum(nets)
+        best_day = max(nets) if nets else 0.0
+        if cycle_profit <= 0:
+            ticks = to_ticks(blueprint_gross + friction)
+            return ticks, (f"cycle P&L ${cycle_profit:+,.2f} — blueprint + fees "
+                           f"→ {ticks}t")
+
+        rules = (self.get_firm_info("MFFU Builder 50K") or {}).get("rules") or {}
+        payout_balance = float(rules.get("payout_request_balance") or 54100.0)
+        balance = live_balance
+        if balance is None:
+            for day in reversed(traded):
+                try:
+                    balance = float(day.get("balance_eod") or 0) or None
+                except (TypeError, ValueError):
+                    balance = None
+                if balance:
+                    break
+        need_balance = (payout_balance - balance) if balance else (blueprint_gross - friction)
+        if need_balance > 2.0 * blueprint_gross:
+            self.logger.warning(
+                f"⚠ Builder payout need ${need_balance:,.0f} > 2× blueprint "
+                f"(${2.0 * blueprint_gross:,.0f}) — balance ${balance:,.2f} looks wrong; capping")
+            need_balance = 2.0 * blueprint_gross
+
+        # Today's win also counts as a day, so it may not exceed cycle_profit.
+        need_consistency = best_day / self._BUILDER_CONSISTENCY_TARGET - cycle_profit
+        net_win = max(need_balance, need_consistency)
+        margin = "49% margin"
+        if net_win > cycle_profit:
+            need_consistency = 2.0 * best_day - cycle_profit
+            net_win = max(need_balance, need_consistency)
+            margin = "exact 50%"
+        if net_win > cycle_profit:
+            # One trade cannot satisfy both; protect consistency, payout waits.
+            net_win = cycle_profit
+            margin = "capped at cycle P&L (payout needs another leg)"
+        ticks = to_ticks(net_win + friction)
+        return ticks, (
+            f"cycle P&L ${cycle_profit:+,.2f} best day ${best_day:,.2f} "
+            f"balance ${balance:,.2f} → need ${net_win:,.2f} net "
+            f"(payout ${need_balance:,.2f} / consistency ${need_consistency:,.2f}, "
+            f"{margin}) + ${friction:.2f} fees → {ticks}t"
+            if balance else
+            f"cycle P&L ${cycle_profit:+,.2f} best day ${best_day:,.2f} → need "
+            f"${net_win:,.2f} net ({margin}) + ${friction:.2f} fees → {ticks}t")
 
     def _claim_unique_funded_tp(self, firm, account_id, tp, low, high):
         """Reserve a funded TP, stepping off values another account owns.
@@ -5428,7 +5538,7 @@ class PropFirmManager:
                     owner = self._lucid_funded_tp_owners.get(tp)
                 self._lucid_funded_tp_owners[tp] = account_id
                 cfg["tradovate_tp_ticks"] = tp
-                cfg["tradovate_sl_ticks"] = 200
+                cfg["tradovate_sl_ticks"] = 204
                 cfg.setdefault("_randomization", {}).update({
                     "policy": "lucid_flex_50k",
                     "draw": "FT1",

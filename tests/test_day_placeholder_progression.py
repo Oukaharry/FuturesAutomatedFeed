@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -494,6 +494,30 @@ def test_every_funded_trade_sizes_stop_from_live_balance_and_floor(trade_index):
     assert adjusted["tradovate_sl_ticks"] * 2 * 5 == 2840
 
 
+@pytest.mark.parametrize("firm, sl_field", [
+    ("Tradeify", "tradovate_sl_ticks"),
+    ("Lucid", "tradovate_sl_ticks"),
+    ("TopStep", "topstepx_sl_ticks"),
+])
+def test_funded_trade_one_blueprint_stop_covers_the_full_two_thousand(firm, sl_field):
+    """Blueprint fix: 200t closed ~$1,900 after fees/auto-liq; 204t ($2,040) covers $2,000."""
+    manager = PropFirmManager()
+    config = manager.get_strategy_config(firm, "funded_trade1", "50k")
+
+    assert config[sl_field] == 204
+    assert config[sl_field] * 2 * 5 >= 2000
+
+
+def test_lucid_randomized_funded_trade_one_keeps_the_204_tick_stop():
+    manager = PropFirmManager()
+    config = manager.get_strategy_config("Lucid", "funded_trade1", "50k")
+
+    drawn = manager.randomize_trade_config(
+        "Lucid", "funded_trade1", config, account_key="LUCID-1", balance=50000.0)
+
+    assert drawn["tradovate_sl_ticks"] == 204
+
+
 def test_untraded_day_placeholder_does_not_require_history_refresh():
     app = _scrub_app()
     row = _row(**{"Hedge Result 1": "THURSDAY"})
@@ -594,9 +618,11 @@ def test_rapid_daily_without_farming_continues_to_next_funded_slot():
     ) == "Hedge Result 2.1"
 
 
-def _payout_app(payouts):
+def _payout_app(payouts, auto_release=True):
     app = _scrub_app()
     app._detect_payouts = lambda account: list(payouts)
+    # The detector logic is still covered here; production keeps it off.
+    app.COMPANION_CLEARS_PAYOUT_MARKERS = auto_release
     return app
 
 
@@ -631,6 +657,17 @@ def test_payout_marker_is_held_until_the_withdrawal_lands():
     assert row["Hedge Day 5"] == "PAYOUT"
 
 
+def test_companion_never_clears_payout_markers_by_default():
+    app = _payout_app([("2026-09-23", 2100.0)], auto_release=False)
+    row = _payout_row()
+
+    assert TradeOpssAIApp.COMPANION_CLEARS_PAYOUT_MARKERS is False
+    assert app._release_payout_placeholders([row]) == []
+    assert row["Hedge Day 5"] == "PAYOUT"
+    assert row["_Hedge Day 5 Payout Due"] == "2026-09-21"
+    assert app._eval_has_payout(row) is True
+
+
 def test_older_payouts_do_not_release_the_marker():
     app = _payout_app([("2026-08-14", 1500.0)])
     row = _payout_row()
@@ -644,12 +681,24 @@ def test_detected_payout_queues_the_next_funded_trade():
     row = _payout_row()
 
     assert app._release_payout_placeholders([row]) == [
-        "Hedge Day 5", "Hedge Result 2.1"]
+        "_Hedge Day 5 Payout Due", "Hedge Day 5", "Hedge Result 2.1"]
     assert row["Hedge Day 5"] == ""
     assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
     assert app._eval_has_payout(row) is False
-    # The anchor is spent; a later pass must not re-release the same payout.
-    assert "_Hedge Day 5 Payout Due" not in row
+    # The anchor is spent (blanked, not popped — a push cannot delete a
+    # server-stored key); a later pass must not re-release the same payout.
+    assert row["_Hedge Day 5 Payout Due"] == ""
+
+
+def test_spent_anchor_does_not_re_release_a_retyped_marker(monkeypatch):
+    app = _payout_app([("2026-09-23", 2100.0)])
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_today", lambda: date(2026, 10, 15))
+    row = _payout_row(**{"_Hedge Day 5 Payout Due": ""})
+
+    assert app._release_payout_placeholders([row]) == ["_Hedge Day 5 Payout Due"]
+    assert row["Hedge Day 5"] == "PAYOUT"
+    assert row["_Hedge Day 5 Payout Due"] == "2026-10-15"
 
 
 def test_dashboard_payouts_queue_the_matching_next_funded_trade(monkeypatch):
@@ -710,36 +759,48 @@ def test_payout_keeps_the_row_tradeable_when_funded_columns_are_full():
     full = {field: "100.00" for field in TradeOpssAIApp._FUNDED_HEDGE_FIELDS}
     row = _payout_row(**full)
 
-    assert app._release_payout_placeholders([row]) == ["Hedge Day 5"]
+    assert app._release_payout_placeholders([row]) == [
+        "_Hedge Day 5 Payout Due", "Hedge Day 5"]
     assert row["Hedge Day 5"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
 
 
-def test_hand_typed_marker_waits_for_a_payout_after_the_last_dated_activity():
+def test_hand_typed_marker_is_anchored_to_the_day_it_is_first_seen(monkeypatch):
     app = _payout_app([("2026-09-23", 2100.0)])
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_today", lambda: date(2026, 10, 15))
     row = _payout_row(**{"_Prop Day 4 Date": "2026-09-21"})
     row.pop("_Hedge Day 5 Payout Due")
 
+    # An older withdrawal must not clear a marker typed today.
+    assert app._release_payout_placeholders([row]) == ["_Hedge Day 5 Payout Due"]
+    assert row["Hedge Day 5"] == "PAYOUT"
+    assert row["_Hedge Day 5 Payout Due"] == "2026-10-15"
+
+
+def test_hand_typed_marker_releases_once_a_withdrawal_lands_after_it(monkeypatch):
+    app = _payout_app([("2026-08-14", 1500.0), ("2026-10-16", 2100.0)])
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_today", lambda: date(2026, 10, 16))
+    row = _payout_row(**{"_Hedge Day 5 Payout Due": "2026-10-15"})
+
     assert app._release_payout_placeholders([row]) == [
-        "Hedge Day 5", "Hedge Result 2.1"]
-    assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
-
-
-def test_hand_typed_marker_on_a_bare_row_releases_on_any_payout():
-    app = _payout_app([("2026-08-14", 1500.0)])
-    row = _payout_row()
-    row.pop("_Hedge Day 5 Payout Due")
-
-    assert app._release_payout_placeholders([row]) == [
-        "Hedge Day 5", "Hedge Result 2.1"]
+        "_Hedge Day 5 Payout Due", "Hedge Day 5", "Hedge Result 2.1"]
     assert row["Hedge Result 2.1"] in TradeOpssAIApp._WEEKDAY_LABELS[:5]
     assert app._eval_has_payout(row) is False
 
 
-def test_hand_typed_marker_is_held_while_no_payout_has_landed():
+def test_hand_typed_marker_is_held_while_no_payout_has_landed(monkeypatch):
     app = _payout_app([])
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_today", lambda: date(2026, 10, 15))
     row = _payout_row()
     row.pop("_Hedge Day 5 Payout Due")
 
+    # First sighting stamps the anchor; the marker itself stays put.
+    assert app._release_payout_placeholders([row]) == ["_Hedge Day 5 Payout Due"]
+    assert row["Hedge Day 5"] == "PAYOUT"
+    assert row["_Hedge Day 5 Payout Due"] == "2026-10-15"
+    # Subsequent passes are quiet.
     assert app._release_payout_placeholders([row]) == []
     assert row["Hedge Day 5"] == "PAYOUT"
 

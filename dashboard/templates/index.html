@@ -8461,6 +8461,20 @@
             return null;
         }
 
+        /** Firm family for a Prop Firm label — variants (Flex / Rapid Daily / 50% Add-On / RTP / Builder) share one family. */
+        function propFirmFamily(firm) {
+            const k = String(firm || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!k) return '';
+            if (k.startsWith('fundednext')) return 'fundednext';
+            if (k.startsWith('tradeify') && !k.startsWith('tradeify247')) return 'tradeify';
+            if (k.startsWith('mffu') || k.startsWith('myfundedfutures')) return 'mffu';
+            if (k.startsWith('topstep')) return 'topstep';
+            if (k.startsWith('lucid')) return 'lucid';
+            if (k.startsWith('fundedfuturesfamily') || k === 'fff') return 'fff';
+            if (k.startsWith('breakout')) return 'breakout';
+            return k;
+        }
+
         function handleInputChange(index, key, value) {
             if (!currentData.evaluations[index]) return;
             
@@ -8534,15 +8548,12 @@
                 const detected = detectPropFirmFromAccount(value);
                 if (detected) {
                     const currentPf = String(currentData.evaluations[index]['Prop Firm'] || '').trim();
-                    const currentKey = currentPf.toLowerCase().replace(/[\s_]/g, '');
-
-                    // FNFT/FTFN prefixes map to Funded Next Flex. Keep Flex / Rapid Daily if already set.
-                    const keepFnVariant = detected === 'Funded Next Flex' && (
-                        currentKey === 'fundednextflex' ||
-                        currentKey === 'fundednextrapiddaily' ||
-                        currentKey === 'fundednext'
-                    );
-                    if (!keepFnVariant) {
+                    // A prefix only identifies the firm, not the plan. When the row
+                    // already names a plan in the same family (FundedNext Rapid Daily,
+                    // Tradeify (50% Add-On), TopStep RTP, …) keep it — otherwise typing the
+                    // funded account number silently reverted traders to the legacy plan.
+                    const sameFamily = currentPf && propFirmFamily(currentPf) === propFirmFamily(detected);
+                    if (!sameFamily) {
                         let firm = detected;
                         if (firm === 'Tradeify' && shouldDefaultTradeifyToAddon(row)) {
                             firm = 'Tradeify (50% Add-On)';
@@ -10316,6 +10327,32 @@
             const set = _disabledPropFirms[_activeClient];
             if (set.has(propFirm)) set.delete(propFirm); else set.add(propFirm);
             renderChecklist();
+            _saveDisabledPropFirms(_activeClient);
+        }
+
+        async function _loadDisabledPropFirms(clientId) {
+            if (!clientId) return;
+            try {
+                const resp = await fetch(`/api/checklist/disabled_firms?client_id=${encodeURIComponent(clientId)}`);
+                const data = await resp.json();
+                if (data && Array.isArray(data.disabled_firms)) {
+                    _disabledPropFirms[clientId] = new Set(data.disabled_firms);
+                }
+            } catch (e) { /* keep whatever is in memory */ }
+        }
+
+        async function _saveDisabledPropFirms(clientId) {
+            if (!clientId) return;
+            const firms = Array.from(_disabledPropFirms[clientId] || []);
+            try {
+                await fetch('/api/checklist/disabled_firms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: clientId, disabled_firms: firms }),
+                });
+            } catch (e) {
+                console.warn('Prop firm toggles not saved — they will reset on reload', e);
+            }
         }
 
         function _initPropNotes(sectionId) {
@@ -10413,7 +10450,11 @@
             });
 
             // Load saved data for current client + trade count enabled list + slack channels
-            await Promise.all([..._clientList.map(c => loadClientData(c)), _loadTradeCountClients()]);
+            await Promise.all([
+                ..._clientList.map(c => loadClientData(c)),
+                ..._clientList.map(c => _loadDisabledPropFirms(c)),
+                _loadTradeCountClients(),
+            ]);
 
             _activeClient = CLIENT_ID || '';
             sel.value = _activeClient;
@@ -10473,7 +10514,7 @@
             // Prop firm toggle bar (shown once at top, collapsed by default)
             const toggleBar = allFirms.length > 0 ? `<div style="margin-bottom:12px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px;">
                 <div onclick="const el=this.nextElementSibling; const arr=this.querySelector('.toggle-arrow'); el.style.display=el.style.display==='none'?'flex':'none'; arr.textContent=el.style.display==='none'?'▸':'▾';" style="font-size:0.7rem; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; display:flex; align-items:center; gap:4px; user-select:none;">
-                    <span class="toggle-arrow" style="font-size:0.8rem;">▸</span> Prop Firms (click to toggle off)${disabled.size > 0 ? ' <span style="color:#f87171; margin-left:4px;">(' + disabled.size + ' hidden)</span>' : ''}
+                    <span class="toggle-arrow" style="font-size:0.8rem;">▸</span> Prop Firms (click to toggle off — stays off until toggled back on)${disabled.size > 0 ? ' <span style="color:#f87171; margin-left:4px;">(' + disabled.size + ' hidden)</span>' : ''}
                 </div>
                 <div style="display:none; flex-wrap:wrap; gap:4px; margin-top:6px;">
                     ${allFirms.map(pf => {

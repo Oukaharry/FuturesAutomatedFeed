@@ -1968,7 +1968,12 @@ def _purchase_breach_end_date_iso(breach, evaluations):
         return None
     phase = str(breach.get('phase') or '').strip().lower()
     if phase.startswith('fund'):
-        raw = ev.get('Date Ended.1') or ev.get('Date Ended')
+        raw = ev.get('Date Ended.1')
+        # Only funded-only rows (no Account #.1) keep their end date in Date
+        # Ended. On a graduated row that cell is the eval's Pass date, and
+        # reading it here made every funded breach look weeks stale.
+        if _date_ended_blank(raw) and not _eval_on_funded_leg(ev):
+            raw = ev.get('Date Ended')
     else:
         raw = ev.get('Date Ended')
     if _date_ended_blank(raw):
@@ -2015,12 +2020,10 @@ def _breach_alert_disposition(breach, evaluations):
         status = ev.get('Status P1') or ''
     if is_eval_phase_failed(status):
         return 'send' if _purchase_breach_failed_today(breach, evaluations) else 'discard'
-    # Completed after payout(s) still replaces the account.
-    if (phase.startswith('fund')
-            and is_funded_phase_ended(status)
-            and 'complete' in str(status or '').lower()
-            and (_eval_dashboard_payout_count(ev) >= 1
-                 or reason == 'completed_with_payout')):
+    # Completed = the funded account ended after paying out; it still needs
+    # a replacement, whether the payout evidence is the Payout column, the
+    # companion's reason code, or simply the trader choosing Completed.
+    if phase.startswith('fund') and _status_is_completed(status):
         return 'send' if _purchase_breach_failed_today(breach, evaluations) else 'discard'
     if _status_is_pass_or_fail(status) or is_funded_phase_ended(status):
         return 'discard'
@@ -2041,6 +2044,63 @@ def _firm_has_active_trades(evaluations, firm_family):
         if _eval_row_has_active_trade(ev):
             return True
     return False
+
+
+# Same-signal accounts stop out minutes apart and reach the queue on
+# different companion pushes / dashboard saves. One Slack per firm needs the
+# batch to sit until no new fail has arrived for this long.
+PURCHASE_BATCH_SETTLE_SEC = int(os.environ.get('PURCHASE_BATCH_SETTLE_SEC', '600'))
+# Safety cap on the open-trade hold so a stale _open_position flag cannot
+# park a purchase until session end.
+PURCHASE_BATCH_MAX_HOLD_SEC = int(os.environ.get('PURCHASE_BATCH_MAX_HOLD_SEC', str(4 * 3600)))
+
+
+def _stamp_breach_queued_at(breach, now=None):
+    if not isinstance(breach, dict) or breach.get('_queued_at'):
+        return breach
+    try:
+        iso = (now or _kenya_now()).isoformat()
+    except Exception:
+        return breach
+    if isinstance(iso, str):
+        breach['_queued_at'] = iso
+    return breach
+
+
+def _breach_queued_at(breach):
+    raw = (breach or {}).get('_queued_at') if isinstance(breach, dict) else None
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        from datetime import timezone as _tz, timedelta as _td
+        parsed = parsed.replace(tzinfo=_tz(_td(hours=3)))
+    return parsed
+
+
+def _purchase_batch_hold_reason(firm_key, breaches, evaluations, now=None):
+    """Why this firm's sendable purchases should wait, or None to send now.
+
+    Holds while a sibling row of the firm still has an open trade, or while
+    the newest fail is younger than the settle window. Never holds past the
+    session end or the max-hold cap, so a purchase always goes out today.
+    """
+    now = now or _kenya_now()
+    stamps = [s for s in (_breach_queued_at(b) for b in breaches) if s]
+    if not stamps:
+        return None
+    oldest, newest = min(stamps), max(stamps)
+    if (now - oldest).total_seconds() >= PURCHASE_BATCH_MAX_HOLD_SEC:
+        return None
+    if _firm_has_active_trades(evaluations, firm_key):
+        return 'sibling row still has an open trade'
+    age = (now - newest).total_seconds()
+    if age < PURCHASE_BATCH_SETTLE_SEC:
+        return f'newest fail is {int(age)}s old (settle {PURCHASE_BATCH_SETTLE_SEC}s)'
+    return None
 
 
 def _queue_breach_alerts(client_id, breaches, evaluations=None):
@@ -2081,7 +2141,7 @@ def _queue_breach_alerts(client_id, breaches, evaluations=None):
             app.logger.info(
                 f"🚨 {client_id}: skip queue for {key} — purchase already sent")
             continue
-        to_add.append(breach)
+        to_add.append(_stamp_breach_queued_at(dict(breach)))
         seen.add(key)
         added += 1
     if added:
@@ -2350,6 +2410,20 @@ def _flush_batched_breach_alerts(client_id, evaluations):
             if not fresh:
                 continue
             firm_breaches = _unique_breach_accounts(fresh)
+
+            # One Slack per firm: let the rest of the firm's fails land first.
+            flush_now = _kenya_now()
+            for breach in firm_breaches:
+                _stamp_breach_queued_at(breach, flush_now)
+            if not session_over:
+                hold_reason = _purchase_batch_hold_reason(
+                    firm_key, firm_breaches, evaluations, now=flush_now)
+                if hold_reason:
+                    still_pending.extend(firm_breaches)
+                    app.logger.info(
+                        f"🚨 {client_id}: holding {len(firm_breaches)} {firm_key} "
+                        f"purchase alert(s) to consolidate — {hold_reason}")
+                    continue
 
             batch_key = _breach_batch_key(client_id, firm_key, firm_breaches)
             if batch_key in sent_batches:
@@ -3190,16 +3264,18 @@ def _ledger_outcome_for_marker(status):
 
 
 def _fail_status_purchase_breaches(existing_evals, merged_evals):
-    """Purchase payloads for accounts whose phase status just became Fail.
+    """Purchase payloads for accounts whose phase status just ended.
 
     The Tradovate status poll writes Fail onto the sheet and pushes with no
-    breach_alerts list. A change to Fail is the breach, for that account.
-    A row that was already Fail is not bought again here — use
+    breach_alerts list. A change to Fail — or, on the funded leg, to
+    Completed — is the breach, for that account. A row that was already
+    ended is not bought again here — use
     `_unsent_today_fail_purchase_breaches` when a manual save / repair must
     still Slack a same-day Fail that never made it into sent_accounts.
 
-    Funded Fail/Breach with Payout N filled uses reason_code
-    completed_with_payout (Status is healed to Completed by server guards).
+    Funded Completed (post-payout breach) uses reason_code
+    completed_with_payout; a funded Fail with Payout N filled is tagged the
+    same way (Status is healed to Completed by server guards).
     """
     existing_by_key = _index_existing_evaluations(existing_evals)
     breaches = []
@@ -3208,6 +3284,12 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
         ('Status P1', 'Challenge', 'Account #'),
         ('Status', 'Funded', 'Account #.1'),
     )
+
+    def _ended(phase, status):
+        if _status_is_fail(status):
+            return True
+        return phase == 'Funded' and _status_is_completed(status)
+
     for ev in merged_evals or []:
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
@@ -3218,7 +3300,7 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
         for field, phase, acct_field in legs:
             new = str(ev.get(field) or '').strip()
             old = str(before.get(field) or '').strip()
-            if not _status_is_fail(new) or _status_is_fail(old):
+            if not _ended(phase, new) or _ended(phase, old):
                 continue
             account = str(ev.get(acct_field) or '').strip()
             if phase == 'Funded' and account in ('', '-', '—', '–'):
@@ -3229,7 +3311,8 @@ def _fail_status_purchase_breaches(existing_evals, merged_evals):
                 continue
             seen.add(account.lower())
             reason = 'status_fail'
-            if phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1:
+            if phase == 'Funded' and (
+                    _status_is_completed(new) or _eval_dashboard_payout_count(ev) >= 1):
                 reason = 'completed_with_payout'
             breaches.append({
                 'account': account,
@@ -3262,7 +3345,9 @@ def _unsent_today_fail_purchase_breaches(client_id, evaluations):
         if not isinstance(ev, dict) or ev.get('_deleted'):
             continue
         for field, phase, acct_field, ended_field in legs:
-            if not _status_is_fail(ev.get(field)):
+            status = ev.get(field)
+            completed = phase == 'Funded' and _status_is_completed(status)
+            if not _status_is_fail(status) and not completed:
                 continue
             account = str(ev.get(acct_field) or '').strip()
             if phase == 'Funded' and account in ('', '-', '—', '–'):
@@ -3273,7 +3358,7 @@ def _unsent_today_fail_purchase_breaches(client_id, evaluations):
             if key in seen:
                 continue
             ended = ev.get(ended_field)
-            if phase == 'Funded' and _date_ended_blank(ended):
+            if phase == 'Funded' and _date_ended_blank(ended) and not _eval_on_funded_leg(ev):
                 ended = ev.get('Date Ended')
             ended_iso = None if _date_ended_blank(ended) else _parse_date_str(ended)
             if ended_iso is not None and ended_iso != today:
@@ -3284,7 +3369,7 @@ def _unsent_today_fail_purchase_breaches(client_id, evaluations):
                 continue
             seen.add(key)
             reason = 'status_fail'
-            if phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1:
+            if completed or (phase == 'Funded' and _eval_dashboard_payout_count(ev) >= 1):
                 reason = 'completed_with_payout'
             breaches.append({
                 'account': account,
@@ -3683,27 +3768,41 @@ def _match_tradovate_farming(tradovate_farming_days, fa_account_key):
 
     Returns:
         Sorted list of {date, net_pnl} dicts, or None if no match.
+
+    The payload carries every account under every connected Tradovate login,
+    so a loose match leaks one account's farming days into another row. The
+    old 4-digit substring fallback did exactly that (e.g. '1234' inside
+    '...50912349999'), writing Prop/Hedge Day values onto funded-only MFFU /
+    Funded Next rows the moment their PAYOUT pause was lifted. Match on the
+    whole normalised name, or on an identical 5+ digit account-number run.
     """
     if not tradovate_farming_days or not fa_account_key:
         return None
 
-    fa_key_upper = fa_account_key.upper()
-    # Extract digits (4+ chars) from the FA key for fallback matching
-    digits = [d for d in re.findall(r'\d+', fa_key_upper) if len(d) >= 4]
+    def _norm(value):
+        return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
 
+    fa_norm = _norm(fa_account_key)
+    if not fa_norm:
+        return None
+
+    candidates = []
     for tv_data in tradovate_farming_days:
-        tv_name = (tv_data.get('account_name') or '').upper()
-        if not tv_name:
+        tv_norm = _norm(tv_data.get('account_name'))
+        if not tv_norm:
             continue
-
-        # Direct substring match (either direction)
-        if fa_key_upper in tv_name or tv_name in fa_key_upper:
+        if tv_norm == fa_norm:
             return tv_data.get('mnq_daily_pnl', [])
+        candidates.append((tv_norm, tv_data))
 
-        # Digit-based match: significant digit sequences from the FA key
-        for d in digits:
-            if d in tv_name:
-                return tv_data.get('mnq_daily_pnl', [])
+    # Punctuation / prefix differences only: the account-number run itself
+    # must be identical on both sides, never a substring of a longer number.
+    fa_runs = set(re.findall(r'\d{5,}', fa_norm))
+    if not fa_runs:
+        return None
+    for tv_norm, tv_data in candidates:
+        if fa_runs & set(re.findall(r'\d{5,}', tv_norm)):
+            return tv_data.get('mnq_daily_pnl', [])
 
     return None
 
@@ -3876,10 +3975,22 @@ def _status_is_fail(status):
     return token.startswith('fail')
 
 
+def _status_is_completed(status):
+    return 'complete' in str(status or '').strip().lower()
+
+
+def _status_ends_phase_with_date(status_field, status):
+    """Pass / Fail end either phase; Completed ends the funded phase too."""
+    if _status_is_pass_or_fail(status):
+        return True
+    return status_field == 'Status' and _status_is_completed(status)
+
+
 def _clear_date_ended_unless_pass_or_fail(ev):
     manual = set(ev.get('_manual_push_fields') or [])
     for status_field, ended_field in (('Status P1', 'Date Ended'), ('Status', 'Date Ended.1')):
-        if ended_field in manual or _status_is_pass_or_fail(ev.get(status_field)):
+        if ended_field in manual or _status_ends_phase_with_date(
+                status_field, ev.get(status_field)):
             continue
         if str(ev.get(ended_field) or '').strip() not in ('', '-', '—', '–'):
             ev[ended_field] = ''
@@ -3890,9 +4001,12 @@ def _date_ended_blank(val):
 
 
 def _stamp_fail_end_date(ev, status_field, ended_field):
-    """Fill Date Ended with today when this phase is Pass or Fail and the cell is empty.
+    """Fill Date Ended with today when this phase is Pass / Fail (or funded
+    Completed) and the cell is empty.
 
     A date already stored, including one the trader typed, is left as it is.
+    Completed used to be skipped, so a post-payout breach carried no Date
+    Ended.1 and its purchase was dropped as stale.
     """
     manual = set(ev.get('_manual_push_fields') or [])
     if ended_field in manual and not _date_ended_blank(ev.get(ended_field)):
@@ -3900,7 +4014,7 @@ def _stamp_fail_end_date(ev, status_field, ended_field):
     status = ev.get(status_field)
     if status_field == 'Status' and not str(status or '').strip():
         status = ev.get('Status Funded')
-    if not _status_is_pass_or_fail(status):
+    if not _status_ends_phase_with_date(status_field, status):
         return
     if not _date_ended_blank(ev.get(ended_field)):
         return
@@ -3987,14 +4101,15 @@ def _prop_firm_compact_name(ev):
 def _challenge_pass_tp_threshold(ev):
     """Hit TP{n} at or above this becomes Pass for the eval firm.
 
-    MFFU (Flex / Rapid / My Funded Futures): Pass at TP3.
+    MFFU (Flex / Rapid EOD / My Funded Futures): Pass at TP4 — the
+    challenge blueprint has four legs, so Hit TP3 is still in progress.
     Works on old companions — no new desktop build required.
     """
     compact = _prop_firm_compact_name(ev)
     if 'builder' in compact:
         return 1
     if 'mffu' in compact or 'myfundedfutures' in compact:
-        return 3
+        return 4
     if any(tok in compact for tok in (
             'topstep', 'lucid', 'tradeifyselect',
             'blueguardian', 'bgr')):
@@ -4036,7 +4151,7 @@ def _heal_eval_challenge_status_progression(ev):
     """Advance Status P1 from hedge fills / Hit TP markers without a new companion.
 
     - In Progress + N filled challenge hedges → Hit TP{N} (or Pass at threshold)
-    - Hit TP{n} at/above firm threshold → Pass + Not Started (MFFU: TP3)
+    - Hit TP{n} at/above firm threshold → Pass + Not Started (MFFU: TP4)
     - Account #.1 present while eval not Fail/Pass → Pass + Not Started
     """
     if not isinstance(ev, dict) or ev.get('_deleted'):
@@ -15044,6 +15159,48 @@ def api_checklist_status():
         checklists = [c for c in checklists if c.get('client_id', '') == client_id]
 
     return jsonify({'status': 'success', 'date': date, 'checklists': checklists})
+
+
+def _summary_disabled_firms_key(client_id):
+    return f"summary_disabled_firms:{str(client_id or '').strip()}"
+
+
+@app.route('/api/checklist/disabled_firms')
+@require_session
+def api_get_summary_disabled_firms():
+    """Prop firms toggled off in a client's Daily Summaries panel (persists across days)."""
+    from dashboard.database import get_setting
+    client_id = (request.args.get('client_id') or '').strip()
+    if not client_id:
+        return jsonify({'status': 'error', 'message': 'client_id required'}), 400
+    try:
+        firms = json.loads(get_setting(_summary_disabled_firms_key(client_id)) or '[]')
+    except (TypeError, ValueError):
+        firms = []
+    firms = sorted({str(f).strip() for f in firms if str(f or '').strip()})
+    return jsonify({'status': 'success', 'client_id': client_id, 'disabled_firms': firms})
+
+
+@app.route('/api/checklist/disabled_firms', methods=['POST'])
+@require_session
+def api_set_summary_disabled_firms():
+    """Save the firm toggle set so it stays off until trading resumes."""
+    from dashboard.database import set_setting
+    session_user = request.session_user
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get('client_id') or '').strip()
+    if not client_id:
+        return jsonify({'status': 'error', 'message': 'client_id required'}), 400
+    raw = data.get('disabled_firms')
+    if not isinstance(raw, list):
+        return jsonify({'status': 'error', 'message': 'disabled_firms must be a list'}), 400
+    firms = sorted({str(f).strip() for f in raw if str(f or '').strip()})[:100]
+    set_setting(_summary_disabled_firms_key(client_id), json.dumps(firms),
+                updated_by=str(session_user.get('user_identifier') or ''))
+    log_action('SUMMARY_FIRMS_TOGGLE', session_user.get('user_type'),
+               session_user.get('user_identifier'), get_remote_address(),
+               f"{client_id}: {len(firms)} firm(s) hidden")
+    return jsonify({'status': 'success', 'client_id': client_id, 'disabled_firms': firms})
 
 
 @app.route('/api/admin/summary_signoff', methods=['POST'])

@@ -2351,7 +2351,7 @@
             "phase_key": "funded_trade1",
             "blueprint": {
               "tradovate_tp_ticks": 340,
-              "tradovate_sl_ticks": 200,
+              "tradovate_sl_ticks": 204,
               "mt5_tp_points": 46,
               "mt5_sl_points": 89,
               "mt5_volume": 15,
@@ -2370,7 +2370,7 @@
               },
               "sl": {
                 "mode": "fixed",
-                "ticks": 200
+                "ticks": 204
               }
             }
           },
@@ -4183,7 +4183,7 @@
             "phase_key": "funded_trade1",
             "blueprint": {
               "topstepx_tp_ticks": 340,
-              "topstepx_sl_ticks": 201,
+              "topstepx_sl_ticks": 204,
               "mt5_tp_points": 46,
               "mt5_sl_points": 89,
               "mt5_volume": 16,
@@ -4208,7 +4208,7 @@
               },
               "sl": {
                 "mode": "fixed",
-                "ticks": 201,
+                "ticks": 204,
                 "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
               }
             }
@@ -4319,7 +4319,7 @@
             "phase_key": "funded_trade_doubledip_1",
             "blueprint": {
               "topstepx_tp_ticks": 340,
-              "topstepx_sl_ticks": 201,
+              "topstepx_sl_ticks": 204,
               "mt5_tp_points": 46,
               "mt5_sl_points": 89,
               "mt5_volume": 16,
@@ -4344,7 +4344,7 @@
               },
               "sl": {
                 "mode": "fixed",
-                "ticks": 201,
+                "ticks": 204,
                 "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
               }
             }
@@ -5810,7 +5810,7 @@
             "phase_key": "funded_trade1",
             "blueprint": {
               "tradovate_tp_ticks": 540,
-              "tradovate_sl_ticks": 200,
+              "tradovate_sl_ticks": 204,
               "mt5_tp_points": 46,
               "mt5_sl_points": 139,
               "mt5_volume": 15,
@@ -5835,7 +5835,7 @@
               },
               "sl": {
                 "mode": "fixed",
-                "ticks": 200,
+                "ticks": 204,
                 "note": "Blueprint SL; may be adjusted at order time by calculate_funded_sl / midnight / TMDL"
               }
             }

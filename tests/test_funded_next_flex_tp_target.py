@@ -233,7 +233,7 @@ def test_lucid_flex_50k_uses_randomization_spec():
     assert 53000 <= target <= 54000
     assert ft1["tradovate_qty"] == 2
     assert ft1["tradovate_tp_ticks"] == ft1_repeat["tradovate_tp_ticks"]
-    assert ft1["tradovate_sl_ticks"] == 200
+    assert ft1["tradovate_sl_ticks"] == 204
 
     ft2 = manager.randomize_trade_config(
         "Lucid", "funded_trade2", config,

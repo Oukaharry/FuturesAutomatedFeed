@@ -284,6 +284,61 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+class AccountHistoryMap(dict):
+    """Broker history keyed by lowercased account name, with tolerant lookup.
+
+    Dashboard rows are typed by hand ("FNFT-85625", "fnft 85625", "85625")
+    while Tradovate reports "FNFT85625". An exact-key miss used to mean the
+    status engine silently never saw the account, so breaches were updated
+    for some accounts and skipped for others. Lookups fall back to the
+    normalised name, then to a unique 5+ digit account-number run — the same
+    ladder TradovateAccount._resolve_api_account_id uses to pick an account.
+    """
+
+    _MISSING = object()
+
+    @staticmethod
+    def _norm(value):
+        return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+    @staticmethod
+    def _runs(value):
+        return set(re.findall(r"\d{5,}", str(value or "")))
+
+    def _resolve(self, key):
+        key = str(key or "").strip().lower()
+        if not key:
+            return None
+        if dict.__contains__(self, key):
+            return key
+        norm = self._norm(key)
+        if not norm:
+            return None
+        by_norm = [k for k in self if self._norm(k) == norm]
+        if len(by_norm) == 1:
+            return by_norm[0]
+        runs = self._runs(norm)
+        if not runs:
+            return None
+        by_run = [k for k in self if runs & self._runs(self._norm(k))]
+        if len(by_run) == 1:
+            return by_run[0]
+        return None
+
+    def get(self, key, default=None):
+        resolved = self._resolve(key)
+        return dict.get(self, resolved, default) if resolved is not None else default
+
+    def __contains__(self, key):
+        return self._resolve(key) is not None
+
+    def __getitem__(self, key):
+        resolved = self._resolve(key)
+        if resolved is None:
+            raise KeyError(key)
+        return dict.__getitem__(self, resolved)
+
 try:
     import tkinter as tk
     from tkinter import ttk, messagebox, scrolledtext, simpledialog, filedialog
@@ -5168,7 +5223,9 @@ class TradeOpssAIApp:
         """
         if not isinstance(ev, dict) or not self._on_funded_leg(ev):
             return []
-        if self._dashboard_payout_count(ev) < 1:
+        # Broker-detected (and remembered) payouts count too — the Payout N
+        # column is often filled days after the withdrawal lands.
+        if self._funded_payout_count(ev) < 1:
             return []
         status = self._cell(ev.get("Status") or ev.get("Status Funded")).strip().lower()
         firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
@@ -5320,8 +5377,19 @@ class TradeOpssAIApp:
             store[key] = {"account": str(account), "phase": phase,
                           "on_funded": bool(on_funded), "attempts": 1,
                           "since": kenya_now().isoformat(timespec="seconds")}
-            self.log(f"⏳ {account}: balance unreadable at close — queued for "
-                     f"retry until a status lands", "WARN")
+            try:
+                history = self._trade_outcome_history() or {}
+            except Exception:
+                history = {}
+            if history and account not in history:
+                # Name mismatch is the usual cause of a row never updating.
+                self.log(f"⏳ {account}: not found among {len(history)} broker "
+                         f"account(s) on the connected login — check the dashboard "
+                         f"Account # matches the Tradovate name; status will retry",
+                         "WARN")
+            else:
+                self.log(f"⏳ {account}: balance unreadable at close — queued for "
+                         f"retry until a status lands", "WARN")
         else:
             rec["attempts"] = rec.get("attempts", 1) + 1
 
@@ -5532,9 +5600,10 @@ class TradeOpssAIApp:
                 1 for k in challenge
                 if str(k).startswith("challenge_trade") and "recovery" not in str(k)
             )
-        # MFFU plan: Pass after Hit TP3 (even when a 4th blueprint leg exists).
+        # MFFU plan (Flex / Rapid EOD): four challenge legs — Hit TP3 stays
+        # in progress, Pass comes at TP4.
         if self._firm_is_mffu_family(firm_code, ev.get("Prop Firm")):
-            return 3
+            return max(n, 4)
         return n or 3
 
     def _challenge_win_is_pass(self, ev, trade_number):
@@ -5551,7 +5620,7 @@ class TradeOpssAIApp:
         Challenge losses follow the daily-loss-limit rule: 'Hit SL{n}' means
         the n-th DLL hit, and only firms with a DLL survive the first one —
         the second hit (or any loss without a DLL) breaches the account.
-        The last required challenge TP becomes Pass (MFFU: TP3 → Pass).
+        The last required challenge TP becomes Pass (MFFU: TP4 → Pass).
         """
         traded_field, traded_phase, placeholder = self._locate_progression_cells(ev)
         # A resolved win/loss still advances status when the weekday placeholder
@@ -6932,8 +7001,18 @@ class TradeOpssAIApp:
             return "Fail", (f"{phase.lower()} balance {balance:,.2f} at or below "
                             f"floor {float(floor):,.2f}")
 
-        goal = rules.get("evaluation_goal") or rules.get("first_funded_target")
-        if goal and not on_funded and balance >= float(goal):
+        goal = rules.get("evaluation_goal")
+        if not goal and rules.get("first_funded_target"):
+            # first_funded_target is a profit amount (FundedNext Rapid Daily
+            # $4,000), not a balance — comparing it raw to a $50K balance
+            # passed every fresh row before its first trade.
+            try:
+                starting = self._resolve_starting_balance(
+                    ev, "Challenge", ev.get("Account Size"))
+                goal = float(starting) + float(rules["first_funded_target"])
+            except (TypeError, ValueError):
+                goal = None
+        if goal and not on_funded and has_trades and balance >= float(goal):
             return "Pass", f"balance {balance:,.2f} reached evaluation goal {float(goal):,.2f}"
         return None, None
 
@@ -7010,6 +7089,7 @@ class TradeOpssAIApp:
         self._pre_trade_balances = dict(state.get("pre_trade_balances") or {})
         self._breach_floor_by_account = dict(state.get("breach_floors") or {})
         self._pending_day_cell_marks = list(state.get("day_cell_marks") or [])
+        self._known_payout_counts = dict(state.get("payout_counts") or {})
         if self._pending_breach_alerts:
             try:
                 self.log(f"🚨 Restored breach state: {len(self._pending_breach_alerts)} "
@@ -7026,6 +7106,7 @@ class TradeOpssAIApp:
                 "pre_trade_balances": dict(getattr(self, "_pre_trade_balances", {}) or {}),
                 "breach_floors": dict(getattr(self, "_breach_floor_by_account", {}) or {}),
                 "day_cell_marks": list(getattr(self, "_pending_day_cell_marks", []) or []),
+                "payout_counts": dict(getattr(self, "_known_payout_counts", {}) or {}),
             }
             with open(self._breach_state_path(), "w") as f:
                 json.dump(state, f, indent=1)
@@ -7534,7 +7615,7 @@ class TradeOpssAIApp:
         if not hasattr(self, "_outcome_cache"):
             self._outcome_cache = {}
         now = time.time()
-        merged = {}
+        merged = AccountHistoryMap()
         for firm_name, conn in (getattr(self, "_broker_connections", None) or {}).items():
             account = conn.get("account")
             if not account or not hasattr(account, "get_trade_history"):
@@ -7625,14 +7706,17 @@ class TradeOpssAIApp:
                        f"→ {fields[next_idx]}")
         return fields[next_idx]
 
-    # Balance/P&L drift below this is fees and rounding, not a withdrawal.
-    _PAYOUT_MIN_AMOUNT = 1.0
+    # Unexplained balance drops below this are data/platform fees or rounding,
+    # not a withdrawal — at $1 every monthly fee released a PAYOUT marker.
+    _PAYOUT_MIN_AMOUNT = 100.0
 
     def _detect_payouts(self, account_number):
         """[(date, amount)] for balance drops that trading P&L does not explain.
 
         A withdrawal shows up as the balance falling below the prior day with
-        no matching loss; a losing day moves balance and P&L together.
+        no matching loss; a losing day moves balance and P&L together. Days
+        with no recorded balance are skipped — a 0.0 placeholder used to read
+        as the whole account being withdrawn.
         """
         key = str(account_number or "").strip().lower()
         if not key:
@@ -7650,6 +7734,8 @@ class TradeOpssAIApp:
                 net = float(day.get("net_pnl") or 0)
             except (TypeError, ValueError):
                 continue
+            if balance <= 0:
+                continue
             if prev_balance is not None:
                 unexplained = (balance - prev_balance) - net
                 if unexplained <= -self._PAYOUT_MIN_AMOUNT:
@@ -7658,7 +7744,31 @@ class TradeOpssAIApp:
         return payouts
 
     def _payout_count(self, account_number):
-        return len(self._detect_payouts(account_number))
+        """Payouts seen for this account, remembered once the broker drops it.
+
+        Breached accounts vanish from the Tradovate login, taking their
+        balance history (and the payout evidence in it) with them. Without the
+        memory, a funded account that paid out and then blew looked like a
+        bare Fail instead of Completed.
+        """
+        key = str(account_number or "").strip().lower()
+        if not hasattr(self, "_known_payout_counts"):
+            self._known_payout_counts = {}
+        detected = len(self._detect_payouts(account_number))
+        remembered = int(self._known_payout_counts.get(key) or 0) if key else 0
+        if key and detected > remembered:
+            self._known_payout_counts[key] = detected
+            self._save_breach_state()
+        return max(detected, remembered)
+
+    def _funded_breach_status(self, ev):
+        """'Completed' when the funded account banked a payout first, else 'Fail'."""
+        try:
+            if self._on_funded_leg(ev) and self._funded_payout_count(ev) >= 1:
+                return "Completed"
+        except Exception:
+            pass
+        return "Fail"
 
     def _funded_payout_count(self, ev) -> int:
         """Best payout evidence for funded strategy and breach-stage decisions."""
@@ -7669,10 +7779,24 @@ class TradeOpssAIApp:
             acct = self._primary_trade_account(ev)
         if not acct:
             return 0
-        n = max(self._payout_count(acct), self._dashboard_payout_count(ev))
+        n = max(self._payout_count(acct), self._dashboard_payout_count(ev),
+                self._released_dashboard_payout_count(ev))
         if self._payout_marker_field(ev):
             n = max(n, 1)
-        return n
+        # TopStepX accounts have no Tradovate balance history, so once the
+        # PAYOUT marker is cleared the count fell back to 0 and RTP re-aimed
+        # the $1,140 first-cycle TP instead of the $470 payout-2+ TP.
+        key = str(acct).strip().lower()
+        if not hasattr(self, "_known_payout_counts"):
+            self._known_payout_counts = {}
+        remembered = int(self._known_payout_counts.get(key) or 0)
+        if n > remembered:
+            self._known_payout_counts[key] = n
+            try:
+                self._save_breach_state()
+            except Exception:
+                pass
+        return max(n, remembered)
 
     def _effective_phase_key(self, ev, firm_code: str, phase_key: str) -> str:
         if not phase_key or not self.prop_firm_mgr:
@@ -7702,20 +7826,21 @@ class TradeOpssAIApp:
         return None
 
     def _payout_due_since(self, ev, field):
-        """Earliest payout date that may release the marker, or None for any.
+        """Earliest payout date that may release the marker.
 
-        A marker typed by hand carries no anchor, so fall back to the newest
-        dated activity on the row; a bare row releases on any payout at all.
+        The server stamps the anchor when farming completes. A marker typed by
+        hand has none, so the companion anchors it to today the first time it
+        sees it: only a withdrawal landing from now on may release it. The old
+        fallback (newest dated activity, else *any* payout ever) let a stale
+        withdrawal clear a freshly re-typed PAYOUT within minutes.
         """
-        anchor = self._cell(ev.get(f"_{field} Payout Due")).strip()
+        anchor_key = f"_{field} Payout Due"
+        anchor = self._cell(ev.get(anchor_key)).strip()
         if anchor:
-            return anchor
-        dates = [
-            self._cell(value).strip() for key, value in ev.items()
-            if isinstance(key, str) and key.startswith("_") and key.endswith(" Date")
-        ]
-        dates = [d for d in dates if d]
-        return max(dates) if dates else None
+            return anchor, False
+        today = kenya_today().strftime("%Y-%m-%d")
+        ev[anchor_key] = today
+        return today, True
 
     def _next_funded_trade_field(self, ev):
         """First unused funded hedge column — where the next funded trade lands."""
@@ -7774,6 +7899,12 @@ class TradeOpssAIApp:
                          f"{payout_number} → {target} ({ev[target]})")
         return changed
 
+    # PAYOUT markers are cleared by hand only. The balance-diff withdrawal
+    # detector produced false releases (fee drift, missing balances, stale
+    # anchors) that let paused accounts trade; keep this off until a rule
+    # based on explicit Tradovate withdrawal entries replaces it.
+    COMPANION_CLEARS_PAYOUT_MARKERS = False
+
     def _release_payout_placeholders(self, evaluations):
         """Clear PAYOUT once the withdrawal shows in the Tradovate balance.
 
@@ -7782,6 +7913,15 @@ class TradeOpssAIApp:
         Returns the field names changed so the caller can force them on push.
         """
         changed = []
+        if not self.COMPANION_CLEARS_PAYOUT_MARKERS:
+            for ev in evaluations or []:
+                if not isinstance(ev, dict) or ev.get("_deleted"):
+                    continue
+                field = self._payout_marker_field(ev)
+                if field:
+                    self.log(f"💤 {self._primary_trade_account(ev)}: {field} PAYOUT — "
+                             f"waiting for manual clear (auto-release disabled)")
+            return changed
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
@@ -7791,10 +7931,12 @@ class TradeOpssAIApp:
             account = self._primary_trade_account(ev)
             if not account:
                 continue
-            due_since = self._payout_due_since(ev, field)
+            due_since, anchor_stamped = self._payout_due_since(ev, field)
+            if anchor_stamped:
+                # Persist the anchor so later scans (and the server copy) share it.
+                changed.append(f"_{field} Payout Due")
             detected = self._detect_payouts(account)
-            landed = [(d, amt) for d, amt in detected
-                      if not due_since or str(d) >= due_since]
+            landed = [(d, amt) for d, amt in detected if str(d) >= due_since]
             if not landed:
                 # Without this the marker just sits there with no way to tell
                 # whether the balance was read, ignored, or never checked.
@@ -7812,7 +7954,13 @@ class TradeOpssAIApp:
             label = self._WEEKDAY_LABELS[kenya_today().weekday()]
             if kenya_today().weekday() >= 5:
                 label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
-            ev.pop(f"_{field} Payout Due", None)
+            # Blank rather than pop: a push cannot delete a key the server
+            # already stores, and a leftover anchor re-released the marker the
+            # moment a trader typed PAYOUT again.
+            anchor_key = f"_{field} Payout Due"
+            ev[anchor_key] = ""
+            if anchor_key not in changed:
+                changed.append(anchor_key)
             paid_on, amount = landed[-1]
             next_field = self._next_funded_trade_field(ev)
             if next_field:
@@ -8440,13 +8588,16 @@ class TradeOpssAIApp:
             phase = "Funded" if on_funded else "Challenge"
             reason = (f"account {account} no longer exists on Tradovate "
                       f"(breached accounts are removed)")
-            ev[field] = "Fail"
+            verdict = self._funded_breach_status(ev) if on_funded else "Fail"
+            ev[field] = verdict
             ev[f"_derived_{field}"] = reason
             force_fields.append(field)
-            force_fields.extend(self._stamp_stage_end_date(ev, field, "Fail"))
+            force_fields.extend(self._stamp_stage_end_date(ev, field, verdict))
             self._record_breach_alert(
                 ev, self._resolve_firm_code(ev.get("Prop Firm", "")), phase,
-                0.0, None, reason_code="tradovate_vanish")
+                0.0, None,
+                reason_code=("completed_with_payout" if verdict == "Completed"
+                             else "tradovate_vanish"))
         return force_fields
 
     def _apply_dashboard_vanish_breaches(self, evaluations) -> list:
@@ -8477,15 +8628,17 @@ class TradeOpssAIApp:
             tier = str(meta.get("tier") or "trade").upper()
             reason = (f"account no longer on dashboard after {tier} "
                         f"(prop firm removed — treated as breach)")
-            ev[field] = "Fail"
+            verdict = self._funded_breach_status(ev) if on_funded else "Fail"
+            ev[field] = verdict
             ev[f"_derived_{field}"] = reason
             evaluations.append(ev)
             force_fields.append(field)
-            force_fields.extend(self._stamp_stage_end_date(ev, field, "Fail"))
+            force_fields.extend(self._stamp_stage_end_date(ev, field, verdict))
             phase = "Funded" if on_funded else "Challenge"
             self._record_breach_alert(
                 ev, meta.get("firm_code"), phase, 0.0, None,
-                reason_code="dashboard_vanish")
+                reason_code=("completed_with_payout" if verdict == "Completed"
+                             else "dashboard_vanish"))
             processed_rows.add(row_key)
             for rk_acct in row_key.split("|"):
                 if rk_acct:
@@ -10816,6 +10969,9 @@ class TradeOpssAIApp:
                     if _bal_str and _bal_str not in ("N/A", "Error", ""):
                         balance = float(str(_bal_str).replace("$", "").replace(",", ""))
                         bal_src = "active-UI get_account_stats() [FALLBACK — not account-scoped]"
+                if self._is_mffu_builder_firm(firm_code):
+                    config = self._apply_builder_funded_tp(
+                        config, row_eval, phase_key, balance, acct_num, firm_code)
                 if balance is None:
                     self.log(f"⚠ Funded SL {acct_num}: balance unavailable — keeping blueprint SL/TP")
                     audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
@@ -10835,6 +10991,7 @@ class TradeOpssAIApp:
                         "Blue Guardian", "BGR")
                     is_lucid = str(firm_code or "").strip() == "Lucid"
                     is_mffu_rapid_eod = str(firm_code or "").strip() == "MFFU Rapid EOD"
+                    is_mffu_builder = self._is_mffu_builder_firm(firm_code)
                     is_topstep_xfa = str(firm_code or "").strip() == "TopStep 50K XFA"
                     is_ftmo_pro = str(firm_code or "").strip() in (
                         "FTMO Futures Pro", "FTMO Pro")
@@ -10844,7 +11001,7 @@ class TradeOpssAIApp:
                         (is_bg_reserve or is_lucid) and 2 <= trade_index <= 5)
                     is_spec_funded = (
                         is_reserve_ft2_plus or is_mffu_rapid_eod or is_topstep_xfa
-                        or is_ftmo_pro or is_tradeify_select)
+                        or is_ftmo_pro or is_tradeify_select or is_mffu_builder)
                     if trade_index >= 2 and not is_rapid_daily and not is_spec_funded:
                         cycle_goal, goal_source = self._funded_cycle_goal_dollars(
                             firm_code, current_phase, phase_key, acct_size, config)
@@ -12237,6 +12394,8 @@ class TradeOpssAIApp:
         if pk.startswith("payout") and "_trade" in pk:
             suf = pk.split("_trade")[-1].strip()
             return int(suf) if suf.isdigit() else 1
+        # TopStep RTP payout-2+ keys (funded_trade1_p2) must not read as trade 2.
+        pk = re.sub(r"_p\d+$", "", pk)
         m = re.search(r"(\d+)$", pk)
         return int(m.group(1)) if m else 1
 
@@ -15233,9 +15392,11 @@ class TradeOpssAIApp:
                         except Exception:
                             pass
 
-                    ev[status_field] = "Fail"
-                    changes.append(f"{status_field}='Fail'")
-                    changes.extend(self._stamp_stage_end_date(ev, status_field, "Fail"))
+                    verdict = (self._funded_breach_status(ev) if has_funded_acct
+                               else "Fail")
+                    ev[status_field] = verdict
+                    changes.append(f"{status_field}='{verdict}'")
+                    changes.extend(self._stamp_stage_end_date(ev, status_field, verdict))
                     breached_count += 1
                     self.root.after(0, lambda a=acct_display, c=", ".join(changes):
                         self.log(f"   🚫 BREACHED: {a} → {c}"))
@@ -15300,12 +15461,14 @@ class TradeOpssAIApp:
                                     self.root.after(0, lambda a=acct_display, b=bal, s=start:
                                         self.log(f"   🔄 IN PROGRESS: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
                                 elif computed == "Fail":
-                                    ev[status_field] = "Fail"
-                                    changes.append(f"{status_field}='Fail'")
-                                    changes.extend(self._stamp_stage_end_date(ev, status_field, "Fail"))
+                                    verdict = (self._funded_breach_status(ev)
+                                               if has_funded_acct else "Fail")
+                                    ev[status_field] = verdict
+                                    changes.append(f"{status_field}='{verdict}'")
+                                    changes.extend(self._stamp_stage_end_date(ev, status_field, verdict))
                                     breached_count += 1
-                                    self.root.after(0, lambda a=acct_display, b=bal, s=start:
-                                        self.log(f"   🚫 FAIL: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
+                                    self.root.after(0, lambda a=acct_display, b=bal, s=start, v=verdict:
+                                        self.log(f"   🚫 {v.upper()}: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
                         except (ValueError, TypeError) as _e:
                             self.root.after(0, lambda a=acct_display, b=acct_balance, err=str(_e):
                                 self.log(f"⚠ {a}: couldn't parse balance '{b}': {err}", "WARN"))
@@ -17102,6 +17265,66 @@ class TradeOpssAIApp:
         if self._split_payout_applies(firm_code):
             return self.prop_firm_mgr.FUNDED_SL_MODE_SPLIT
         return self.prop_firm_mgr.FUNDED_SL_MODE_CLASSIC
+
+    _MFFU_BUILDER_CODES = ("MFFU Builder 50K", "MFFU Builder", "MFFU_Builder")
+
+    def _is_mffu_builder_firm(self, firm_code) -> bool:
+        return str(firm_code or "").strip() in self._MFFU_BUILDER_CODES
+
+    def _builder_funded_cycle_days(self, account_number):
+        """Daily P&L rows for a Builder funded account since its last payout.
+
+        MFFU resets the best-day/total-profit consistency check after each
+        payout, so only the current cycle's days count.
+        """
+        key = str(account_number or "").strip().lower()
+        entry = self._trade_outcome_history().get(key) if key else None
+        if not entry:
+            return []
+        days = sorted(entry.get("daily_pnl") or [],
+                      key=lambda d: str(d.get("date") or ""))
+        payouts = self._detect_payouts(account_number)
+        if payouts:
+            last_payout = str(payouts[-1][0])
+            days = [d for d in days if str(d.get("date") or "") > last_payout]
+        return days
+
+    def _apply_builder_funded_tp(self, config, row_eval, phase_key, balance,
+                                 acct_num, firm_code):
+        """Size a Builder funded TP so the payout leg clears the 50% rule."""
+        mgr = self.prop_firm_mgr
+        if not mgr or not hasattr(mgr, "builder_funded_tp_ticks"):
+            return config
+        account = (self._cell_account((row_eval or {}).get("Account #.1"))
+                   or acct_num)
+        try:
+            cycle_days = self._builder_funded_cycle_days(account)
+            is_payout_leg = mgr.is_payout_phase_key("MFFU Builder 50K", phase_key)
+            before = int(config.get("tradovate_tp_ticks", 0) or 0)
+            ticks, reason = mgr.builder_funded_tp_ticks(
+                config, cycle_days, live_balance=balance,
+                is_payout_leg=is_payout_leg)
+        except Exception as exc:
+            self.log(f"⚠ Builder TP {acct_num}: sizing failed ({exc}) — blueprint TP kept", "WARN")
+            audit("trader.adjust.builder_tp", acct_num=str(acct_num or ""),
+                  status="error", error=str(exc), phase_key=str(phase_key or ""))
+            return config
+        config = config.copy()
+        ticks = int(ticks)
+        if ticks != before:
+            config["_original_tradovate_tp_ticks"] = before
+            config["_tp_was_adjusted"] = True
+            config.setdefault("_adj_reasons", []).append(
+                f"Builder TP {before}→{ticks}t: {reason}")
+        config["tradovate_tp_ticks"] = ticks
+        self.log(
+            f"🧮 Builder TP {acct_num} [{phase_key}{' payout leg' if is_payout_leg else ''}]: "
+            f"{before}t → {ticks}t — {reason}")
+        audit("trader.adjust.builder_tp", acct_num=str(acct_num or ""),
+              status="applied", firm=str(firm_code or ""), phase_key=str(phase_key or ""),
+              is_payout_leg=bool(is_payout_leg), balance=balance,
+              cycle_days=len(cycle_days), tp_before=before, tp_after=ticks, reason=reason)
+        return config
 
     def _funded_cycle_goal_dollars(self, firm_code, current_phase, phase_key,
                                    acct_size, config):
