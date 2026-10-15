@@ -20,11 +20,18 @@ def test_observer_profile_is_per_login():
 
 
 def test_logged_in_requires_workspace_without_sign_in_header():
-    d = Mock()
-    d.execute_script = lambda js: True
-    assert perps_login._logged_in(d) is True
-    d.execute_script = Mock(side_effect=RuntimeError("no page"))
-    assert perps_login._logged_in(d) is False
+    cap = Mock()
+    cap.eval_js = lambda js: True
+    assert perps_login._logged_in(cap) is True
+    cap.eval_js = Mock(side_effect=RuntimeError("no page"))
+    assert perps_login._logged_in(cap) is False
+
+
+def test_each_login_gets_its_own_chrome_port_and_profile():
+    p1, prof1 = perps_login.chrome_for("joehickenfpf@gmail.com")
+    p2, prof2 = perps_login.chrome_for("harry@example.com")
+    assert 9800 <= p1 < 9950 and 9800 <= p2 < 9950
+    assert prof1.endswith("mfp_joehickenfpf") and prof1 != prof2
 
 
 def test_connect_opens_observer_when_email_is_configured(monkeypatch):
