@@ -354,6 +354,10 @@ class BreakoutSession:
             except Exception:
                 pass
             self.api = None
+        try:
+            probe.quit_chrome(self.port)
+        except Exception as exc:
+            logger.debug("Breakout Chrome quit failed: %s", exc)
 
 
 class BreakoutExecutor:

@@ -218,6 +218,45 @@ def launch_chrome(url=SIGNIN_URL, port: int = None, profile: str = None):
     raise RuntimeError("Chrome did not expose the DevTools port")
 
 
+def quit_chrome(port: int = None, wait_sec: float = 5.0) -> bool:
+    """Close the plain Chrome on `port` (Browser.close over CDP, then kill fallback).
+
+    launch_chrome starts Chrome detached (start_new_session) and keeps no
+    handle, so without this the Breakout window outlived the companion.
+    """
+    port = port or PORT
+    if not _cdp_alive(port):
+        return True
+    try:
+        with urllib.request.urlopen(f"http://localhost:{port}/json/version", timeout=2) as r:
+            ws_url = json.load(r).get("webSocketDebuggerUrl")
+        if ws_url:
+            import websocket  # websocket-client
+            ws = websocket.create_connection(ws_url, timeout=3, suppress_origin=True)
+            try:
+                ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
+            finally:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+    except Exception as exc:
+        log.debug("Browser.close on port %s failed: %s", port, exc)
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        if not _cdp_alive(port):
+            return True
+        time.sleep(0.25)
+    # Chrome ignored the request (e.g. a beforeunload prompt) — kill by port flag.
+    try:
+        subprocess.run(["pkill", "-f", f"--remote-debugging-port={port}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    except Exception as exc:
+        log.debug("pkill for Chrome port %s failed: %s", port, exc)
+    time.sleep(0.5)
+    return not _cdp_alive(port)
+
+
 def body_text(cap: CDPCapture) -> str:
     try:
         return cap.eval_js("document.body ? document.body.innerText : ''") or ""
