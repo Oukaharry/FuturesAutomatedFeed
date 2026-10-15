@@ -6735,6 +6735,7 @@ class TradeOpssAIApp:
         """Remove weekday placeholders the companion queued (keep $0 / P&L)."""
         if not isinstance(ev, dict):
             return []
+        manual = set(ev.get("_manual_push_fields") or [])
         cleared = []
         for key in list(ev.keys()):
             if not isinstance(key, str):
@@ -6744,6 +6745,8 @@ class TradeOpssAIApp:
                 or key.startswith("Hedge Day")
                 or key.startswith("Prop Day")
             ):
+                continue
+            if key in manual:
                 continue
             val = self._cell(ev.get(key))
             if not val or val in ("—", "-"):
@@ -7358,14 +7361,15 @@ class TradeOpssAIApp:
         self._save_breach_state()
 
     def _reconcile_traded_day_placeholders(self, evaluations):
-        """Heal day cells whose trade provably resolved but still show a weekday.
+        """Heal resolved trade cells and restore a missing next-day placeholder.
 
         The fill-time $0.00 write is one HTTP chain that can fail once and
         never retry, while the status engine retries every cycle — so a row
         can say Hit SL1 while its cell still reads TUESDAY (and could trade
         again). When the status proves trade n resolved, cells 1..n holding a
         weekday become $0.00 and the next weekday is queued, blueprint-aware.
-        Runs inside the 5-minute poll, so the write is durable.
+        This also restores the next placeholder when the fill cell was already
+        marked $0.00 but its follow-up queue write was missed.
 
         Stale Hit TP/SL without a broker-resolved outcome must NOT consume a
         waiting weekday — that was wiping Funded Next placeholders before the
@@ -7389,6 +7393,8 @@ class TradeOpssAIApp:
                     continue
                 n = int(m.group(1))
                 fields = self._get_phase_fields(phase)
+                if n <= 0 or not fields:
+                    continue
                 row_changed = False
                 for idx in range(min(n, len(fields))):
                     field = fields[idx]
@@ -7399,8 +7405,6 @@ class TradeOpssAIApp:
                     ev[field] = "$0.00"
                     changed.append(field)
                     row_changed = True
-                if not row_changed:
-                    continue
                 # Queue the next weekday unless this leg already has one
                 if not any(self._parse_day_token(self._cell(ev.get(f))) is not None
                            for f in fields):
@@ -7411,11 +7415,16 @@ class TradeOpssAIApp:
                             ev, firm_code, phase, traded_field, outcome=outcome)
                     except Exception:
                         next_field = None
-                    if next_field and self._cell(ev.get(next_field)) in ("", "—", "-"):
+                    cleared = set(ev.get("_cleared_fields") or [])
+                    if (next_field and next_field not in manual
+                            and next_field not in cleared
+                            and self._cell(ev.get(next_field)) in ("", "—", "-")):
                         ev[next_field] = self._WEEKDAY_LABELS[self._next_trading_weekday()]
                         changed.append(next_field)
-                self.log(f"🩹 {self._primary_trade_account(ev)}: healed day cell(s) — "
-                         f"{status_field} shows {status} but trade cell still held a weekday")
+                        row_changed = True
+                if row_changed:
+                    self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday queue — "
+                             f"{status_field} shows {status}")
         return changed
 
     def _release_held_breach_alerts(self, evaluations):
