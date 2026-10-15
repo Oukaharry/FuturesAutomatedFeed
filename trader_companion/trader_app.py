@@ -11742,6 +11742,11 @@ class TradeOpssAIApp:
                 if not acct:
                     continue
                 try:
+                    if self._is_api_only_firm(firm_name):
+                        n, errs = self._close_all_api_firm(firm_name, acct)
+                        closed_tv += n
+                        errors.extend(errs)
+                        continue
                     if hasattr(acct, 'liquidate_position_api'):
                         # Tradovate — liquidate all accounts under this login
                         accounts = acct._api_fetch("/account/list")
@@ -11858,6 +11863,82 @@ class TradeOpssAIApp:
             self.root.after(0, lambda s=summary: self._add_activity(s, "error"))
 
         threading.Thread(target=_do_close_all, daemon=True, name="CloseAll").start()
+
+    def _close_all_api_firm(self, firm_name, acct):
+        """Flatten every live account on an API-only broker. Returns (closed, errors).
+
+        Close All used hasattr() probes meant for Tradovate / TopStepX /
+        AlphaTrader, so MyFundedPerps hit the TopStepX branch with the wrong
+        signature and DXtrade / Vest / Breakout were skipped silently.
+        """
+        def _ulog(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, l=level: self.log(m, l))
+
+        closed, errors = 0, []
+
+        def _flatten(label, has_open, do_flatten):
+            nonlocal closed
+            try:
+                if not has_open():
+                    _ulog(f"  ⏭ {firm_name} — {label} (already flat)")
+                    return
+                _ulog(f"  🔄 {firm_name} — {label} closing position(s)...")
+                result = do_flatten()
+                failed = [r for r in (result or []) if isinstance(r, dict) and r.get("error")]
+                if failed:
+                    raise RuntimeError("; ".join(str(r["error"]) for r in failed))
+                closed += 1
+                _ulog(f"  ✅ {firm_name} — {label} flattened")
+            except Exception as exc:
+                errors.append(f"{firm_name}/{label}: {exc}")
+                _ulog(f"  ❌ {firm_name} — {label} close failed: {exc}", "ERROR")
+
+        if self._is_perps_firm(firm_name):
+            try:
+                from trader_companion.perps_connector import unwrap
+                from trader_companion.perps_executor import PerpsTradeExecutor
+            except ImportError:
+                from perps_connector import unwrap
+                from perps_executor import PerpsTradeExecutor
+            for a in unwrap(acct.list_accounts()) or []:
+                aid = a.get("id")
+                label = str(a.get("account_number") or aid)
+                if not aid:
+                    continue
+                ex = PerpsTradeExecutor(acct, account_id=aid)
+                _flatten(label,
+                         lambda aid=aid: bool(unwrap(acct.list_positions(account_id=aid)) or []),
+                         lambda ex=ex: ex.flatten() or [])
+        elif self._is_dxtrade_firm(firm_name):
+            try:
+                from trader_companion.dxtrade_executor import DXTradeExecutor
+            except ImportError:
+                from dxtrade_executor import DXTradeExecutor
+            if not acct._ensure_api():
+                raise RuntimeError("DXtrade API not ready")
+            for code in acct.account_codes() or []:
+                ex = DXTradeExecutor(acct.api, code)
+                _flatten(str(code).split(":", 1)[-1],
+                         lambda code=code: bool(acct.api.list_positions(code)),
+                         lambda ex=ex: ex.flatten())
+        elif self._is_vest_firm(firm_name):
+            try:
+                from trader_companion.vest_connector import VestExecutor
+            except ImportError:
+                from vest_connector import VestExecutor
+            _flatten(str(acct.account_id),
+                     lambda: bool(acct.open_positions()),
+                     lambda: VestExecutor(acct).flatten())
+        elif self._is_breakout_firm(firm_name):
+            try:
+                from trader_companion.breakout_connector import BreakoutExecutor
+            except ImportError:
+                from breakout_connector import BreakoutExecutor
+            for code in acct.account_codes() or []:
+                _flatten(code,
+                         lambda code=code: acct.has_open_position_for_account(code)[0],
+                         lambda code=code: BreakoutExecutor(acct, code).flatten())
+        return closed, errors
 
     def _enter_trades_now(self):
         """Run the armed trade pipeline immediately after password confirmation."""
