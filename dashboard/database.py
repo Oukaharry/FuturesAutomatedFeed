@@ -2998,10 +2998,10 @@ def save_client_data_with_history(client_id: str, data: dict,
                                  change_description: str = None,
                                  overwrite: bool = False) -> tuple:
     """
-    Save client data AND create a history snapshot for versioning.
+    Save client data AND create an immediate data_history snapshot.
     
-    Routine companion/API pushes use save_client_data only; the scheduler
-    writes HOURLY_SNAPSHOT rows via save_hourly_history_snapshots().
+    Production writes use save_client_data only; all versioning is hourly
+    via save_hourly_history_snapshots(). This helper remains for one-off scripts.
     
     Includes verification that data was actually committed to the database.
     
@@ -3104,29 +3104,18 @@ def rollback_to_version(client_id: str, version: int,
                         rolled_back_by_type: str = None,
                         ip_address: str = None) -> tuple:
     """
-    Rollback client data to a specific historical version.
+    Rollback clients_data to a specific hourly (or legacy) data_history version.
     
-    Creates a new version entry marking this as a rollback.
+    Does not create a new history row; the next scheduled snapshot captures state.
     
     Returns:
-        Tuple of (success: bool, new_version: int)
+        Tuple of (success: bool, restored_from_version: int)
     """
-    # Get the historical version data
     historical = get_data_version(client_id, version)
     if not historical:
         return (False, -1)
-    
-    # Save as new current data with rollback action
-    return save_client_data_with_history(
-        client_id,
-        historical['data'],
-        action='ROLLBACK',
-        changed_by=rolled_back_by,
-        changed_by_type=rolled_back_by_type,
-        ip_address=ip_address,
-        change_source='rollback',
-        change_description=f'Rolled back to version {version} from {historical["created_at"]}'
-    )
+    success = save_client_data(client_id, historical['data'], overwrite=True)
+    return (success, version if success else -1)
 
 def compare_versions(client_id: str, version1: int, version2: int) -> dict:
     """
