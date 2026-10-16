@@ -1448,22 +1448,56 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
     with get_connection() as conn:
         return _save(conn)
 
-def _lookup_client_data_row(client_id: str, norm_id: str, _conn=None):
+def _lookup_client_data_row(
+    client_id: str,
+    norm_id: str,
+    _conn=None,
+    include_deals: bool = True,
+    include_deals_count: bool = False,
+):
     """
     Find a clients_data row. Returns (row, legacy_id_to_rename).
     Rename is deferred so callers never nest pool connections.
     """
+    if include_deals:
+        select_columns = '*'
+    else:
+        columns = [
+            'client_id', 'positions', 'account', 'evaluations', 'statistics',
+            'dropdown_options', 'identity', 'last_updated', 'hedge_accounts',
+            'prop_accounts', 'vps_accounts', 'payment_info', 'payment_address',
+            'mt5_credentials', 'firm_billing',
+        ]
+        if include_deals_count:
+            columns.append(
+                """CASE
+                    WHEN json_typeof(COALESCE(NULLIF(deals, ''), '[]')::json) = 'array'
+                    THEN json_array_length(COALESCE(NULLIF(deals, ''), '[]')::json)
+                    ELSE 0
+                END AS deals_count"""
+            )
+        select_columns = ', '.join(columns)
+
     def _query(cursor):
         row = None
         if client_id:
-            cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
+            cursor.execute(
+                f'SELECT {select_columns} FROM clients_data WHERE client_id = ?',
+                (client_id,),
+            )
             row = cursor.fetchone()
         if row is None and norm_id and norm_id != client_id:
-            cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
+            cursor.execute(
+                f'SELECT {select_columns} FROM clients_data WHERE client_id = ?',
+                (norm_id,),
+            )
             row = cursor.fetchone()
         legacy_rename = None
         if row is None and norm_id:
-            cursor.execute('SELECT * FROM clients_data WHERE btrim(client_id) = ? LIMIT 1', (norm_id,))
+            cursor.execute(
+                f'SELECT {select_columns} FROM clients_data WHERE btrim(client_id) = ? LIMIT 1',
+                (norm_id,),
+            )
             row = cursor.fetchone()
             if row and row.get('client_id') and row.get('client_id') != norm_id:
                 cursor.execute('SELECT 1 AS ok FROM clients_data WHERE client_id = ? LIMIT 1', (norm_id,))
@@ -1478,17 +1512,32 @@ def _lookup_client_data_row(client_id: str, norm_id: str, _conn=None):
         return _query(conn.cursor())
 
 
-def get_client_data(client_id: str, _conn=None) -> dict:
-    """Get client data from database."""
+def get_client_data(
+    client_id: str,
+    _conn=None,
+    include_deals: bool = True,
+    include_deals_count: bool = False,
+) -> dict:
+    """Get client data, optionally omitting the potentially large deal history."""
     norm_id = _normalize_identifier(client_id)
-    row, legacy_id = _lookup_client_data_row(client_id, norm_id, _conn=_conn)
+    row, legacy_id = _lookup_client_data_row(
+        client_id,
+        norm_id,
+        _conn=_conn,
+        include_deals=include_deals,
+        include_deals_count=include_deals_count,
+    )
     if legacy_id and _conn is None:
         try:
             rename_client_in_db(legacy_id, norm_id)
             with get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
-                row = cur.fetchone()
+                row, _ = _lookup_client_data_row(
+                    norm_id,
+                    norm_id,
+                    _conn=conn,
+                    include_deals=include_deals,
+                    include_deals_count=include_deals_count,
+                )
         except Exception:
             pass
 
@@ -1497,8 +1546,8 @@ def get_client_data(client_id: str, _conn=None) -> dict:
             identity = json.loads(row['identity'] or '{}') or {}
         except Exception:
             identity = {}
-        return {
-            'deals': json.loads(row['deals']),
+        client_data = {
+            'deals': json.loads(row['deals']) if include_deals else [],
             'positions': json.loads(row['positions']),
             'account': json.loads(row['account']),
             'evaluations': json.loads(row['evaluations']),
@@ -1515,6 +1564,9 @@ def get_client_data(client_id: str, _conn=None) -> dict:
             'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
             'firm_billing': json.loads(row.get('firm_billing') or '{}'),
         }
+        if include_deals_count:
+            client_data['deals_count'] = row.get('deals_count', 0)
+        return client_data
 
     return None
 
