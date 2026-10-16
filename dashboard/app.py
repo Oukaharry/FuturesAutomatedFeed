@@ -267,7 +267,7 @@ def _client_daily_summary_not_expected(client_id=None, issues=None, cdata=None, 
             return True
     if cdata is None and client_id:
         try:
-            cdata = get_client_data(client_id) or {}
+            cdata = get_client_data(client_id, include_deals=False) or {}
         except Exception:
             cdata = {}
     if isinstance(cdata, dict):
@@ -7806,7 +7806,7 @@ def update_client_source():
         return jsonify({"status": "error", "message": "Invalid data"}), 400
     
     # Update Database
-    client_data = get_client_data(client_id)
+    client_data = get_client_data(client_id, include_deals=False)
     if not client_data:
         return jsonify({"status": "error", "message": "Client not found"}), 404
         
@@ -8412,7 +8412,7 @@ def api_client_data():
             return jsonify({"status": "error", "message": "Email not registered"}), 404
 
         client_id = client_info['client']
-        client_data = get_client_data(client_id)
+        client_data = get_client_data(client_id, include_deals=False)
         if not client_data:
             return jsonify({"status": "error", "message": "No data found for client"}), 404
 
@@ -10291,7 +10291,7 @@ def api_kyc_accounts():
     from dashboard.financial_overview import get_client_profile as _gcp
     result = []
     for name in accounts:
-        cdata = get_client_data(name)
+        cdata = get_client_data(name, include_deals=False)
         if not cdata:
             if is_bef:
                 identity = {}
@@ -10330,7 +10330,7 @@ def _get_kyc_client_admin_name(client_name):
     if profile:
         return (profile.get('admin') or '').strip()
     try:
-        cdata = get_client_data(client_name) or {}
+        cdata = get_client_data(client_name, include_deals=False) or {}
         identity = cdata.get('identity') if isinstance(cdata, dict) else {}
         if isinstance(identity, dict):
             return (identity.get('admin') or identity.get('parent_admin') or '').strip()
@@ -10537,7 +10537,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
     by_prop_firm = {}
 
     for name in accounts:
-        cdata = get_client_data(name)
+        cdata = get_client_data(name, include_deals=False)
         if not cdata:
             if is_bef:
                 if _gcp(name, {}) != 'BEF':
@@ -12045,11 +12045,17 @@ def get_data():
             log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Tried to access: {client_id}", False)
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
+        include_deals = request.args.get('include_deals', '').lower() in ('1', 'true', 'yes')
         data = None
         try:
             from dashboard.database import fetch_client_page_enrichment
             with get_connection() as conn:
-                data = get_client_data(client_id, _conn=conn)
+                data = get_client_data(
+                    client_id,
+                    _conn=conn,
+                    include_deals=include_deals,
+                    include_deals_count=not include_deals,
+                )
                 if data is None:
                     return jsonify({"status": "error", "message": f"No data found for client '{client_id}'. The client may not exist or has no saved data yet."}), 404
                 page_meta = fetch_client_page_enrichment(client_id, conn)
@@ -12090,12 +12096,11 @@ def get_data():
 
             # Full MT5 deal history (6000+ rows) is stored in clients_data.deals for stats/ML.
             # Serializing it on every dashboard poll blocks uWSGI workers until harakiri (502/outage).
-            deals = data.get('deals')
-            if isinstance(deals, list):
-                data['deals_count'] = len(deals)
+            if include_deals:
+                deals = data.get('deals')
+                data['deals_count'] = len(deals) if isinstance(deals, list) else 0
             else:
-                data['deals_count'] = 0
-            include_deals = request.args.get('include_deals', '').lower() in ('1', 'true', 'yes')
+                data['deals_count'] = data.pop('deals_count', 0)
             if not include_deals:
                 data['deals'] = []
 
@@ -14683,7 +14688,7 @@ def api_summary_status():
 
         # Skip inactive clients by default
         try:
-            cdata = get_client_data(client_name)
+            cdata = get_client_data(client_name, include_deals=False)
             if cdata and isinstance(cdata.get('identity'), dict):
                 if cdata['identity'].get('active_status') == 'inactive':
                     continue
@@ -15606,7 +15611,7 @@ def api_daily_summary():
             if trader in excluded_traders or client_name in excluded_clients:
                 continue
             try:
-                cdata = get_client_data(client_name)
+                cdata = get_client_data(client_name, include_deals=False)
                 if cdata and isinstance(cdata.get('identity'), dict):
                     if cdata['identity'].get('active_status') == 'inactive':
                         continue
