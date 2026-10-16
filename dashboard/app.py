@@ -8288,9 +8288,7 @@ def api_companion_auth():
 
         return _perform_client_email_auth(email, actor='companion')
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return _companion_db_error_response(e, endpoint='companion/auth')
 
 
 @app.route('/api/client/companion_scan', methods=['POST'])
@@ -8462,9 +8460,7 @@ def api_client_data():
         })
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return _companion_db_error_response(e, endpoint='client/data')
 
 
 _INTERNAL_DEAL_TYPES_INT = {2, 3}  # BALANCE=2, CREDIT=3
@@ -8616,6 +8612,108 @@ def _merge_deals(existing_deals: list, incoming_deals: list, days: int | None = 
 
     merged.sort(key=lambda d: _deal_timestamp_ms(d) if isinstance(d, dict) else 0, reverse=True)
     return merged
+
+
+_PUSH_EVAL_LOG_INFO_MAX = 5
+
+
+def _format_push_eval_row_log_line(i: int, ev: dict) -> str:
+    """One-line summary for a single evaluation row (push logging)."""
+    prop_firm = ev.get('Prop Firm', 'Unknown')
+    status_p1 = ev.get('Status P1', '')
+    status_fd = ev.get('Status') or ev.get('Status Funded', '')
+
+    hedge_results = []
+    for j in range(1, 8):
+        key = f'Hedge Result {j}' if j < 6 else f'Hedge Result {j - 5}.1'
+        val = ev.get(key, '')
+        if val and str(val).strip() not in ('', '-', '$0'):
+            hedge_results.append(f"{key}={val}")
+
+    payouts = []
+    for j in range(1, 10):
+        key = f'Payout {j}'
+        val = ev.get(key, '')
+        if val and str(val).strip() not in ('', '-', '$0'):
+            payouts.append(f"{key}={val}")
+
+    hedge_net = ev.get('Hedge Net', '')
+    hedge_net_1 = ev.get('Hedge Net.1', '')
+    fee = ev.get('Fee', '')
+    act_fee = ev.get('Activation Fee', '')
+
+    row_info = f"   [{i}] {prop_firm} | P1:{status_p1} FD:{status_fd}"
+    if hedge_results:
+        row_info += f" | Hedges: {', '.join(hedge_results)}"
+    if payouts:
+        row_info += f" | Payouts: {', '.join(payouts)}"
+    if hedge_net and str(hedge_net).strip() not in ('', '-'):
+        row_info += f" | Hedge Net={hedge_net}"
+    if hedge_net_1 and str(hedge_net_1).strip() not in ('', '-'):
+        row_info += f" | Hedge Net.1={hedge_net_1}"
+    if fee and str(fee).strip() not in ('', '-', '$0'):
+        row_info += f" | Fee={fee}"
+    if act_fee and str(act_fee).strip() not in ('', '-', '$0'):
+        row_info += f" | Activation={act_fee}"
+    return row_info
+
+
+def _log_push_evaluations_summary(client_id: str, evaluations: list) -> None:
+    """Log eval push summary without writing thousands of lines on mega-clients."""
+    n = len(evaluations)
+    app.logger.info("Evaluation rows summary for %s: %d row(s)", client_id, n)
+    if not n:
+        return
+    cap = _PUSH_EVAL_LOG_INFO_MAX
+    for i, ev in enumerate(evaluations[:cap]):
+        app.logger.info(_format_push_eval_row_log_line(i, ev))
+    if n > cap:
+        app.logger.info(
+            "   … %d more evaluation row(s) omitted from log (DEBUG logs the rest)",
+            n - cap,
+        )
+        if app.logger.isEnabledFor(logging.DEBUG):
+            for i, ev in enumerate(evaluations[cap:], start=cap):
+                app.logger.debug(_format_push_eval_row_log_line(i, ev))
+
+
+def _is_postgres_capacity_error(exc: BaseException) -> bool:
+    """True when Postgres or our pool refused a connection (not a logic bug)."""
+    msg = str(exc).lower()
+    for needle in (
+        'remaining connection slots',
+        'too many connections',
+        'connection pool busy',
+        'cooling down',
+        'could not obtain database connection',
+        'connection pool unavailable',
+        'database temporarily unavailable',
+    ):
+        if needle in msg:
+            return True
+    cause = getattr(exc, '__cause__', None)
+    if cause is not None and cause is not exc:
+        return _is_postgres_capacity_error(cause)
+    return False
+
+
+def _db_capacity_user_message() -> str:
+    return (
+        "Server is busy (database at capacity). "
+        "Wait 1–2 minutes and try VERIFY ACCESS again."
+    )
+
+
+def _companion_db_error_response(exc: Exception, *, endpoint: str):
+    """Map DB overload to 503 with a safe message (never expose host/credentials)."""
+    if _is_postgres_capacity_error(exc):
+        app.logger.warning("[%s] database capacity: %s", endpoint, exc)
+        return jsonify({"status": "error", "message": _db_capacity_user_message()}), 503
+    app.logger.exception("[%s] failed", endpoint)
+    return jsonify({
+        "status": "error",
+        "message": "Server error — try again in a minute.",
+    }), 500
 
 
 def _deals_date_span(deals: list) -> str:
@@ -8805,50 +8903,8 @@ def api_client_push():
             deal_types[dtype] = deal_types.get(dtype, 0) + 1
         app.logger.info(f"🔄 Deal types: {deal_types}")
     
-    # Log evaluation hedging/payout data summary
-    app.logger.info(f"📋 Evaluation Rows Summary:")
-    for i, ev in enumerate(evaluations):
-        prop_firm = ev.get('Prop Firm', 'Unknown')
-        status_p1 = ev.get('Status P1', '')
-        status_fd = ev.get('Status') or ev.get('Status Funded', '')
-        
-        # Collect hedge results
-        hedge_results = []
-        for j in range(1, 8):
-            key = f'Hedge Result {j}' if j < 6 else f'Hedge Result {j-5}.1' if j == 6 else f'Hedge Result {j-5}.1'
-            val = ev.get(key, '')
-            if val and str(val).strip() not in ('', '-', '$0'):
-                hedge_results.append(f"{key}={val}")
-        
-        # Collect payouts
-        payouts = []
-        for j in range(1, 10):
-            key = f'Payout {j}'
-            val = ev.get(key, '')
-            if val and str(val).strip() not in ('', '-', '$0'):
-                payouts.append(f"{key}={val}")
-        
-        hedge_net = ev.get('Hedge Net', '')
-        hedge_net_1 = ev.get('Hedge Net.1', '')
-        fee = ev.get('Fee', '')
-        act_fee = ev.get('Activation Fee', '')
-        
-        row_info = f"   [{i}] {prop_firm} | P1:{status_p1} FD:{status_fd}"
-        if hedge_results:
-            row_info += f" | Hedges: {', '.join(hedge_results)}"
-        if payouts:
-            row_info += f" | Payouts: {', '.join(payouts)}"
-        if hedge_net and str(hedge_net).strip() not in ('', '-'):
-            row_info += f" | Hedge Net={hedge_net}"
-        if hedge_net_1 and str(hedge_net_1).strip() not in ('', '-'):
-            row_info += f" | Hedge Net.1={hedge_net_1}"
-        if fee and str(fee).strip() not in ('', '-', '$0'):
-            row_info += f" | Fee={fee}"
-        if act_fee and str(act_fee).strip() not in ('', '-', '$0'):
-            row_info += f" | Activation={act_fee}"
-        
-        app.logger.info(row_info)
-    
+    _log_push_evaluations_summary(client_id, evaluations)
+
     # Log deal types to debug
     if mt5_deals:
         deal_types = [str(d.get('type', 'unknown')) for d in mt5_deals[:5]]
@@ -17267,11 +17323,20 @@ def api_get_all_history():
 @app.route('/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Simple health check endpoint."""
+    """Simple health check endpoint. DB pressure returns 503, not a traceback."""
+    try:
+        clients = get_clients_count()
+    except Exception as exc:
+        logging.warning("health check database unavailable: %s", exc)
+        return jsonify({
+            "status": "degraded",
+            "timestamp": datetime.now().isoformat(),
+            "message": "database busy",
+        }), 503
     return jsonify({
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
-        "clients_count": get_clients_count()
+        "clients_count": clients
     })
 
 # ============ Change Password Endpoint ============
@@ -17504,6 +17569,19 @@ def unhandled_exception(e):
     if isinstance(e, HTTPException):
         return e
     import logging
+    msg = str(e).lower()
+    if ("connection slots" in msg or "too many connections" in msg
+            or "cooling down" in msg or "connection pool busy" in msg):
+        logging.warning("DB busy: %s", e)
+        if request.path.startswith("/api") or (
+            request.accept_mimetypes.accept_json
+            and not request.accept_mimetypes.accept_html
+        ):
+            return jsonify({
+                "status": "error",
+                "message": "Database busy, retry shortly",
+            }), 503
+        return render_template("500.html"), 503
     logging.exception(f"Unhandled exception: {e}")
     if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
