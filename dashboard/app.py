@@ -64,7 +64,8 @@ from dashboard.database import (
     record_login_attempt, is_account_locked,
     find_user_by_identifier, verify_user_by_identifier,
     # History management
-    save_client_data_with_history, get_data_history, get_data_version,
+    get_data_history, get_data_version,
+    get_current_data_version,
     rollback_to_version, compare_versions, get_latest_version,
     # KYC link management
     add_kyc_link, remove_kyc_link, get_kyc_linked_clients, get_kyc_primary_for,
@@ -9160,18 +9161,13 @@ def api_client_push():
     elif mt5_account or mt5_deals:
         change_source = 'mt5_push'
 
-    # Save to database WITH history tracking
-    success, version = save_client_data_with_history(
-        client_id,
-        client_data,
-        action='DATA_PUSH',
-        changed_by=email,
-        changed_by_type='client',
-        ip_address=get_remote_address(),
-        change_source=change_source,
-        change_description=f"Data push from trader app with {len(evaluations)} evaluations"
-    )
-    
+    # Live row only; data_history updated hourly by the scheduler (see save_hourly_history_snapshots).
+    success = save_client_data(client_id, client_data)
+    version = get_current_data_version(client_id) if success else -1
+    if not success:
+        app.logger.error(f"[DB SAVE FAILED] Data push failed for {client_id}")
+        return jsonify({"status": "error", "message": "Failed to save client data"}), 500
+
     app.logger.info(f"✅ SAVED to database successfully (v{version})")
     app.logger.info(f"🔄 Updated Statistics:")
     stats_complete = statistics.get('profitability_completed', {})
@@ -9393,18 +9389,10 @@ def api_migrate_sheet():
             "mfp_api_key": existing_import_data.get('mfp_api_key', ''),
         }
         
-        # Save to database WITH history tracking - full overwrite (import replaces all existing data)
-        success, version = save_client_data_with_history(
-            client_id, 
-            client_data,
-            action='SHEET_IMPORT',
-            changed_by=email,
-            changed_by_type='client',
-            ip_address=get_remote_address(),
-            change_source='sheet_migration',
-            change_description=f"Imported {len(evaluations)} records from Google Sheets",
-            overwrite=True
-        )
+        success = save_client_data(client_id, client_data, overwrite=True)
+        version = get_current_data_version(client_id) if success else -1
+        if not success:
+            return jsonify({"status": "error", "message": "Failed to save imported data"}), 500
         
         # Save cell comments as notes (for Prop Progress display)
         notes_saved = 0
@@ -11492,20 +11480,6 @@ def api_remove_client():
     name = request.json.get('name')
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
-    # Save a final snapshot before deletion so data can be recovered
-    client_data = get_client_data(name)
-    if client_data:
-        from dashboard.database import save_data_snapshot
-        save_data_snapshot(
-            name, client_data,
-            action='CLIENT_DELETED',
-            changed_by='system',
-            changed_by_type='admin',
-            ip_address=get_remote_address(),
-            change_source='client_removal',
-            change_description=f"Final snapshot before client removal (Trader: {trader}, Admin: {admin})"
-        )
-    
     if _delete_client_everywhere(name, admin, trader):
         log_action('REMOVE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
@@ -11580,17 +11554,10 @@ def api_delete_evaluation():
     )
     client_data['statistics'] = new_stats
     
-    # Save with history tracking - the previous version contains the deleted row
-    success, version = save_client_data_with_history(
-        client_id,
-        client_data,
-        action='DELETE_EVALUATION',
-        changed_by=email,
-        changed_by_type='client',
-        ip_address=get_remote_address(),
-        change_source='dashboard_delete',
-        change_description=f"Deleted evaluation: {deleted_info}"
-    )
+    success = save_client_data(client_id, client_data)
+    version = get_current_data_version(client_id) if success else -1
+    if not success:
+        return jsonify({"status": "error", "message": "Failed to save after delete"}), 500
     
     log_action('DELETE_EVALUATION', 'client', email, get_remote_address(), 
                f"Deleted {deleted_info} from {client_id} (v{version})")
@@ -11978,18 +11945,6 @@ def manage_historical_mt5(client_id):
     if not client_data:
         return jsonify({"status": "error", "message": "Client data not found"}), 404
     
-    # Save snapshot BEFORE making changes (for recovery)
-    from dashboard.database import save_data_snapshot
-    save_data_snapshot(
-        client_id, client_data,
-        action='BEFORE_HISTORICAL_MT5_' + action.upper(),
-        changed_by=user_identifier,
-        changed_by_type=user_type,
-        ip_address=get_remote_address(),
-        change_source='historical_mt5_management',
-        change_description=f"Snapshot before {action} historical MT5 account"
-    )
-    
     # Ensure hedging_review structure exists
     if 'statistics' not in client_data:
         client_data['statistics'] = {}
@@ -12054,18 +12009,9 @@ def manage_historical_mt5(client_id):
     from utils.data_processor import sync_hedging_review_discrepancy
     sync_hedging_review_discrepancy(client_data['statistics'], account=client_data.get('account'))
 
-    # Save updated data WITH history tracking
-    email = client_data.get('identity', {}).get('email', '')
-    success, version = save_client_data_with_history(
-        client_id, client_data,
-        action='HISTORICAL_MT5_' + action.upper(),
-        changed_by=user_identifier,
-        changed_by_type=user_type,
-        ip_address=get_remote_address(),
-        change_source='historical_mt5_management',
-        change_description=f"{action.capitalize()} historical MT5 account"
-    )
-    
+    if not save_client_data(client_id, client_data):
+        return jsonify({"status": "error", "message": "Failed to save historical MT5 changes"}), 500
+
     return jsonify({
         "status": "success", 
         "message": f"Historical MT5 {action}ed successfully",
@@ -16237,7 +16183,7 @@ def import_client_csv():
     """Import CSV data back into a client's evaluations. Super admin only."""
     import csv
     import io
-    from dashboard.database import get_client_data, save_client_data_with_history
+    from dashboard.database import get_client_data
 
     session_user = request.session_user
     user_identifier = session_user.get('user_identifier')
@@ -16309,14 +16255,9 @@ def import_client_csv():
             merged_evals.append(clean_row)
             added_count += 1
 
-    # Save with history
     existing_data['evaluations'] = merged_evals
-    save_client_data_with_history(
-        client_id, existing_data,
-        changed_by=user_identifier,
-        change_source='csv_import',
-        change_description=f"CSV import: {updated_count} updated, {added_count} added"
-    )
+    if not save_client_data(client_id, existing_data):
+        return jsonify({"status": "error", "message": "Failed to save CSV import"}), 500
 
     log_action('CSV_IMPORT', 'super_admin', user_identifier, get_remote_address(),
                f"Imported CSV for {client_id}: {updated_count} updated, {added_count} added from {len(rows)} rows")
@@ -16335,7 +16276,7 @@ def import_csv_companion():
     """Import CSV data via companion app. Auth via email (same as sheet migration)."""
     import csv
     import io
-    from dashboard.database import get_client_data, save_client_data_with_history
+    from dashboard.database import get_client_data
 
     email = (request.form.get('email') or '').strip().lower()
     if not email:
@@ -16392,12 +16333,8 @@ def import_csv_companion():
         new_evals.append(clean_row)
 
     existing_data['evaluations'] = new_evals
-    save_client_data_with_history(
-        client_id, existing_data,
-        changed_by=email,
-        change_source='csv_import',
-        change_description=f"CSV import via companion: replaced {old_count} evals with {len(new_evals)} from CSV"
-    )
+    if not save_client_data(client_id, existing_data):
+        return jsonify({"status": "error", "message": "Failed to save CSV import"}), 500
 
     log_action('CSV_IMPORT', 'companion', email, get_remote_address(),
                f"Imported CSV for {client_id}: replaced {old_count} with {len(new_evals)} evals")
@@ -16830,18 +16767,9 @@ def update_data():
                                f'Attempted DELETE on {client_id} without super_admin role', False)
                     return jsonify({"status": "error", "message": "Only super admins can delete evaluations"}), 403
 
-                # Save with history tracking
-                success, version = save_client_data_with_history(
-                    client_id,
-                    client_data,
-                    action=action_type,
-                    changed_by=user_identifier,
-                    changed_by_type=user_type,
-                    ip_address=get_remote_address(),
-                    change_source='dashboard_edit',
-                    change_description=description
-                )
-                
+                success = save_client_data(client_id, client_data)
+                version = get_current_data_version(client_id) if success else -1
+
                 if success:
                     if _changed_fields_touch_hedge(user_changed):
                         try:
@@ -16965,18 +16893,11 @@ def update_data_with_api_key(data, identity, user_info):
         "identity": identity
     }
     
-    # Save to database WITH history tracking
-    success, version = save_client_data_with_history(
-        client_id,
-        client_data,
-        action='UPDATE',
-        changed_by=email or trader_id,
-        changed_by_type='api',
-        ip_address=get_remote_address(),
-        change_source='api_push',
-        change_description='Update via API'
-    )
-    
+    success = save_client_data(client_id, client_data)
+    version = get_current_data_version(client_id) if success else -1
+    if not success:
+        return jsonify({"status": "error", "message": "Failed to save client data"}), 500
+
     # Update Hierarchy
     add_admin(admin_id)
     add_trader(admin_id, trader_id)

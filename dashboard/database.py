@@ -2156,6 +2156,75 @@ def set_setting(key: str, value: str, updated_by: str = ''):
         conn.commit()
 
 
+def claim_history_snapshot_hour(hour_key: str) -> bool:
+    """Only one uWSGI worker runs the hourly history snapshot for this UTC hour."""
+    _ensure_settings_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_settings (key, value, updated_at, updated_by)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at,
+                updated_by = excluded.updated_by
+            WHERE system_settings.value IS DISTINCT FROM excluded.value
+            RETURNING value
+        ''', ('history_snapshot_hour', hour_key, datetime.now().isoformat(), 'scheduler'))
+        won = cursor.fetchone() is not None
+        conn.commit()
+        return won
+
+
+def list_clients_needing_history_snapshot():
+    """Clients whose live row is newer than their latest data_history snapshot."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT c.client_id
+            FROM clients_data c
+            WHERE COALESCE(c.last_updated, '') <> ''
+              AND COALESCE(c.last_updated, '') > COALESCE(
+                (SELECT MAX(h.created_at) FROM data_history h
+                 WHERE h.client_id = c.client_id),
+                ''
+              )
+            ORDER BY c.client_id
+        ''')
+        return [row['client_id'] for row in cursor.fetchall()]
+
+
+def save_hourly_history_snapshots(max_clients: int = 500) -> dict:
+    """Create data_history rows for clients updated since their last snapshot."""
+    client_ids = list_clients_needing_history_snapshot()
+    if max_clients and len(client_ids) > max_clients:
+        client_ids = client_ids[:max_clients]
+    saved = failed = 0
+    for client_id in client_ids:
+        try:
+            data = get_client_data(client_id)
+            if not data:
+                failed += 1
+                continue
+            version = save_data_snapshot(
+                client_id,
+                data,
+                action='HOURLY_SNAPSHOT',
+                changed_by='scheduler',
+                changed_by_type='system',
+                change_source='hourly_snapshot',
+                change_description='Scheduled hourly history snapshot',
+            )
+            if version > 0:
+                saved += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error("[hourly_snapshot] %s failed: %s", client_id, e)
+            failed += 1
+    return {"candidates": len(client_ids), "saved": saved, "failed": failed}
+
+
 def claim_companion_scan_epoch(epoch: str) -> bool:
     """Publish this minute's companion-scan tick. Only the first caller wins.
 
@@ -2929,7 +2998,10 @@ def save_client_data_with_history(client_id: str, data: dict,
                                  change_description: str = None,
                                  overwrite: bool = False) -> tuple:
     """
-    Save client data AND create a history snapshot for versioning.
+    Save client data AND create an immediate data_history snapshot.
+    
+    Production writes use save_client_data only; all versioning is hourly
+    via save_hourly_history_snapshots(). This helper remains for one-off scripts.
     
     Includes verification that data was actually committed to the database.
     
@@ -3032,29 +3104,18 @@ def rollback_to_version(client_id: str, version: int,
                         rolled_back_by_type: str = None,
                         ip_address: str = None) -> tuple:
     """
-    Rollback client data to a specific historical version.
+    Rollback clients_data to a specific hourly (or legacy) data_history version.
     
-    Creates a new version entry marking this as a rollback.
+    Does not create a new history row; the next scheduled snapshot captures state.
     
     Returns:
-        Tuple of (success: bool, new_version: int)
+        Tuple of (success: bool, restored_from_version: int)
     """
-    # Get the historical version data
     historical = get_data_version(client_id, version)
     if not historical:
         return (False, -1)
-    
-    # Save as new current data with rollback action
-    return save_client_data_with_history(
-        client_id,
-        historical['data'],
-        action='ROLLBACK',
-        changed_by=rolled_back_by,
-        changed_by_type=rolled_back_by_type,
-        ip_address=ip_address,
-        change_source='rollback',
-        change_description=f'Rolled back to version {version} from {historical["created_at"]}'
-    )
+    success = save_client_data(client_id, historical['data'], overwrite=True)
+    return (success, version if success else -1)
 
 def compare_versions(client_id: str, version1: int, version2: int) -> dict:
     """

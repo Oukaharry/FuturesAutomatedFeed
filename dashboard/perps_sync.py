@@ -112,7 +112,7 @@ def _refresh_row_status(row: dict, acct: dict) -> bool:
 def sync_client_perps_accounts(client_id: str, changed_by: str = "perps_sync",
                                force: bool = False) -> dict:
     """Mirror the client's MFP accounts into evaluation rows. Idempotent."""
-    from dashboard.database import get_client_data, save_client_data_with_history
+    from dashboard.database import get_client_data, save_client_data
 
     with _sync_lock:
         last = _last_sync.get(client_id, 0)
@@ -164,10 +164,7 @@ def sync_client_perps_accounts(client_id: str, changed_by: str = "perps_sync",
 
     if added or updated:
         client_data["evaluations"] = evaluations
-        save_client_data_with_history(
-            client_id, client_data, changed_by=changed_by,
-            change_source="perps_sync",
-            change_description=f"MyFundedPerps sync: {added} added, {updated} updated")
+        save_client_data(client_id, client_data)
         logger.info("[PerpsSync] %s: %d added, %d updated", client_id, added, updated)
     return {"status": "success", "added": added, "updated": updated,
             "accounts": len(accounts)}

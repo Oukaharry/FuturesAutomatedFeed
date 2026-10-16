@@ -163,6 +163,21 @@ def run_scheduler():
             except Exception as exc:
                 logging.error(f"Companion scan arm failed: {exc}")
 
+            # Top of each UTC hour: version snapshots for clients changed since last history row.
+            hour_key = now.strftime('%Y-%m-%dT%H')
+            if now.minute == 0 and ran.get('history_snapshot') != hour_key:
+                try:
+                    from dashboard.database import (
+                        claim_history_snapshot_hour,
+                        save_hourly_history_snapshots,
+                    )
+                    if claim_history_snapshot_hour(hour_key):
+                        stats = save_hourly_history_snapshots()
+                        logging.info("Hourly history snapshots: %s", stats)
+                except Exception as exc:
+                    logging.error(f"Hourly history snapshot job failed: {exc}")
+                _mark_ran('history_snapshot', hour_key)
+
             time.sleep(30)  # Check every 30s
 
         except Exception as e:

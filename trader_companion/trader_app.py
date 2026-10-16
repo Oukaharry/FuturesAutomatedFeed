@@ -8478,21 +8478,51 @@ class TradeOpssAIApp:
             return self._ALL_PHASE_FIELD_SETS
         return self._ALL_PHASE_FIELD_SETS
 
-    def _is_superseded_challenge_row(self, ev, all_evals) -> bool:
-        """Skip a challenge-only row when the same Account # graduated elsewhere.
+    def _scan_row_status_active(self, ev) -> bool:
+        """Dashboard active flag (not fail/complete/deleted), without weekday gate."""
+        if ev.get("_deleted"):
+            return False
+        if "_is_active" in ev:
+            return bool(ev["_is_active"])
+        p1 = self._cell(ev.get("Status P1")).lower()
+        funded = self._cell(ev.get("Status")).lower()
+        has_funded_acct = bool(self._cell_account(ev.get("Account #.1")))
+        has_challenge_acct = bool(self._cell_account(ev.get("Account #")))
+        p1_inactive = any(kw in p1 for kw in self._INACTIVE_KEYWORDS) if p1 else False
+        funded_inactive = any(
+            kw in funded for kw in (*self._INACTIVE_KEYWORDS, "complete")
+        ) if funded else False
+        if p1_inactive and not has_funded_acct:
+            return False
+        if funded_inactive:
+            return False
+        if p1_inactive and has_funded_acct and funded_inactive:
+            return False
+        if not has_challenge_acct and not has_funded_acct:
+            return False
+        return True
 
-        Example: row A has eval + funded (passed); row B still lists only the
-        old eval account — row B must not appear in Active Trades.
-        """
-        ch = self._cell_account(ev.get("Account #"))
-        fu = self._cell_account(ev.get("Account #.1"))
-        if not ch or fu:
+    def _row_lifecycle_account_keys(self, ev) -> set:
+        keys = set()
+        for field in ("Account #", "Account #.1"):
+            acct = self._cell_account(ev.get(field))
+            if acct:
+                keys.add(acct.lower())
+        return keys
+
+    def _has_active_duplicate_account(self, ev, all_evals) -> bool:
+        """True when another *active* row shares Account # or Account #.1."""
+        if not self._scan_row_status_active(ev):
+            return False
+        keys = self._row_lifecycle_account_keys(ev)
+        if not keys:
             return False
         for other in all_evals:
             if other is ev or other.get("_deleted"):
                 continue
-            if (self._cell_account(other.get("Account #")) == ch
-                    and self._cell_account(other.get("Account #.1"))):
+            if not self._scan_row_status_active(other):
+                continue
+            if keys & self._row_lifecycle_account_keys(other):
                 return True
         return False
 
@@ -8860,52 +8890,16 @@ class TradeOpssAIApp:
                     pass
         return results >= 2 and placeholders == 0
 
-    def _build_lifecycle_registry(self, all_evals):
-        """Challenge → funded account ids from rows that actually graduated."""
-        graduated_ch = set()
-        funded_accounts = set()
-        for ev in all_evals:
-            if ev.get("_deleted"):
-                continue
-            ch = self._cell_account(ev.get("Account #"))
-            fu = self._cell_account(ev.get("Account #.1"))
-            if not (ch and fu):
-                continue
-            p1 = self._cell(ev.get("Status P1")).lower()
-            if p1 in ("", "-", "—", "not started"):
-                continue
-            graduated_ch.add(ch.lower())
-            funded_accounts.add(fu.lower())
-        return graduated_ch, funded_accounts
-
     def _is_superseded_lifecycle_row(self, ev, all_evals) -> bool:
-        """Skip duplicate lifecycle legs (challenge row after funded account exists).
+        """Skip exhausted funded legs and active/active duplicate account numbers.
 
-        When an eval passes, the prop firm issues a new funded account number.
-        The dashboard may still have a stale challenge-only row OR a completed
-        funded row — only the current, tradeable leg should appear once.
+        Reusing an Account # on a new row while an older row is already Fail/
+        Completed is allowed — only block when two dashboard-active rows share
+        the same Account # or Account #.1 (copy/paste error).
         """
-        ch = self._cell_account(ev.get("Account #"))
-        fu = self._cell_account(ev.get("Account #.1"))
-        ch_key = ch.lower() if ch else ""
-
         if self._on_funded_leg(ev) and self._funded_leg_exhausted(ev):
             return True
-
-        if self._is_superseded_challenge_row(ev, all_evals):
-            return True
-
-        graduated_ch, funded_accounts = self._build_lifecycle_registry(all_evals)
-
-        # Challenge-only row whose Account # already graduated on another row
-        if ch_key and not fu:
-            if ch_key in graduated_ch:
-                return True
-            # Funded number mistakenly listed alone in Account # column
-            if ch_key in funded_accounts:
-                return True
-
-        return False
+        return self._has_active_duplicate_account(ev, all_evals)
 
     def _dedupe_active_by_primary_account(self, active_evals):
         """One active row per tradeable account number."""
@@ -9945,11 +9939,6 @@ class TradeOpssAIApp:
                 skipped["inactive"] += 1
                 continue
 
-            # Lifecycle dedup — same eval at challenge vs funded stage
-            if self._is_superseded_lifecycle_row(ev, evaluations):
-                skipped["lifecycle"] += 1
-                continue
-
             # Status gate (fail/completed) — dashboard flag or local fallback
             if "_is_active" in ev:
                 is_active = ev["_is_active"]
@@ -9957,6 +9946,11 @@ class TradeOpssAIApp:
                 is_active = self._is_eval_active(ev)
             if not is_active:
                 skipped["inactive"] += 1
+                continue
+
+            # Active rows only: duplicate Account # / Account #.1 on two live rows
+            if self._is_superseded_lifecycle_row(ev, evaluations):
+                skipped["lifecycle"] += 1
                 continue
 
             # Must have at least one account number
@@ -10059,7 +10053,7 @@ class TradeOpssAIApp:
                         + (f", {g} skipped (eval passed → funded elsewhere)" if g else "")
                         + (f", {u} skipped (dual row missing funded acct)" if u else "")
                         + (f", {fd} skipped (funded leg done / no {w} in funded cols)" if fd else "")
-                        + (f", {lc} skipped (lifecycle duplicate / funded complete)" if lc else "")
+                        + (f", {lc} skipped (duplicate active account #)" if lc else "")
                         + (f" | {c - a} account(s) connect for data only" if c > a else "")))
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
