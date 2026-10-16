@@ -96,7 +96,7 @@ _pool_lock = threading.Lock()
 _pool_checkout_sem = threading.BoundedSemaphore(_pool_max)
 # Avoid recreating the pool while Postgres is already out of slots (death spiral).
 _slot_exhaust_until = 0.0
-_SLOT_EXHAUST_COOLDOWN_SEC = 15.0
+_SLOT_EXHAUST_COOLDOWN_SEC = 5.0
 
 
 def db_concurrent_workers(cap: int = 6) -> int:
@@ -134,10 +134,53 @@ def _init_pool() -> bool:
             logger.error("[DB] Failed to initialize connection pool: %s", e)
             return False
 
+def _close_idle_connections() -> int:
+    """Drop idle pooled backends so a slot spike can recover.
+
+    Checked-out connections are left alone. Closing the pool with closeall()
+    during exhaustion orphans those and makes the outage worse.
+    """
+    pool = _connection_pool
+    if pool is None:
+        return 0
+    closed = 0
+    lock = getattr(pool, "_lock", None)
+    if lock is not None:
+        lock.acquire()
+    try:
+        idle = getattr(pool, "_pool", None)
+        if not idle:
+            return 0
+        while idle:
+            conn = idle.pop()
+            try:
+                conn.close()
+                closed += 1
+            except Exception:
+                pass
+    finally:
+        if lock is not None:
+            lock.release()
+    if closed:
+        logger.warning("[DB] Closed %s idle pooled connection(s) to free Postgres slots", closed)
+    return closed
+
+
+def _pool_has_idle() -> bool:
+    pool = _connection_pool
+    if pool is None:
+        return False
+    try:
+        return bool(pool._pool)
+    except Exception:
+        return False
+
+
 def _mark_slot_exhaustion():
-    """Backoff when Postgres refuses new connects (do not destroy the pool)."""
+    """Backoff new connects when Postgres refuses them. Keep using idle ones."""
     global _slot_exhaust_until
     _slot_exhaust_until = time.time() + _SLOT_EXHAUST_COOLDOWN_SEC
+    _close_idle_connections()
 
 
 def _slots_exhausted() -> bool:
@@ -145,22 +188,28 @@ def _slots_exhausted() -> bool:
 
 
 def slots_currently_exhausted() -> bool:
-    """Public: True while we are refusing new DB work after slot exhaustion."""
+    """Public: True while we are refusing new DB connects after slot exhaustion."""
     return _slots_exhausted()
 
 
 def _get_pooled_connection():
     """Get a connection from the pool (blocks until a checkout slot is free)."""
-    if _slots_exhausted():
+    # Cooldown blocks *new* server connections only. Idle pooled connections
+    # do not take another slot — refusing them is what kept the site 500ing
+    # while this process still held the backends Postgres was full of.
+    if _slots_exhausted() and not _pool_has_idle():
         raise psycopg2.OperationalError(
             "database temporarily unavailable (connection slots exhausted — cooling down)"
         )
-    _pool_checkout_sem.acquire()
+    if not _pool_checkout_sem.acquire(timeout=8):
+        raise psycopg2.OperationalError(
+            "database temporarily unavailable (connection pool busy)"
+        )
     acquired = True
     last_err = None
     try:
         for attempt in range(5):
-            if _slots_exhausted():
+            if _slots_exhausted() and not _pool_has_idle():
                 last_err = psycopg2.OperationalError(
                     "database temporarily unavailable (connection slots exhausted — cooling down)"
                 )
@@ -359,15 +408,11 @@ def get_connection():
         logger.error(f"[DB] Unexpected error in get_connection: {e}")
         raise
     finally:
+        # Always hand the connection back. Skipping a closed conn leaked both
+        # the pool slot and the checkout semaphore, so the worker wedged after
+        # two failed queries and never released its Postgres backend.
         if raw is not None:
-            try:
-                if not raw.closed:
-                    _return_pooled_connection(raw)
-            except Exception:
-                try:
-                    raw.close()
-                except Exception:
-                    pass
+            _return_pooled_connection(raw)
 
 
 @contextmanager

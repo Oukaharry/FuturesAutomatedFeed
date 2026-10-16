@@ -1958,6 +1958,15 @@ class TradeOpssAIApp:
                         msg = data.get("message", "Email not found")
                         self.root.after(0, lambda: self._login_fail(f"Access Denied: {msg}"))
                         return
+                elif response.status_code == 503:
+                    msg = "Server is busy — wait 1–2 minutes and try again."
+                    try:
+                        api_msg = response.json().get("message")
+                        if api_msg:
+                            msg = api_msg
+                    except Exception:
+                        pass
+                    self.root.after(0, lambda m=msg: self._login_fail(m))
                 else:
                     msg = f"Server error ({response.status_code})"
                     try:
