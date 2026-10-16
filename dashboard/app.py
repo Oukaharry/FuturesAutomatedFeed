@@ -64,7 +64,7 @@ from dashboard.database import (
     record_login_attempt, is_account_locked,
     find_user_by_identifier, verify_user_by_identifier,
     # History management
-    save_client_data_with_history, get_data_history, get_data_version,
+    get_data_history, get_data_version,
     get_current_data_version,
     rollback_to_version, compare_versions, get_latest_version,
     # KYC link management
