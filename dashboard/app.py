@@ -65,6 +65,7 @@ from dashboard.database import (
     find_user_by_identifier, verify_user_by_identifier,
     # History management
     save_client_data_with_history, get_data_history, get_data_version,
+    get_current_data_version,
     rollback_to_version, compare_versions, get_latest_version,
     # KYC link management
     add_kyc_link, remove_kyc_link, get_kyc_linked_clients, get_kyc_primary_for,
@@ -9160,18 +9161,13 @@ def api_client_push():
     elif mt5_account or mt5_deals:
         change_source = 'mt5_push'
 
-    # Save to database WITH history tracking
-    success, version = save_client_data_with_history(
-        client_id,
-        client_data,
-        action='DATA_PUSH',
-        changed_by=email,
-        changed_by_type='client',
-        ip_address=get_remote_address(),
-        change_source=change_source,
-        change_description=f"Data push from trader app with {len(evaluations)} evaluations"
-    )
-    
+    # Live row only; data_history updated hourly by the scheduler (see save_hourly_history_snapshots).
+    success = save_client_data(client_id, client_data)
+    version = get_current_data_version(client_id) if success else -1
+    if not success:
+        app.logger.error(f"[DB SAVE FAILED] Data push failed for {client_id}")
+        return jsonify({"status": "error", "message": "Failed to save client data"}), 500
+
     app.logger.info(f"✅ SAVED to database successfully (v{version})")
     app.logger.info(f"🔄 Updated Statistics:")
     stats_complete = statistics.get('profitability_completed', {})
@@ -16965,18 +16961,11 @@ def update_data_with_api_key(data, identity, user_info):
         "identity": identity
     }
     
-    # Save to database WITH history tracking
-    success, version = save_client_data_with_history(
-        client_id,
-        client_data,
-        action='UPDATE',
-        changed_by=email or trader_id,
-        changed_by_type='api',
-        ip_address=get_remote_address(),
-        change_source='api_push',
-        change_description='Update via API'
-    )
-    
+    success = save_client_data(client_id, client_data)
+    version = get_current_data_version(client_id) if success else -1
+    if not success:
+        return jsonify({"status": "error", "message": "Failed to save client data"}), 500
+
     # Update Hierarchy
     add_admin(admin_id)
     add_trader(admin_id, trader_id)
