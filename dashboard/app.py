@@ -3974,15 +3974,26 @@ def _cell_is_only_weekday(raw):
 
 
 def _keep_first_weekday_placeholder(ev, fields):
-    """Leave a single day placeholder. Later copies are the repeat-queue bug."""
+    """Leave one day placeholder per phase.
+
+    Identical labels repeated across cells are the repeat-queue bug: keep the
+    first and clear the rest. Different labels mean the row advanced (today's
+    cell still says FRIDAY while the next cell says MONDAY). Keeping the first
+    deleted the next session and the companion then re-pushed today. Keep the
+    last distinct label and clear earlier day-name-only cells.
+    """
     manual = set(ev.get('_manual_push_fields') or [])
-    kept = False
-    for field in fields:
-        if not _cell_is_only_weekday(ev.get(field)):
-            continue
-        if not kept:
-            kept = True
-            continue
+    weekday_fields = [f for f in fields if _cell_is_only_weekday(ev.get(f))]
+    if len(weekday_fields) <= 1:
+        return
+    labels = [re.sub(r'[^A-Za-z]', '', str(ev.get(f) or '')).upper() for f in weekday_fields]
+    if len(set(labels)) == 1:
+        for field in weekday_fields[1:]:
+            if field in manual:
+                continue
+            ev[field] = ''
+        return
+    for field in weekday_fields[:-1]:
         if field in manual:
             continue
         ev[field] = ''

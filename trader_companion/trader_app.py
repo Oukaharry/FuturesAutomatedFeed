@@ -7385,10 +7385,18 @@ class TradeOpssAIApp:
         trade was taken.
         """
         changed = []
+        today_iso = kenya_today().strftime("%Y-%m-%d")
+        today_wd = kenya_today().weekday()
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
             manual = set(ev.get("_manual_push_fields") or [])
+            cleared = set(ev.get("_cleared_fields") or [])
+            account = self._primary_trade_account(ev)
+            resolved_date, resolved_outcome = self._latest_resolved_outcome(account)
+            traded_today = (
+                resolved_date == today_iso and resolved_outcome in ("win", "loss")
+            )
             for status_field, phase in (("Status P1", "Challenge"), ("Status", "Funded")):
                 status = self._cell(ev.get(status_field))
                 if status_field == "Status" and not status.strip():
@@ -7434,6 +7442,51 @@ class TradeOpssAIApp:
                 if row_changed:
                     self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday queue — "
                              f"{status_field} shows {status}")
+
+            # A fill today must not leave (or restore) today's name. The next
+            # session goes in the following cell. A day the trader cleared stays
+            # cleared — this pass only removes a today-token that is still sitting
+            # on an account that already has a resolved trade today.
+            if traded_today:
+                next_label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+                for phase in ("Challenge", "Funded"):
+                    fields = self._get_phase_fields(phase) or []
+                    today_fields = []
+                    for field in fields:
+                        if field in manual:
+                            continue
+                        tok = self._parse_day_token(self._cell(ev.get(field)))
+                        if tok is None:
+                            continue
+                        if self._classify_day_placeholder(tok, today_wd) != "today":
+                            continue
+                        today_fields.append(field)
+                    if not today_fields:
+                        continue
+                    for field in today_fields:
+                        ev[field] = "$0.00"
+                        changed.append(field)
+                    still_queued = any(
+                        self._parse_day_token(self._cell(ev.get(f))) is not None
+                        for f in fields)
+                    if still_queued:
+                        self.log(f"🩹 {account}: traded {today_iso} — removed today's "
+                                 f"placeholder ({', '.join(today_fields)})")
+                        continue
+                    traded_field = today_fields[-1]
+                    firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+                    try:
+                        next_field = self._resolve_next_hedge_field(
+                            ev, firm_code, phase, traded_field, outcome=resolved_outcome)
+                    except Exception:
+                        next_field = None
+                    if (next_field and next_field not in manual
+                            and next_field not in cleared
+                            and self._cell(ev.get(next_field)) in ("", "—", "-")):
+                        ev[next_field] = next_label
+                        changed.append(next_field)
+                    self.log(f"🩹 {account}: traded {today_iso} — "
+                             f"{', '.join(today_fields)} → $0.00, next session {next_label}")
         return changed
 
     def _release_held_breach_alerts(self, evaluations):
@@ -7977,14 +8030,13 @@ class TradeOpssAIApp:
         return None
 
     def _payout_placeholder_label(self, now=None):
-        """Trading-day label for a payout-released funded trade (Kenya EAT)."""
-        now = now or kenya_now()
-        day = now.date()
-        if now.hour >= TRADING_SESSION_END_HOUR:
-            day += timedelta(days=1)
-        while day.weekday() >= 5:
-            day += timedelta(days=1)
-        return self._WEEKDAY_LABELS[day.weekday()]
+        """Next session after a payout release — never the day already in progress.
+
+        A release during the 01:00–20:00 window must queue tomorrow (Fri → Mon),
+        not another trade today.
+        """
+        del now
+        return self._WEEKDAY_LABELS[self._next_trading_weekday()]
 
     @staticmethod
     def _released_dashboard_payout_count(ev) -> int:
@@ -8078,9 +8130,7 @@ class TradeOpssAIApp:
                     self.log(f"💤 {account}: {field} still PAYOUT — no withdrawal "
                              f"in the Tradovate balance yet")
                 continue
-            label = self._WEEKDAY_LABELS[kenya_today().weekday()]
-            if kenya_today().weekday() >= 5:
-                label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+            label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
             # Blank rather than pop: a push cannot delete a key the server
             # already stores, and a leftover anchor re-released the marker the
             # moment a trader typed PAYOUT again.
@@ -9646,6 +9696,13 @@ class TradeOpssAIApp:
                 next_field = self._resolve_next_hedge_field(
                     ev, resolved_firm, phase, field_name,
                 )
+                if next_field == field_name:
+                    phase_fields = self._get_phase_fields(phase) or []
+                    try:
+                        _i = phase_fields.index(field_name)
+                    except ValueError:
+                        _i = -1
+                    next_field = phase_fields[_i + 1] if 0 <= _i < len(phase_fields) - 1 else None
                 if next_field:
                     next_label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
                     cur_next = self._cell(ev.get(next_field))
