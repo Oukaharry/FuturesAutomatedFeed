@@ -2925,13 +2925,13 @@ def verify_data_saved(client_id: str, expected_evals_count: int = None, expected
 
 def save_data_snapshot(client_id: str, data: dict, action: str,
                        changed_by: str = None, changed_by_type: str = None,
-                       ip_address: str = None, change_source: str = None, 
-                       change_description: str = None, _conn=None) -> int:
+                       ip_address: str = None, change_source: str = None,
+                       change_description: str = None) -> int:
     """
     Save a snapshot of client data to history for versioning/rollback.
-    Version number is assigned atomically inside the transaction using
-    an advisory lock to prevent duplicate-key races under concurrent writes.
-    Pass _conn to run inside an existing transaction (caller commits).
+
+    Uses a dedicated short transaction: pg_advisory_xact_lock + version bump +
+    INSERT, then commit. The lock is never held while updating clients_data.
 
     Returns:
         The version number of the saved snapshot, or -1 on failure.
@@ -2939,52 +2939,45 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
     try:
         now = datetime.now().isoformat()
 
-        deals_json           = json.dumps(data.get('deals', []))
-        positions_json       = json.dumps(data.get('positions', []))
-        account_json         = json.dumps(data.get('account', {}))
-        evaluations_json     = json.dumps(data.get('evaluations', []))
-        statistics_json      = json.dumps(data.get('statistics', {}))
+        deals_json = json.dumps(data.get('deals', []))
+        positions_json = json.dumps(data.get('positions', []))
+        account_json = json.dumps(data.get('account', {}))
+        evaluations_json = json.dumps(data.get('evaluations', []))
+        statistics_json = json.dumps(data.get('statistics', {}))
         dropdown_options_json = json.dumps(data.get('dropdown_options', {}))
-        identity_json        = json.dumps(data.get('identity', {}))
+        identity_json = json.dumps(data.get('identity', {}))
 
-        def _save(conn):
+        with get_connection() as conn:
             cursor = conn.cursor()
-
-            # Advisory lock keyed on client_id hash — prevents concurrent
-            # workers from reading the same MAX(version). Released on commit.
             cursor.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
-                (client_id,)
+                (client_id,),
             )
             cursor.execute(
                 'SELECT COALESCE(MAX(version), 0) AS max_ver FROM data_history '
                 'WHERE client_id = %s',
-                (client_id,)
+                (client_id,),
             )
             row = cursor.fetchone()
             version = (row['max_ver'] if row else 0) + 1
-
-            cursor.execute('''
+            cursor.execute(
+                '''
                 INSERT INTO data_history (
                     client_id, version, action, changed_by, changed_by_type,
                     ip_address, change_source, change_description,
                     deals, positions, account, evaluations, statistics,
                     dropdown_options, identity, created_at
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ''', (
-                client_id, version, action, changed_by, changed_by_type,
-                ip_address, change_source, change_description,
-                deals_json, positions_json, account_json, evaluations_json, statistics_json,
-                dropdown_options_json, identity_json, now
-            ))
-            if _conn is None:
-                conn.commit()
+                ''',
+                (
+                    client_id, version, action, changed_by, changed_by_type,
+                    ip_address, change_source, change_description,
+                    deals_json, positions_json, account_json, evaluations_json,
+                    statistics_json, dropdown_options_json, identity_json, now,
+                ),
+            )
+            conn.commit()
             return version
-
-        if _conn is not None:
-            return _save(_conn)
-        with get_connection() as conn:
-            return _save(conn)
     except Exception as e:
         print(f"Error saving data snapshot: {e}")
         return -1
@@ -3009,18 +3002,15 @@ def save_client_data_with_history(client_id: str, data: dict,
         Tuple of (success: bool, version: int)
     """
     try:
+        version = save_data_snapshot(
+            client_id, data, action, changed_by, changed_by_type,
+            ip_address, change_source, change_description,
+        )
+        if version <= 0:
+            logger.error(f"[DB SAVE FAILED] Failed to create history snapshot for {client_id}")
+            return (False, -1)
+
         with get_connection() as conn:
-            version = save_data_snapshot(
-                client_id, data, action, changed_by, changed_by_type,
-                ip_address, change_source, change_description,
-                _conn=conn,
-            )
-            
-            if version <= 0:
-                conn.rollback()
-                logger.error(f"[DB SAVE FAILED] Failed to create history snapshot for {client_id}")
-                return (False, -1)
-            
             success = save_client_data(client_id, data, overwrite=overwrite, _conn=conn)
             
             if not success:
