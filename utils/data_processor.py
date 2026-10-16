@@ -287,6 +287,132 @@ def _is_weekday_or_empty_label(value):
     return v in _WEEKDAY_LABELS
 
 
+def cell_is_pure_weekday_placeholder(value):
+    """True when the cell is only a weekday queue label (MON / WEDNESDAY / …)."""
+    v = str(value or '').strip().upper()
+    if not v or v in ('-', '—', '–'):
+        return False
+    return v in _WEEKDAY_LABELS
+
+
+def cell_is_settled_day_value(value):
+    """True when a hedge/prop day cell already has a result (not a queue label)."""
+    s = str(value or '').strip()
+    if not s or s in ('-', '—', '–'):
+        return False
+    if cell_is_pure_weekday_placeholder(s):
+        return False
+    if s.upper() == 'PAYOUT':
+        return True
+    try:
+        float(s.replace('$', '').replace(',', '').strip())
+        return True
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
+CHALLENGE_HEDGE_DAY_FIELDS = [f'Hedge Result {i}' for i in range(1, 6)]
+FUNDED_HEDGE_DAY_FIELDS = (
+    [f'Hedge Result {i}.1' for i in range(1, 6)]
+    + ['Hedge Result 6', 'Hedge Result 7']
+    + [f'Hedge Result {i}' for i in range(8, 31)]
+)
+FARMING_HEDGE_DAY_FIELDS = [f'Hedge Day {i}' for i in range(1, 61)]
+FARMING_PROP_DAY_FIELDS = [f'Prop Day {i}' for i in range(1, 61)]
+
+
+def canonical_weekday_placeholder_field(ev, fields):
+    """First slot that may hold the single weekday queue label for this track."""
+    if not isinstance(ev, dict):
+        return None
+    cleared = set(ev.get('_cleared_fields') or [])
+    for field in fields or []:
+        val = ev.get(field)
+        s = str(val or '').strip()
+        if cell_is_settled_day_value(val):
+            continue
+        if cell_is_pure_weekday_placeholder(val):
+            return field
+        if s in ('', '-', '—', '–'):
+            if field in cleared:
+                continue
+            return field
+    return None
+
+
+def enforce_single_ordered_weekday_placeholder(ev, fields):
+    """Keep at most one system weekday placeholder, in progression order."""
+    if not isinstance(ev, dict):
+        return []
+    manual = set(ev.get('_manual_push_fields') or [])
+    canonical = canonical_weekday_placeholder_field(ev, fields)
+    removed = []
+    for field in fields or []:
+        if field in manual:
+            continue
+        if not cell_is_pure_weekday_placeholder(ev.get(field)):
+            continue
+        if field != canonical:
+            ev[field] = ''
+            removed.append(field)
+    return removed
+
+
+def enforce_eval_day_placeholder_order(ev):
+    """One in-order weekday placeholder per challenge / funded / farming track."""
+    removed = []
+    for field_list in (
+        CHALLENGE_HEDGE_DAY_FIELDS,
+        FUNDED_HEDGE_DAY_FIELDS,
+        FARMING_HEDGE_DAY_FIELDS,
+        FARMING_PROP_DAY_FIELDS,
+    ):
+        removed.extend(enforce_single_ordered_weekday_placeholder(ev, field_list))
+    return removed
+
+
+def weekday_track_fields_for_phase(phase):
+    """Hedge columns that share one weekday queue label for a progression phase."""
+    p = str(phase or '').strip()
+    if p == 'Challenge':
+        return CHALLENGE_HEDGE_DAY_FIELDS
+    if p == 'Farming':
+        return FARMING_HEDGE_DAY_FIELDS
+    return FUNDED_HEDGE_DAY_FIELDS
+
+
+def track_has_weekday_placeholder(ev, fields):
+    """True if any cell in this track already shows a weekday queue label."""
+    if not isinstance(ev, dict):
+        return False
+    for field in fields or []:
+        if cell_is_pure_weekday_placeholder(ev.get(field)):
+            return True
+    return False
+
+
+def may_autofill_next_weekday_placeholder(ev, track_fields, next_field):
+    """Whether to write the next session label (one slot, no retry duplicates).
+
+    Allows a single backfill when the fill-time HTTP write failed, but refuses
+    when any weekday placeholder already exists on this track or the target
+    cell is locked/cleared/non-empty.
+    """
+    if not isinstance(ev, dict) or not next_field:
+        return False
+    cleared = set(ev.get('_cleared_fields') or [])
+    manual = set(ev.get('_manual_push_fields') or [])
+    if next_field in cleared or next_field in manual:
+        return False
+    cur = str(ev.get(next_field) or '').strip()
+    if cur and cur not in ('-', '—', '–'):
+        return False
+    if track_has_weekday_placeholder(ev, track_fields):
+        return False
+    return True
+
+
 def field_change_affects_discrepancy(field, old_val, new_val):
     """Whether an evaluation cell edit should trigger MT5 discrepancy recalculation."""
     if not field or field.startswith('_'):
