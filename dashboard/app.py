@@ -3136,16 +3136,14 @@ def _eval_has_non_blank_value(v):
 def _eval_push_field_blocked(ev, field_name, phase_code=''):
     """True when MT5/companion push must not overwrite this eval cell.
 
-    Manual dashboard edits always win (including weekday / text corrections).
-    Cleared cells block push except FA farming (intentional same-day repopulation).
+    Manual dashboard edits and explicit clears always win.
     """
     if not isinstance(ev, dict) or not field_name:
         return False
     if field_name in set(ev.get('_manual_push_fields') or []):
         return True
-    if phase_code != 'FA' or field_name.startswith('Prop Progress'):
-        if field_name in set(ev.get('_cleared_fields') or []):
-            return True
+    if field_name in set(ev.get('_cleared_fields') or []):
+        return True
     return False
 
 
@@ -3249,12 +3247,7 @@ def merge_dashboard_update_evaluations(
                 cleared.discard(key)
                 manual.add(key)
             else:
-                old_val = existing_ev.get(key)
-                if ((key.startswith('Hedge Day') or key.startswith('Prop Day'))
-                        and _is_weekday_or_empty_label(old_val)):
-                    cleared.discard(key)
-                else:
-                    cleared.add(key)
+                cleared.add(key)
                 manual.discard(key)
         if cleared:
             merged['_cleared_fields'] = sorted(cleared)
@@ -3268,6 +3261,8 @@ def merge_dashboard_update_evaluations(
         if _row_should_clear_day_placeholders(merged):
             _clear_system_day_placeholders(merged)
         _clear_stale_zero_trade_markers(merged)
+        from utils.data_processor import enforce_eval_day_placeholder_order
+        enforce_eval_day_placeholder_order(merged)
 
         out[idx] = merged
 
@@ -3976,29 +3971,9 @@ def _cell_is_only_weekday(raw):
 
 
 def _keep_first_weekday_placeholder(ev, fields):
-    """Leave one day placeholder per phase.
-
-    Identical labels repeated across cells are the repeat-queue bug: keep the
-    first and clear the rest. Different labels mean the row advanced (today's
-    cell still says FRIDAY while the next cell says MONDAY). Keeping the first
-    deleted the next session and the companion then re-pushed today. Keep the
-    last distinct label and clear earlier day-name-only cells.
-    """
-    manual = set(ev.get('_manual_push_fields') or [])
-    weekday_fields = [f for f in fields if _cell_is_only_weekday(ev.get(f))]
-    if len(weekday_fields) <= 1:
-        return
-    labels = [re.sub(r'[^A-Za-z]', '', str(ev.get(f) or '')).upper() for f in weekday_fields]
-    if len(set(labels)) == 1:
-        for field in weekday_fields[1:]:
-            if field in manual:
-                continue
-            ev[field] = ''
-        return
-    for field in weekday_fields[:-1]:
-        if field in manual:
-            continue
-        ev[field] = ''
+    """Keep one in-order weekday placeholder; drop extras (see data_processor)."""
+    from utils.data_processor import enforce_single_ordered_weekday_placeholder
+    enforce_single_ordered_weekday_placeholder(ev, fields)
 
 
 def _status_is_fail(status):
@@ -4252,6 +4227,13 @@ def _apply_server_eval_guards(evaluations):
         _stamp_fail_end_date(ev, 'Status', 'Date Ended.1')
         _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
         _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
+        from utils.data_processor import (
+            FARMING_HEDGE_DAY_FIELDS,
+            FARMING_PROP_DAY_FIELDS,
+            enforce_single_ordered_weekday_placeholder,
+        )
+        enforce_single_ordered_weekday_placeholder(ev, FARMING_HEDGE_DAY_FIELDS)
+        enforce_single_ordered_weekday_placeholder(ev, FARMING_PROP_DAY_FIELDS)
         _heal_stored_lucid_farming_fail(ev)
         _heal_failed_funded_with_payout_to_completed(ev)
 
@@ -4497,21 +4479,6 @@ def _write_farming_prop_days_and_progress(evaluation, daily_pnl, row_num, match_
             match_log.append(
                 f"💰 Row {row_num} | Prop Progress {progress}/{required} → "
                 f"{payout_field} PAYOUT (request payout — trading paused)"
-            )
-    else:
-        # A Tradovate-side close bypasses the companion's order callback, so
-        # reconcile its next daily placeholder from the latest recorded P/L.
-        next_field = f'Hedge Day {slot + 1}'
-        next_value = str(evaluation.get(next_field) or '').strip()
-        if not next_value and not _eval_push_field_blocked(evaluation, next_field, phase_code='FA'):
-            last_date = datetime.strptime(date, '%Y-%m-%d').date()
-            next_date = last_date + timedelta(days=1)
-            while next_date.weekday() >= 5:
-                next_date += timedelta(days=1)
-            evaluation[next_field] = next_date.strftime('%A').upper()
-            match_log.append(
-                f"✅ Row {row_num} | {next_field} → {evaluation[next_field]} "
-                "(next farming day)"
             )
     return 1, completed
 
@@ -5999,7 +5966,6 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # repopulate it from re-aggregated MT5 history.  The clear is lifted
         # automatically when the user types a new value back into the cell
         # (see /api/update_data handler).
-        # Farming (FA) companion pushes are intentional same-day writes and override clears.
         _ev_for_clear = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
         if _ev_for_clear is not None and _eval_push_field_blocked(_ev_for_clear, field_name, phase_code):
             match_log.append(

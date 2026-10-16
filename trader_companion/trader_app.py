@@ -7211,6 +7211,11 @@ class TradeOpssAIApp:
         self._breach_floor_by_account = dict(state.get("breach_floors") or {})
         self._pending_day_cell_marks = list(state.get("day_cell_marks") or [])
         self._known_payout_counts = dict(state.get("payout_counts") or {})
+        _today_iso = kenya_today().strftime("%Y-%m-%d")
+        self._prop_fills_kenya_day = {
+            k: v for k, v in (state.get("prop_fills_kenya_day") or {}).items()
+            if v == _today_iso
+        }
         if self._pending_breach_alerts:
             try:
                 self.log(f"🚨 Restored breach state: {len(self._pending_breach_alerts)} "
@@ -7228,6 +7233,8 @@ class TradeOpssAIApp:
                 "breach_floors": dict(getattr(self, "_breach_floor_by_account", {}) or {}),
                 "day_cell_marks": list(getattr(self, "_pending_day_cell_marks", []) or []),
                 "payout_counts": dict(getattr(self, "_known_payout_counts", {}) or {}),
+                "prop_fills_kenya_day": dict(
+                    getattr(self, "_prop_fills_kenya_day", {}) or {}),
             }
             with open(self._breach_state_path(), "w") as f:
                 json.dump(state, f, indent=1)
@@ -7369,20 +7376,53 @@ class TradeOpssAIApp:
         self._pending_day_cell_marks = kept
         self._save_breach_state()
 
+    def _enforce_eval_day_placeholder_order(self, ev):
+        """Drop duplicate / out-of-order weekday queue labels (keep manual cells)."""
+        try:
+            from utils.data_processor import enforce_eval_day_placeholder_order
+            return enforce_eval_day_placeholder_order(ev)
+        except Exception:
+            return []
+
+    def _try_queue_next_weekday_after_trade(self, ev, phase, traded_field, outcome=None, changed=None):
+        """Queue the next session weekday once (Fri → MON), without retry spam."""
+        from utils.data_processor import (
+            may_autofill_next_weekday_placeholder,
+            weekday_track_fields_for_phase,
+        )
+        track = weekday_track_fields_for_phase(phase)
+        self._enforce_eval_day_placeholder_order(ev)
+        firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+        try:
+            next_field = self._resolve_next_hedge_field(
+                ev, firm_code, phase, traded_field, outcome=outcome,
+            )
+        except Exception:
+            next_field = None
+        if next_field == traded_field:
+            phase_fields = self._get_phase_fields(phase) or []
+            try:
+                idx = phase_fields.index(traded_field)
+            except ValueError:
+                idx = -1
+            next_field = (
+                phase_fields[idx + 1] if 0 <= idx < len(phase_fields) - 1 else None
+            )
+        if not next_field:
+            return None
+        if not may_autofill_next_weekday_placeholder(ev, track, next_field):
+            return None
+        label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+        ev[next_field] = label
+        if changed is not None:
+            changed.append(next_field)
+        return next_field
+
     def _reconcile_traded_day_placeholders(self, evaluations):
-        """Heal resolved trade cells and restore a missing next-day placeholder.
+        """Heal resolved trade cells (weekday → $0.00) and queue next session once.
 
-        The fill-time $0.00 write is one HTTP chain that can fail once and
-        never retry, while the status engine retries every cycle — so a row
-        can say Hit SL1 while its cell still reads TUESDAY (and could trade
-        again). When the status proves trade n resolved, cells 1..n holding a
-        weekday become $0.00 and the next weekday is queued, blueprint-aware.
-        This also restores the next placeholder when the fill cell was already
-        marked $0.00 but its follow-up queue write was missed.
-
-        Stale Hit TP/SL without a broker-resolved outcome must NOT consume a
-        waiting weekday — that was wiping Funded Next placeholders before the
-        trade was taken.
+        Backfills a missed fill-time queue write, but only when this track has
+        no weekday placeholder yet — periodic reconcile must not stack duplicates.
         """
         changed = []
         today_iso = kenya_today().strftime("%Y-%m-%d")
@@ -7391,11 +7431,11 @@ class TradeOpssAIApp:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
             manual = set(ev.get("_manual_push_fields") or [])
-            cleared = set(ev.get("_cleared_fields") or [])
             account = self._primary_trade_account(ev)
             resolved_date, resolved_outcome = self._latest_resolved_outcome(account)
             traded_today = (
-                resolved_date == today_iso and resolved_outcome in ("win", "loss")
+                (resolved_date == today_iso and resolved_outcome in ("win", "loss"))
+                or self._prop_fill_recorded_today(account)
             )
             for status_field, phase in (("Status P1", "Challenge"), ("Status", "Funded")):
                 status = self._cell(ev.get(status_field))
@@ -7404,7 +7444,6 @@ class TradeOpssAIApp:
                 m = self._HIT_TRADE_RE.fullmatch(status.strip().lower())
                 if not m:
                     continue
-                account = self._primary_trade_account(ev)
                 _date, outcome = self._latest_resolved_outcome(account)
                 if outcome not in ("win", "loss"):
                     continue
@@ -7422,34 +7461,17 @@ class TradeOpssAIApp:
                     ev[field] = "$0.00"
                     changed.append(field)
                     row_changed = True
-                # Queue the next weekday unless this leg already has one
-                if not any(self._parse_day_token(self._cell(ev.get(f))) is not None
-                           for f in fields):
-                    traded_field = fields[min(n, len(fields)) - 1]
-                    firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
-                    try:
-                        next_field = self._resolve_next_hedge_field(
-                            ev, firm_code, phase, traded_field, outcome=outcome)
-                    except Exception:
-                        next_field = None
-                    cleared = set(ev.get("_cleared_fields") or [])
-                    if (next_field and next_field not in manual
-                            and next_field not in cleared
-                            and self._cell(ev.get(next_field)) in ("", "—", "-")):
-                        ev[next_field] = self._WEEKDAY_LABELS[self._next_trading_weekday()]
-                        changed.append(next_field)
-                        row_changed = True
                 if row_changed:
-                    self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday queue — "
-                             f"{status_field} shows {status}")
+                    traded_field = fields[min(n, len(fields)) - 1]
+                    queued = self._try_queue_next_weekday_after_trade(
+                        ev, phase, traded_field, outcome=outcome, changed=changed,
+                    )
+                    self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday → $0.00 — "
+                             f"{status_field} shows {status}"
+                             + (f", next → {queued}" if queued else ""))
 
-            # A fill today must not leave (or restore) today's name. The next
-            # session goes in the following cell. A day the trader cleared stays
-            # cleared — this pass only removes a today-token that is still sitting
-            # on an account that already has a resolved trade today.
             if traded_today:
-                next_label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
-                for phase in ("Challenge", "Funded"):
+                for phase in ("Challenge", "Funded", "Farming"):
                     fields = self._get_phase_fields(phase) or []
                     today_fields = []
                     for field in fields:
@@ -7466,27 +7488,14 @@ class TradeOpssAIApp:
                     for field in today_fields:
                         ev[field] = "$0.00"
                         changed.append(field)
-                    still_queued = any(
-                        self._parse_day_token(self._cell(ev.get(f))) is not None
-                        for f in fields)
-                    if still_queued:
-                        self.log(f"🩹 {account}: traded {today_iso} — removed today's "
-                                 f"placeholder ({', '.join(today_fields)})")
-                        continue
                     traded_field = today_fields[-1]
-                    firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
-                    try:
-                        next_field = self._resolve_next_hedge_field(
-                            ev, firm_code, phase, traded_field, outcome=resolved_outcome)
-                    except Exception:
-                        next_field = None
-                    if (next_field and next_field not in manual
-                            and next_field not in cleared
-                            and self._cell(ev.get(next_field)) in ("", "—", "-")):
-                        ev[next_field] = next_label
-                        changed.append(next_field)
+                    queued = self._try_queue_next_weekday_after_trade(
+                        ev, phase, traded_field, outcome=resolved_outcome, changed=changed,
+                    )
                     self.log(f"🩹 {account}: traded {today_iso} — "
-                             f"{', '.join(today_fields)} → $0.00, next session {next_label}")
+                             f"{', '.join(today_fields)} → $0.00"
+                             + (f", next session queued" if queued else ""))
+            changed.extend(self._enforce_eval_day_placeholder_order(ev))
         return changed
 
     def _release_held_breach_alerts(self, evaluations):
@@ -8215,6 +8224,67 @@ class TradeOpssAIApp:
                 continue
             return str(day.get("date")), ("win" if net > 0 else "loss")
         return None, None
+
+    def _prop_fill_recorded_today(self, account_number) -> bool:
+        """True when this account already had a prop broker fill today (Kenya EAT)."""
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return False
+        today_iso = kenya_today().strftime("%Y-%m-%d")
+        recorded = (getattr(self, "_prop_fills_kenya_day", {}) or {}).get(key)
+        return recorded == today_iso
+
+    def _record_prop_broker_fill_today(self, account_number):
+        """Remember a Tradovate/TopStepX/Alpha fill so same-day re-scans cannot re-fire."""
+        key = str(account_number or "").strip().lower()
+        if not key:
+            return
+        today_iso = kenya_today().strftime("%Y-%m-%d")
+        store = getattr(self, "_prop_fills_kenya_day", None)
+        if store is None:
+            store = {}
+            self._prop_fills_kenya_day = store
+        if store.get(key) == today_iso:
+            return
+        store[key] = today_iso
+        self._save_breach_state()
+
+    def _account_resolved_trade_today(self, account_number):
+        """(blocked, reason) when Kenya today already has a closed or recorded prop trade."""
+        today_iso = kenya_today().strftime("%Y-%m-%d")
+        if self._prop_fill_recorded_today(account_number):
+            return True, "prop fill already recorded today"
+        resolved_date, outcome = self._latest_resolved_outcome(account_number)
+        if resolved_date == today_iso and outcome in ("win", "loss"):
+            return True, f"broker day already closed ({outcome})"
+        outcome_today = self._resolve_trade_outcome(account_number, on_date=today_iso)
+        if outcome_today in ("win", "loss"):
+            return True, f"broker P&L resolved ({outcome_today})"
+        return False, None
+
+    def _should_block_repeat_prop_trade(self, account_number, ev=None, phase_key=None):
+        """Block a second prop entry the same Kenya calendar day."""
+        if isinstance(ev, dict) and self._account_has_open_position(ev):
+            return True, "broker position still open"
+        blocked, reason = self._account_resolved_trade_today(account_number)
+        if blocked:
+            return True, reason
+        if not isinstance(ev, dict) or not phase_key:
+            return False, None
+        today_iso = kenya_today().strftime("%Y-%m-%d")
+        pk = str(phase_key or "").strip().lower()
+        if pk in ("funded_trade1",) or (pk.startswith("funded") and pk.endswith("_trade1")):
+            if self._on_funded_leg(ev) and self._has_taken_funded_trade1(ev):
+                started = (self._cell(ev.get("Date Started.1"))
+                           or self._cell(ev.get("Date Started")))
+                if started == today_iso:
+                    return True, "funded trade 1 already completed today"
+        if pk in ("challenge_trade1",) or (pk.startswith("challenge") and pk.endswith("_trade1")):
+            if not self._on_funded_leg(ev) and self._has_taken_challenge_trade1(ev):
+                started = self._cell(ev.get("Date Started"))
+                if started == today_iso:
+                    return True, "challenge trade 1 already completed today"
+        return False, None
 
     def _locate_progression_cells(self, ev):
         """(traded_field, traded_phase, placeholder_field) for a row.
@@ -9685,34 +9755,25 @@ class TradeOpssAIApp:
                 matched_ev = ev
                 force_fields.extend(self._mark_trade_in_progress(ev))
                 cur = self._cell(ev.get(field_name))
-                if self._parse_day_token(cur) is not None:
+                traded_day_num = self._parse_day_token(cur)
+                if traded_day_num is not None:
                     ev[field_name] = "$0.00"
                     force_fields.append(field_name)
+                    # Stale duplicate weekday (e.g. FRIDAY in HR1 and HR1.1).
+                    for _ph, _flist in self._ALL_PHASE_FIELD_SETS:
+                        for _f in _flist:
+                            if _f == field_name:
+                                continue
+                            if self._parse_day_token(self._cell(ev.get(_f))) == traded_day_num:
+                                ev[_f] = ""
+                                force_fields.append(_f)
 
-                resolved_firm = firm_code or self._resolve_firm_code(ev.get("Prop Firm", ""))
                 phase = current_phase
                 if not phase:
                     phase, _ = self._detect_eval_phase(ev)
-                next_field = self._resolve_next_hedge_field(
-                    ev, resolved_firm, phase, field_name,
+                self._try_queue_next_weekday_after_trade(
+                    ev, phase, field_name, changed=force_fields,
                 )
-                if next_field == field_name:
-                    phase_fields = self._get_phase_fields(phase) or []
-                    try:
-                        _i = phase_fields.index(field_name)
-                    except ValueError:
-                        _i = -1
-                    next_field = phase_fields[_i + 1] if 0 <= _i < len(phase_fields) - 1 else None
-                if next_field:
-                    next_label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
-                    cur_next = self._cell(ev.get(next_field))
-                    if (
-                        cur_next in ("", "—", "-")
-                        or self._parse_day_token(cur_next) is not None
-                    ):
-                        ev[next_field] = next_label
-                        if next_field not in force_fields:
-                            force_fields.append(next_field)
                 break
 
             if not matched_ev:
@@ -10709,6 +10770,16 @@ class TradeOpssAIApp:
         # clear it on the dashboard after the broker leg fills.
         day_field = self._find_day_field_name(ev, row_data["current_phase"])
 
+        _block, _block_reason = self._should_block_repeat_prop_trade(
+            acct_num, ev, phase_key=phase_key)
+        if _block:
+            messagebox.showwarning(
+                "Trade blocked",
+                f"{acct_num}: cannot open again today.\n\n{_block_reason}",
+            )
+            self.log(f"⛔ {acct_num}: repeat trade blocked — {_block_reason}", "WARN")
+            return
+
         hedging = self._hedging_active()
         prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
         # Platform follows the resolved blueprint code, not a substring of the
@@ -10972,6 +11043,8 @@ class TradeOpssAIApp:
                     raise Exception(f"{platform} order failed — check broker window for details")
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
+                if platform in ("Tradovate", "TopStepX", "AlphaTrader"):
+                    self._record_prop_broker_fill_today(acct_num)
 
                 # Mark the day-name cell as traded ($0.00) on the dashboard now
                 # that the broker leg has filled. Triggered by Tradovate/TopStepX
@@ -13305,6 +13378,20 @@ class TradeOpssAIApp:
                 # we can clear it after the broker leg fills.
                 day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
 
+                _block, _block_reason = self._should_block_repeat_prop_trade(
+                    acct_num, auto_ev, phase_key=phase_key)
+                if _block:
+                    _an, _br = acct_num, _block_reason
+                    self._ai_trace(
+                        "WARN",
+                        f"{_an}: repeat prop trade blocked — {_br}")
+                    self.root.after(0, lambda an=_an, r=_br: self.log(
+                        f"⛔ {an}: repeat trade blocked — {r} (same Kenya day)",
+                        "WARN"))
+                    with total_success:
+                        counters["skipped"] += 1
+                    continue
+
                 # Direction: AI/ML signal at execution time (mandatory).
                 # Resolved once per broker-login family and shared by every
                 # dashboard label in that family, so aliased firms (Tradeify /
@@ -13561,6 +13648,8 @@ class TradeOpssAIApp:
                                    f"FILLED (TP={trado_tp}t SL={trado_sl}t)")
                     self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
                         self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))
+                    if platform in ("Tradovate", "TopStepX", "AlphaTrader"):
+                        self._record_prop_broker_fill_today(acct_num)
 
                     # Mark the day-name cell as traded ($0.00) on the dashboard
                     # now that the broker leg has filled. Triggered by
