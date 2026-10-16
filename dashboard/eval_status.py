@@ -64,3 +64,22 @@ def is_eval_phase_failed(status: str) -> bool:
 
 def is_funded_phase_ended(status: str) -> bool:
     return is_terminal_eval_status(status, include_complete=True)
+
+
+def is_evaluation_active_only_row(ev: dict) -> bool:
+    """Whether a row belongs in the dashboard Evaluations «Active only» view."""
+    if not isinstance(ev, dict):
+        return False
+    if ev.get('_deleted'):
+        return False
+    status_p1 = str(ev.get('Status P1') or '').strip()
+    status_funded = str(ev.get('Status') or ev.get('Status Funded') or '').strip()
+    p1_lower = status_p1.lower()
+    funded_lower = status_funded.lower()
+    if 'delete' in p1_lower or 'delete' in funded_lower:
+        return False
+    if is_eval_phase_failed(status_p1):
+        return False
+    if is_funded_phase_ended(status_funded):
+        return False
+    return True

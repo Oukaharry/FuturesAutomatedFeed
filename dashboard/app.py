@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 from dashboard.eval_status import (
     is_eval_phase_failed,
+    is_evaluation_active_only_row,
     is_funded_phase_ended,
     is_hit_tp_sl_status,
     FUNDED_HEDGE_COLS,
@@ -8430,20 +8431,29 @@ def api_client_data():
         if denied:
             return denied
 
-        # Mark each evaluation with is_active using the same logic as data_processor
-        evaluations = client_data.get("evaluations", [])
-        for ev in evaluations:
-            status_p1 = str(ev.get("Status P1") or "").strip()
-            status_funded = str(ev.get("Status") or "").strip()
-            is_p1_fail = is_eval_phase_failed(status_p1)
-            is_funded_fail = is_eval_phase_failed(status_funded)
-            is_funded_completed = 'complete' in str(status_funded).strip().lower()
-            is_funded_ended = is_funded_fail or is_funded_completed
+        # Companion SCAN only needs rows the dashboard shows with «Active only».
+        # Inactive history stays in DB; push merge preserves it when the
+        # companion sends partial evaluation updates.
+        all_evaluations = client_data.get("evaluations", []) or []
+        evaluations = []
+        for ev in all_evaluations:
+            if not isinstance(ev, dict):
+                continue
             payout_pending = _evaluation_has_payout_pending(ev)
-            # Active = not Fail/Completed (PAYOUT pause still counts as active).
-            ev["_is_active"] = not is_p1_fail and not is_funded_ended
+            active = is_evaluation_active_only_row(ev)
+            ev["_is_active"] = active
             if payout_pending:
                 ev["_payout_pending"] = True
+            if active:
+                evaluations.append(ev)
+        if len(evaluations) < len(all_evaluations):
+            app.logger.info(
+                "%s: companion /client/data serving %s active evaluation(s) "
+                "(%s inactive hidden from SCAN)",
+                client_id,
+                len(evaluations),
+                len(all_evaluations) - len(evaluations),
+            )
 
         mt5_credentials = client_data.get("mt5_credentials", {})
         if not _client_mt5_creds_present(client_data):
