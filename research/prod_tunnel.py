@@ -75,16 +75,19 @@ def production_ssh_tunnel() -> Iterator[str]:
             "Install sshtunnel: pip install sshtunnel"
         ) from e
 
-    remote_host = _env("PRODUCTION_DB_HOST")
+    remote_host = _env(
+        "PRODUCTION_DB_HOST",
+        "ballerquotes-5185.postgres.pythonanywhere-services.com",
+    )
     remote_port = int(_env("PRODUCTION_DB_PORT", "15185"))
     ssh_host = _env("SSH_TUNNEL_HOST", "ssh.pythonanywhere.com")
     ssh_port = int(_env("SSH_TUNNEL_PORT", "22"))
     ssh_user = _env("SSH_TUNNEL_USER", "ballerquotes")
     ssh_password = _env("SSH_TUNNEL_PASSWORD")
 
-    if not remote_host or not ssh_password:
+    if not ssh_password:
         raise RuntimeError(
-            "Missing PRODUCTION_DB_HOST or SSH_TUNNEL_PASSWORD in .env"
+            "Missing SSH_TUNNEL_PASSWORD in .env"
         )
 
     local_port = _pick_free_local_port()

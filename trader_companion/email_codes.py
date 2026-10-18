@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 TITAN_IMAP_HOST = "imap.titan.email"
 GMAIL_IMAP_HOST = "imap.gmail.com"
 CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+LABELED_CODE_RE = re.compile(
+    r"(?:one[-\s]?time|verification|security|login|authentication)?\s*"
+    r"(?:code|pin)\s*(?:is\s*|[:=]\s*)?(\d(?:[\s-]?\d){5})",
+    re.IGNORECASE,
+)
 LINK_RE = re.compile(r"https?://[^\s\"'<>\]\)]+")
 
 
@@ -123,6 +128,23 @@ class Mailbox:
         return ""
 
     @staticmethod
+    def _received_at(fetch_meta: bytes, msg: email.message.Message) -> float:
+        """Prefer mailbox arrival time; forwarded Date headers may be old."""
+        try:
+            received = imaplib.Internaldate2tuple(fetch_meta)
+            if received:
+                return time.mktime(received)
+        except (TypeError, ValueError, OverflowError):
+            pass
+        try:
+            parsed = email.utils.parsedate_tz(msg.get("Date") or "")
+            if parsed:
+                return email.utils.mktime_tz(parsed)
+        except (TypeError, ValueError, OverflowError):
+            pass
+        return time.time()
+
+    @staticmethod
     def numbered_links(html_body: str, link_match: str) -> dict:
         """{label: url} for anchors whose visible text is a number (Descope 'click the
         number that matches your screen' emails)."""
@@ -145,14 +167,12 @@ class Mailbox:
             ids = (data[0] or b"").split()
             out = []
             for mid in reversed(ids[-40:]):
-                typ, raw = m.fetch(mid, "(RFC822)")
+                typ, raw = m.fetch(mid, "(INTERNALDATE RFC822)")
                 if typ != "OK" or not raw or not raw[0]:
                     continue
                 msg = email.message_from_bytes(raw[0][1])
-                try:
-                    ts = email.utils.mktime_tz(email.utils.parsedate_tz(msg.get("Date") or ""))
-                except Exception:
-                    ts = time.time()
+                fetch_meta = raw[0][0] if isinstance(raw[0], tuple) else b""
+                ts = self._received_at(fetch_meta, msg)
                 if ts < since - 90:          # clock skew tolerance
                     continue
                 subj = str(make_header(decode_header(msg.get("Subject") or "")))
@@ -182,21 +202,40 @@ class Mailbox:
         return True
 
     def find_code(self, since: float, match: Iterable[str], recipient: Optional[str] = None) -> Optional[str]:
-        for rec in self.recent(since):
-            if not self._matches(rec, match, recipient):
-                continue
-            # Prefer a code in the subject, then the first in the body.
+        for rec in self._matching_records(self.recent(since), match, recipient):
+            # Prefer explicitly labeled codes over unrelated six-digit values.
+            for src in (rec["subject"], rec["text"]):
+                labeled = LABELED_CODE_RE.search(src)
+                if labeled:
+                    code = re.sub(r"\D", "", labeled.group(1))
+                    if len(code) == 6:
+                        return code
             for src in (rec["subject"], rec["text"]):
                 m = CODE_RE.search(src)
                 if m:
                     return m.group(1)
         return None
 
+    @classmethod
+    def _matching_records(cls, records: list, match: Iterable[str],
+                          recipient: Optional[str] = None) -> list:
+        matched = [r for r in records if cls._matches(r, match)]
+        if not recipient:
+            return matched
+        recipient = recipient.lower()
+        routed = [r for r in matched
+                  if recipient in (r.get("recipients") or "").lower()]
+        if routed:
+            return routed
+        unrouted = [r for r in matched if not (r.get("recipients") or "").strip()]
+        if len(unrouted) == 1:
+            logger.warning("using the only unrouted matching mail for requested recipient")
+            return unrouted
+        return []
+
     def find_link(self, since: float, match: Iterable[str], link_match: str,
                   recipient: Optional[str] = None) -> Optional[str]:
-        for rec in self.recent(since):
-            if not self._matches(rec, match, recipient):
-                continue
+        for rec in self._matching_records(self.recent(since), match, recipient):
             for url in LINK_RE.findall(rec["text"]):
                 if link_match.lower() in url.lower() and not url.lower().endswith((".png", ".jpg", ".gif", ".css")):
                     return url.rstrip(".,;")
@@ -205,9 +244,7 @@ class Mailbox:
     def find_numbered_links(self, since: float, match: Iterable[str], link_match: str,
                             recipient: Optional[str] = None) -> dict:
         """{label: url} from the newest matching mail (empty when none)."""
-        for rec in self.recent(since):
-            if not self._matches(rec, match, recipient):
-                continue
+        for rec in self._matching_records(self.recent(since), match, recipient):
             links = self.numbered_links(rec.get("html") or "", link_match)
             if links:
                 return links

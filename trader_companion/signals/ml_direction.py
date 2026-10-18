@@ -5,9 +5,10 @@ Trains two estimators on Tradovate NQ OHLCV bars (the exact traded contract):
   * ML:  HistGradientBoostingClassifier (gradient-boosted trees, NaN-native)
   * DL:  MLPClassifier — feed-forward deep neural network (2 hidden layers)
 
-They are soft-vote ensembled; the ensemble lean (p_up vs 0.5) IS the signal —
-there is no neutral and no confidence gate on direction. Confidence and the
-analytics threshold travel in the payload for attribution only.
+They are soft-vote ensembled; the ensemble lean (p_up vs 0.5) is the signal.
+After enough live predictions have been verified, an adaptive confidence
+assessment reports whether the signal meets the learned threshold. It never
+suppresses the direction or delays a scheduled entry.
 
 Validation is expanding-window walk-forward — the reported accuracy is
 strictly out-of-sample, so the caller can judge how much to trust the model.
@@ -70,6 +71,8 @@ CONFIDENCE_THRESHOLD = 0.60
 MIN_TRAIN_ROWS = 500
 WALK_FORWARD_FOLDS = 4
 RETRAIN_INTERVAL_SEC = 6 * 3600
+MIN_CHALLENGER_VALIDATION_ROWS = 100
+MIN_CHALLENGER_ACCURACY_GAIN = 0.02
 TICK_LOOKBACK_SEC = 300       # 5 minutes of live ticks for microstructure
 MAX_TICK_SAMPLE = 4000
 VOLATILE_ATR_REGIME = 1.12    # ATR above this → volatile session
@@ -80,6 +83,12 @@ _cache: Dict[Tuple[str, int], Dict[str, Any]] = {}
 _cache_lock = threading.Lock()
 _training: set = set()
 _training_lock = threading.Lock()
+_last_train_attempt: Dict[Tuple[str, int], float] = {}
+
+
+def _assess_confidence(lean: str, confidence: float, threshold: float,
+                       feedback_active: bool) -> tuple[str, bool]:
+    return lean, not feedback_active or confidence >= threshold
 
 
 # ── disk persistence (survive app restarts; avoid cold-start fallback) ──
@@ -117,15 +126,73 @@ def _bundled_model_path(symbol: str, timeframe_minutes: int) -> Optional[str]:
 
 def _save_bundle_to_disk(symbol: str, timeframe_minutes: int,
                          bundle: Dict[str, Any]) -> None:
+    path = _model_cache_path(symbol, timeframe_minutes)
+    temp_path = f"{path}.tmp"
     try:
         payload = {k: bundle[k] for k in
                    ("gbm", "mlp", "et", "feature_columns", "used_columns",
                     "walk_forward", "n_labeled", "trained_at")}
+        if "promotion_eval" in bundle:
+            payload["promotion_eval"] = bundle["promotion_eval"]
         payload["version"] = MODEL_VERSION
-        with open(_model_cache_path(symbol, timeframe_minutes), "wb") as f:
+        with open(temp_path, "wb") as f:
             pickle.dump(payload, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
     except Exception:
-        pass  # persistence is best-effort; in-memory cache still works
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _bundle_is_fresh(bundle: Optional[Dict[str, Any]], now=None) -> bool:
+    if not bundle or not bundle.get("trained"):
+        return False
+    age = (time.time() if now is None else now) - float(bundle.get("trained_at", 0))
+    return age < RETRAIN_INTERVAL_SEC
+
+
+def _challenger_split(X: pd.DataFrame, y: pd.Series, incumbent_trained_at: float,
+                      timeframe_minutes: int):
+    """Separate pre-incumbent training labels from a post-incumbent holdout."""
+    times = X.index.to_numpy(dtype="datetime64[ns]").astype(np.int64) / 1_000_000_000
+    train_end = incumbent_trained_at - HORIZON_BARS * timeframe_minutes * 60
+    valid = y.notna().to_numpy()
+    return (valid & (times <= train_end),
+            valid & (times > incumbent_trained_at))
+
+
+def _score_bundle(bundle: Dict[str, Any], X: pd.DataFrame,
+                  y: pd.Series) -> float:
+    cols = bundle.get("used_columns") or bundle["feature_columns"]
+    Xu = X.reindex(columns=cols)
+    gbm, mlp, et = bundle["gbm"], bundle["mlp"], bundle.get("et")
+    p_gbm = gbm.predict_proba(Xu)[:, list(gbm.classes_).index(1.0)]
+    p_mlp = mlp.predict_proba(Xu)[:, list(mlp.classes_).index(1.0)]
+    if et is None:
+        p = (p_gbm + p_mlp) / 2.0
+    else:
+        p_et = et.predict_proba(Xu)[:, list(et.classes_).index(1.0)]
+        p = (p_gbm + p_mlp + p_et) / 3.0
+    return float(np.mean((p >= 0.5) == y.to_numpy(dtype=float)))
+
+
+def _challenger_beats_incumbent(candidate_accuracy: float,
+                                incumbent_accuracy: float,
+                                n_validation: int) -> bool:
+    return (n_validation >= MIN_CHALLENGER_VALIDATION_ROWS
+            and candidate_accuracy >= incumbent_accuracy
+            + MIN_CHALLENGER_ACCURACY_GAIN)
+
+
+def _promote_bundle(symbol: str, timeframe_minutes: int,
+                    bundle: Dict[str, Any]) -> None:
+    _save_bundle_to_disk(symbol, timeframe_minutes, bundle)
+    with _cache_lock:
+        _cache[(_model_symbol_key(symbol), timeframe_minutes)] = bundle
 
 
 def _load_bundle_from_disk(symbol: str,
@@ -563,8 +630,9 @@ def _walk_forward(X: pd.DataFrame, y: pd.Series,
 
 
 def train_on_rates(rates, symbol: str = "ustech",
-                   timeframe_minutes: int = 5) -> Dict[str, Any]:
-    """Train the ensemble from raw MT5 rates; cache and return the bundle."""
+                   timeframe_minutes: int = 5,
+                   incumbent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Train a candidate and promote only if it wins a post-incumbent holdout."""
     if not SKLEARN_AVAILABLE:
         return {"trained": False, "reason": "scikit-learn not installed"}
     df = rates_to_df(rates)
@@ -572,11 +640,27 @@ def train_on_rates(rates, symbol: str = "ustech",
         return {"trained": False, "reason": f"insufficient bars ({len(df)})"}
     X = make_features(df)
     y = make_labels(df)
-    wf = _walk_forward(X, y)
     mask = y.notna()
-    if int(mask.sum()) < MIN_TRAIN_ROWS:
-        return {"trained": False, "reason": f"insufficient labeled rows ({int(mask.sum())})"}
-    gbm, mlp, et, used_cols = _fit(X[mask], y[mask])
+    validation_mask = None
+    if incumbent and incumbent.get("trained_at"):
+        train_mask, validation_mask = _challenger_split(
+            X, y, float(incumbent["trained_at"]), timeframe_minutes)
+        n_validation = int(validation_mask.sum())
+        if n_validation < MIN_CHALLENGER_VALIDATION_ROWS:
+            return {
+                "trained": False,
+                "reason": (f"not enough challenger validation samples "
+                           f"({n_validation}/{MIN_CHALLENGER_VALIDATION_ROWS})"),
+            }
+    else:
+        train_mask = mask.to_numpy()
+
+    n_train = int(train_mask.sum())
+    if n_train < MIN_TRAIN_ROWS:
+        return {"trained": False, "reason": f"insufficient labeled rows ({n_train})"}
+    X_train, y_train = X.loc[train_mask], y.loc[train_mask]
+    wf = _walk_forward(X_train, y_train)
+    gbm, mlp, et, used_cols = _fit(X_train, y_train)
     bundle = {
         "trained": True,
         "gbm": gbm,
@@ -585,13 +669,32 @@ def train_on_rates(rates, symbol: str = "ustech",
         "feature_columns": list(X.columns),
         "used_columns": used_cols,
         "walk_forward": wf,
-        "n_labeled": int(mask.sum()),
+        "n_labeled": n_train,
         "trained_at": time.time(),
     }
-    model_key = _model_symbol_key(symbol)
-    with _cache_lock:
-        _cache[(model_key, timeframe_minutes)] = bundle
-    _save_bundle_to_disk(model_key, timeframe_minutes, bundle)
+
+    if incumbent and validation_mask is not None:
+        X_validation = X.loc[validation_mask]
+        y_validation = y.loc[validation_mask]
+        try:
+            candidate_accuracy = _score_bundle(bundle, X_validation, y_validation)
+            incumbent_accuracy = _score_bundle(incumbent, X_validation, y_validation)
+        except Exception as exc:
+            return {"trained": False, "reason": f"challenger evaluation failed: {exc}"}
+        n_validation = len(y_validation)
+        bundle["promotion_eval"] = {
+            "n_validation": n_validation,
+            "candidate_accuracy": round(candidate_accuracy, 4),
+            "incumbent_accuracy": round(incumbent_accuracy, 4),
+            "required_gain": MIN_CHALLENGER_ACCURACY_GAIN,
+        }
+        if not _challenger_beats_incumbent(
+                candidate_accuracy, incumbent_accuracy, n_validation):
+            bundle["promoted"] = False
+            return bundle
+
+    bundle["promoted"] = True
+    _promote_bundle(symbol, timeframe_minutes, bundle)
     return bundle
 
 
@@ -804,13 +907,13 @@ def get_cached_bundle(symbol: str = "ustech",
     key = (_model_symbol_key(symbol), timeframe_minutes)
     with _cache_lock:
         b = _cache.get(key)
-    if b and b.get("trained") and time.time() - b["trained_at"] < RETRAIN_INTERVAL_SEC:
+    if b and b.get("trained"):
         return b
-    # Cold start — try the model persisted by the previous app session
+    # Serve the last persisted model while a replacement is trained in the background.
     if not SKLEARN_AVAILABLE:
         return None
     disk = _load_bundle_from_disk(_model_symbol_key(symbol), timeframe_minutes)
-    if disk and time.time() - disk.get("trained_at", 0) < RETRAIN_INTERVAL_SEC:
+    if disk and disk.get("trained"):
         with _cache_lock:
             _cache[key] = disk
         return disk
@@ -851,17 +954,19 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
                          mt5_symbol: Optional[str] = None,
                          mt5_server: Optional[str] = None,
                          mt5_broker: Optional[str] = None) -> bool:
-    """Kick off background training if no fresh model exists. Never blocks.
+    """Train a missing model or challenger in the background. Never blocks.
 
     Retries when the broker hasn't finished loading bars yet (the usual
     cause of "insufficient bars" right after MT5 connect).
-    Returns True if a fresh model is already available.
+    Returns True if a fresh model is already available. A stale incumbent
+    remains available for inference while the challenger is evaluated.
     """
     model_key = _model_symbol_key(symbol)
+    incumbent = get_cached_bundle(model_key, timeframe_minutes)
+    if _bundle_is_fresh(incumbent):
+        return True
     mt5_ctx = dict(
         mt5_symbol=mt5_symbol, mt5_server=mt5_server, mt5_broker=mt5_broker)
-    if get_cached_bundle(model_key, timeframe_minutes):
-        return True
     # Data comes from the Tradovate feed — MT5 is not required to train
     if not SKLEARN_AVAILABLE:
         return False
@@ -869,6 +974,10 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
     with _training_lock:
         if key in _training:
             return False
+        cooldown = RETRAIN_INTERVAL_SEC if incumbent else TRAIN_RETRY_WAIT_SEC
+        if time.time() - _last_train_attempt.get(key, 0) < cooldown:
+            return False
+        _last_train_attempt[key] = time.time()
         _training.add(key)
 
     def _run():
@@ -881,14 +990,29 @@ def ensure_trained_async(symbol: str = "ustech", timeframe_minutes: int = 5,
                 rates = _fetch_rates(
                     model_key, timeframe_minutes, TRAIN_BARS, **mt5_ctx)
                 got = 0 if rates is None else len(rates)
-                bundle = train_on_rates(rates, model_key, timeframe_minutes)
+                bundle = train_on_rates(
+                    rates, model_key, timeframe_minutes, incumbent=incumbent)
                 if bundle.get("trained"):
                     wf = bundle.get("walk_forward") or {}
                     if log_fn:
-                        log_fn(f"🧠 ML model READY for {mt5_ticker} M{timeframe_minutes} "
-                               f"[GBM trees + MLP 64x32 deep net, soft-vote]: "
-                               f"wf_acc={wf.get('accuracy')} gated={wf.get('gated_accuracy')} "
-                               f"(n={bundle.get('n_labeled')})")
+                        if bundle.get("promoted"):
+                            eval_stats = bundle.get("promotion_eval") or {}
+                            comparison = (
+                                f" challenger={eval_stats['candidate_accuracy']:.1%}"
+                                f" incumbent={eval_stats['incumbent_accuracy']:.1%}"
+                                f" holdout_n={eval_stats['n_validation']}"
+                                if eval_stats else " initial model")
+                            log_fn(f"🧠 ML model promoted for {mt5_ticker} "
+                                   f"M{timeframe_minutes}:{comparison} "
+                                   f"wf_acc={wf.get('accuracy')} "
+                                   f"(train_n={bundle.get('n_labeled')})")
+                        else:
+                            eval_stats = bundle.get("promotion_eval") or {}
+                            log_fn(f"🧠 ML incumbent retained for {mt5_ticker} "
+                                   f"M{timeframe_minutes}: challenger="
+                                   f"{eval_stats.get('candidate_accuracy')} "
+                                   f"incumbent={eval_stats.get('incumbent_accuracy')} "
+                                   f"holdout_n={eval_stats.get('n_validation')}")
                     return
                 reason = str(bundle.get("reason", ""))
                 if log_fn:
@@ -932,6 +1056,8 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
         if auto_train:
             ensure_trained_async(model_key, timeframe_minutes, **mt5_ctx)
         return {"ready": False, "direction": "neutral", "reason": "model not trained yet"}
+    if auto_train and not _bundle_is_fresh(bundle):
+        ensure_trained_async(model_key, timeframe_minutes, **mt5_ctx)
 
     if rates is None:
         rates = _fetch_rates(model_key, timeframe_minutes, PREDICT_BARS, **mt5_ctx)
@@ -1005,11 +1131,13 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
 
     threshold = CONFIDENCE_THRESHOLD
     live_stats = None
+    gate_active = False
     if prediction_tracker is not None:
         try:
             threshold = prediction_tracker.effective_confidence_threshold(
                 CONFIDENCE_THRESHOLD, symbol)
-            live_stats = prediction_tracker.get_stats(symbol)
+            live_stats = prediction_tracker.get_stats(symbol, live_only=True)
+            gate_active = live_stats.get("n_verified", 0) >= prediction_tracker.MIN_LIVE_GATE_SAMPLES
         except Exception:
             pass
     threshold_base = threshold
@@ -1019,9 +1147,8 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
             mom = float(tick_feats.get("momentum_pts") or 0.0)
             if abs(mom) >= 0.5:
                 threshold = max(0.50, threshold - 0.02)
-    # No neutral, ever: the ensemble's lean is the signal. Confidence and
-    # threshold stay in the payload for analytics only.
-    direction = lean
+    direction, confidence_qualified = _assess_confidence(
+        lean, conf, threshold, gate_active)
 
     # Journal this prediction so it can be verified against the actual
     # market move + TP/SL simulation (deduped per closed bar).
@@ -1051,6 +1178,8 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
         "ensemble_weights": ens_weights,
         "confidence": round(conf, 4),
         "confidence_threshold": threshold,
+        "confidence_feedback_active": gate_active,
+        "confidence_qualified": confidence_qualified,
         "base_threshold": threshold_base,
         "volatile_regime": volatile,
         "atr_regime": round(atr_regime, 3),

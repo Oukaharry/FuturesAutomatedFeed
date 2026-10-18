@@ -227,6 +227,12 @@ def build_attribution_report(rows, today=None):
     lines += _section("By signal source", _group(rows, lambda r: str(r.get('signal_source') or '').strip() or None))
     lines += _section("By model", _group(rows, lambda r: str(r.get('signal_model') or '').strip() or None))
 
+    try:
+        from dashboard.ml_effectiveness import build_ml_effectiveness_lines
+        lines += build_ml_effectiveness_lines(rows)
+    except Exception:
+        pass
+
     compliance = build_ml_compliance(rows)
     if compliance['non_ml_total']:
         ml_s = compliance['summary']['ml']

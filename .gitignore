@@ -96,3 +96,4 @@ trader_companion/breach_state.json
 trader_companion/auto_wake_state.json
 trader_companion/vest_session.json
 trader_companion/vest_session_harry.json
+trader_companion/vest_session_*.json

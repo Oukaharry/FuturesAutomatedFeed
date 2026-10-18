@@ -1,8 +1,11 @@
 """Vest Capital (Vest Markets) connector + companion wiring tests — no network."""
 
 import json
+import threading
 import time
 import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +29,94 @@ def _app():
     app.log = lambda *a, **k: None
     app._broker_connections = {}
     return app
+
+
+def test_vest_connection_guard_serializes_the_same_token_file(tmp_path):
+    app = _app()
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def connect_once(firm, token_file=None, account_id=None, email=None):
+        calls.append(token_file)
+        started.set()
+        release.wait(timeout=2)
+
+    app._connect_vest_broker_once = connect_once
+    session = str(tmp_path / "vest.json")
+    first = threading.Thread(
+        target=app._connect_vest_broker,
+        args=("Vest Capital", session, None, "login@example.com"))
+    first.start()
+    assert started.wait(timeout=1)
+
+    app._connect_vest_broker("Vest Capital", session, None, "login@example.com")
+
+    release.set()
+    first.join(timeout=2)
+    assert not first.is_alive()
+    assert calls == [session]
+
+
+def test_connect_rebootstraps_when_saved_refresh_chain_is_rejected(tmp_path, monkeypatch):
+    app = _app()
+    token_file = str(tmp_path / "vest.json")
+    app.root = SimpleNamespace(after=lambda _delay, callback: callback())
+    app._start_broker_idle_keepalive = lambda: None
+    app._start_status_poll = lambda: None
+    app._mirror_broker_accounts = lambda *_args: None
+    app._reconcile_connected_broker_history = lambda: None
+    app._open_vest_observer = lambda *_args: None
+    bootstrap_calls = []
+
+    class _ExpiredClient:
+        def __init__(self, **_kwargs):
+            self.logged_in = True
+            self.email = "login@example.com"
+            self.token_file = token_file
+
+        def login(self):
+            raise VestError("refresh rejected", status=401)
+
+    class _FreshClient:
+        account_id = ACCT
+        email = "login@example.com"
+
+        def __init__(self):
+            self.token_file = token_file
+
+        def login(self):
+            return True
+
+        def capital_account(self):
+            return dict(CAP)
+
+        def balance(self):
+            return 5000.0
+
+    def bootstrap(email, **kwargs):
+        bootstrap_calls.append((email, kwargs))
+        return _FreshClient()
+
+    monkeypatch.setattr(vc, "VestClient", _ExpiredClient)
+    monkeypatch.setattr("trader_companion.vest_login.bootstrap", bootstrap)
+
+    app._connect_vest_broker_once(
+        "Vest Capital", token_file=token_file, email="login@example.com")
+
+    assert bootstrap_calls
+    assert bootstrap_calls[0][0] == "login@example.com"
+    assert app._broker_connections["Vest Capital"]["account"].account_id == ACCT
+
+
+def test_vest_otp_prompt_runs_on_tk_callback(monkeypatch):
+    app = _app()
+    app.root = SimpleNamespace(after=lambda _delay, callback: callback())
+    monkeypatch.setattr("trader_companion.trader_app.GUI_AVAILABLE", True)
+    monkeypatch.setattr("trader_companion.trader_app.simpledialog.askstring",
+                        lambda *_args, **_kwargs: "654321")
+
+    assert app._prompt_vest_otp("Enter code") == "654321"
 
 
 def _tok(exp_in_s=900, **extra):
@@ -347,7 +438,11 @@ def test_symbol_for_now_weekend_switch(monkeypatch):
 
 # ── companion plan hook ───────────────────────────────────────────────
 
-def test_vest_plan_for_row_uses_platinum_rules_scaled_to_tier(tmp_path):
+def test_vest_plan_for_row_uses_platinum_rules_scaled_to_tier(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "trader_companion.trader_app.kenya_now",
+        lambda: datetime(2026, 10, 14, tzinfo=timezone.utc),
+    )
     app = _app()
     app._on_funded_leg = lambda ev: False
     app._funded_payout_count = lambda ev: 0

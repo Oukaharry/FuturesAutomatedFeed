@@ -102,6 +102,17 @@
         <div class="empty-state"><i class="fas fa-spinner fa-spin"></i>Loading attribution data…</div>
     </div>
 
+    <div class="section-title"><i class="fas fa-flask" style="color:#a78bfa;"></i> ML Effectiveness
+        <span style="font-size:0.72rem; color:#4a6080; font-weight:500;">is the direction signal beating a coin flip, per trade's own TP:SL odds?</span>
+        <span style="margin-left:auto; display:flex; gap:6px;">
+            <button class="filter-btn eff-btn active" data-period="week" onclick="setEffPeriod('week')">Weekly</button>
+            <button class="filter-btn eff-btn" data-period="month" onclick="setEffPeriod('month')">Monthly</button>
+        </span>
+    </div>
+    <div id="effectiveness">
+        <div class="empty-state" style="padding:30px;"><i class="fas fa-spinner fa-spin"></i>Loading scorecard…</div>
+    </div>
+
     <script>
         let currentDays = 30;
 
@@ -233,6 +244,79 @@
             document.getElementById('content').innerHTML = html;
         }
 
+        let effPeriod = 'week';
+        function setEffPeriod(p) {
+            effPeriod = p;
+            document.querySelectorAll('.eff-btn').forEach(b => b.classList.toggle('active', b.dataset.period === p));
+            loadEffectiveness();
+        }
+
+        const edgeColor = e => e == null ? '#64748b' : e >= 5 ? '#4ade80' : e <= -5 ? '#f87171' : '#fbbf24';
+        const fmtEdge = e => e == null ? '—' : (e > 0 ? '+' : '') + e.toFixed(1) + ' pts';
+
+        function renderEffectiveness(d) {
+            const o = d.overall;
+            let html = '';
+            if (!o) {
+                document.getElementById('effectiveness').innerHTML =
+                    `<div class="empty-state" style="padding:30px;">No ML-sourced trades in window.</div>`;
+                return;
+            }
+            const oe = o.edge;
+            html += `<div class="summary-row">
+                <div class="summary-card"><div class="label">Edge vs Coin Flip</div>
+                    <div class="value" style="color:${edgeColor(oe.edge_pts)}">${fmtEdge(oe.edge_pts)}</div>
+                    <div class="sub">TP ${oe.actual_tp_pct ?? '—'}% actual vs ${oe.random_tp_pct ?? '—'}% random · n=${oe.n}</div></div>
+                <div class="summary-card"><div class="label">High-RR Setups (≥${d.thresholds.high_rr}:1)</div>
+                    <div class="value" style="color:${edgeColor(o.high_rr.edge.edge_pts)}">${fmtEdge(o.high_rr.edge.edge_pts)}</div>
+                    <div class="sub">${o.high_rr.wins}W / ${o.high_rr.losses}L — where direction skill matters</div></div>
+                <div class="summary-card"><div class="label">Confidence Slope</div>
+                    <div class="value" style="color:${o.calibration.slope == null ? '#64748b' : o.calibration.slope >= 0.08 ? '#4ade80' : '#fbbf24'}">${o.calibration.slope == null ? '—' : (o.calibration.slope > 0 ? '+' : '') + pct(o.calibration.slope)}</div>
+                    <div class="sub">win-rate gain, most vs least confident bucket</div></div>
+                <div class="summary-card"><div class="label">Signals / Trades</div>
+                    <div class="value blue">${o.decisions}</div>
+                    <div class="sub">${o.trades} trades · ${o.pending_pct}% outcomes pending</div></div>
+            </div>`;
+            if (o.verdict) html += `<div class="flags-box" style="border-color:rgba(167,139,250,0.3); background:rgba(167,139,250,0.05);"><div class="flag-line" style="color:#c4b5fd;"><i class="fas fa-scale-balanced"></i> ${esc(o.verdict)}</div></div>`;
+
+            html += `<div class="breakdown-grid" style="grid-template-columns: 2fr 1fr;"><div class="bd-card"><h3><i class="fas fa-calendar-week"></i> Per ${d.period}</h3>
+                <table><tr><th>Period</th><th>Signals</th><th>Trades</th><th>W/L</th><th>Win%</th><th>TP% / Rand%</th><th>Edge</th><th>High-RR Edge</th><th>Buy% / Sell%</th><th>Pending</th><th>Net</th></tr>` +
+                [...d.series].reverse().map(s => {
+                    const e = s.edge, h = s.high_rr.edge;
+                    const wr = s.win_rate == null ? '—' : pct(s.win_rate);
+                    const bs = `${s.by_side.buy.win_rate == null ? '—' : pct(s.by_side.buy.win_rate)} / ${s.by_side.sell.win_rate == null ? '—' : pct(s.by_side.sell.win_rate)}`;
+                    return `<tr class="${e.edge_pts == null ? 'dim' : ''}"><td>${esc(s.period)}</td><td>${s.decisions}</td><td>${s.trades}</td>
+                        <td><span class="green">${s.wins}W</span>/<span class="red">${s.losses}L</span></td><td>${wr}</td>
+                        <td>${e.actual_tp_pct ?? '—'} / ${e.random_tp_pct ?? '—'}</td>
+                        <td style="color:${edgeColor(e.edge_pts)}">${fmtEdge(e.edge_pts)}</td>
+                        <td style="color:${edgeColor(h.edge_pts)}">${fmtEdge(h.edge_pts)}</td>
+                        <td>${bs}</td><td>${s.pending_pct}%</td>
+                        <td class="${s.net >= 0 ? 'green' : 'red'}">${fmt$(s.net)}</td></tr>`;
+                }).join('') + `</table></div>`;
+
+            html += `<div class="bd-card"><h3><i class="fas fa-bullseye"></i> Calibration (window)</h3>
+                <table><tr><th>Confidence</th><th>N</th><th>W/L</th><th>Win%</th></tr>` +
+                o.calibration.buckets.map(b => `<tr class="${b.enough ? '' : 'dim'}"><td>${esc(b.label)}</td><td>${b.n}</td>
+                    <td><span class="green">${b.wins}W</span>/<span class="red">${b.losses}L</span></td>
+                    <td>${b.win_rate == null ? '—' : pct(b.win_rate)}<span class="wr-bar"><span class="wr-fill" style="width:${(b.win_rate||0)*100}%;background:${wrColor(b.win_rate||0)}"></span></span></td></tr>`).join('') +
+                `</table><div style="padding:10px 14px; font-size:0.72rem; color:#4a6080;">Flat win rate across buckets = the confidence number carries no information.</div></div></div>`;
+            document.getElementById('effectiveness').innerHTML = html;
+        }
+
+        async function loadEffectiveness() {
+            const el = document.getElementById('effectiveness');
+            if (!el) return;
+            try {
+                const days = Math.max(currentDays, effPeriod === 'month' ? 180 : 90);
+                const res = await fetch(`/api/ml_effectiveness?period=${effPeriod}&days=${days}`);
+                const body = await res.json();
+                if (body.status !== 'success') throw new Error(body.message || 'Failed');
+                renderEffectiveness(body.data);
+            } catch (e) {
+                el.innerHTML = `<div class="empty-state" style="padding:30px;"><i class="fas fa-triangle-exclamation"></i>${esc(e.message)}</div>`;
+            }
+        }
+
         async function load() {
             document.getElementById('loading').textContent = 'Loading…';
             try {
@@ -254,6 +338,7 @@
         }
 
         load();
+        loadEffectiveness();
     </script>
 </body>
 </html>

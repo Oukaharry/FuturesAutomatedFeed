@@ -1,3 +1,4 @@
+import importlib
 import sys
 import os
 import hmac
@@ -54,6 +55,9 @@ import threading
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta, timezone
 
+_VEST_CONNECT_LOCK = threading.Lock()
+_VEST_CONNECTING_SESSIONS: Set[str] = set()
+
 # ── Kenya / East Africa Time (UTC+3) ───────────────────────────────────
 # Every day-of-week and trading-day decision is computed in Kenya time,
 # never in the host machine's local clock.  A Windows install whose
@@ -88,6 +92,7 @@ TRADING_SESSION_END_HOUR = 20
 AUTO_WAKE_START_MINUTE = 3 * 60
 AUTO_WAKE_END_MINUTE = 8 * 60  # exclusive; last selectable minute is 07:59
 AUTO_WAKE_AUTH_JITTER_MINUTES = 10
+AUTO_WAKE_ENTRY_RANDOMIZE_MINUTE = AUTO_WAKE_END_MINUTE - 1
 
 
 def randomized_auto_wake_time(now, selected_minute=None):
@@ -119,6 +124,37 @@ def randomized_auto_wake_time(now, selected_minute=None):
         year=day.year, month=day.month, day=day.day,
         hour=minute // 60, minute=minute % 60, second=0, microsecond=0,
     )
+
+
+def randomized_auto_trade_start(now, max_delay_minutes=120):
+    """Choose a randomized start no later than 19:59 EAT on a weekday."""
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=KENYA_TZ)
+    else:
+        now = now.astimezone(KENYA_TZ)
+
+    session_open = now.replace(hour=TRADING_SESSION_START_HOUR, minute=0,
+                                second=0, microsecond=0)
+    latest_start = now.replace(hour=TRADING_SESSION_END_HOUR - 1, minute=59,
+                               second=0, microsecond=0)
+    if now.weekday() >= 5 or now >= latest_start:
+        day = now.date() + timedelta(days=1)
+        while day.weekday() >= 5:
+            day += timedelta(days=1)
+        session_open = now.replace(year=day.year, month=day.month, day=day.day,
+                                   hour=TRADING_SESSION_START_HOUR, minute=0,
+                                   second=0, microsecond=0)
+        latest_start = session_open.replace(hour=TRADING_SESSION_END_HOUR - 1,
+                                            minute=59)
+    elif now < session_open:
+        pass
+    else:
+        session_open = now
+
+    available_seconds = max(0, int((latest_start - session_open).total_seconds()))
+    delay_seconds = random.randint(
+        0, min(max(0, int(max_delay_minutes)) * 60, available_seconds))
+    return session_open + timedelta(seconds=delay_seconds)
 
 
 # ── MT5 trade-comment helper ─────────────────────────────────────────
@@ -357,7 +393,7 @@ if TRADOVATE_ONLY_MODE:
     MT5_AVAILABLE = False
 else:
     try:
-        import MetaTrader5 as mt5
+        mt5 = importlib.import_module("MetaTrader5")
         MT5_AVAILABLE = True
     except Exception as _mt5_error:
         mt5 = None
@@ -396,6 +432,10 @@ except Exception:
     TradovateAccount = None
     TRADOVATE_AVAILABLE = False
 
+TopStepXAccount = None
+TOPSTEPX_AVAILABLE = False
+FundedNextAccount = None
+FUNDEDNEXT_AVAILABLE = False
 for _module_name, _class_name, _flag_name in (
     ("topstepx", "TopStepXAccount", "TOPSTEPX_AVAILABLE"),
     ("fundednext", "FundedNextAccount", "FUNDEDNEXT_AVAILABLE"),
@@ -614,8 +654,8 @@ class MT5DataPusher:
         except Exception:
             pass
         try:
-            from trader_companion.m1_bars_sync import stop_m1_dashboard_sync
-            stop_m1_dashboard_sync()
+            m1_sync = importlib.import_module("trader_companion.m1_bars_sync")
+            m1_sync.stop_m1_dashboard_sync()
         except Exception:
             pass
         if MT5_AVAILABLE:
@@ -2873,9 +2913,8 @@ class TradeOpssAIApp:
     def _restart_m1_sync_for_target(self) -> None:
         """Point M1 bar sync at the newly selected dashboard URL (localhost vs production)."""
         try:
-            from trader_companion.m1_bars_sync import stop_m1_dashboard_sync
-
-            stop_m1_dashboard_sync()
+            m1_sync = importlib.import_module("trader_companion.m1_bars_sync")
+            m1_sync.stop_m1_dashboard_sync()
         except Exception:
             pass
         self._start_m1_dashboard_sync()
@@ -2891,9 +2930,9 @@ class TradeOpssAIApp:
             if not url or not email:
                 return
 
-            from trader_companion.m1_bars_sync import is_plexy_trade_mt5, start_m1_dashboard_sync
+            m1_sync = importlib.import_module("trader_companion.m1_bars_sync")
 
-            if not is_plexy_trade_mt5():
+            if not m1_sync.is_plexy_trade_mt5():
                 self.log(
                     "📊 M1 DB sync skipped — PlexyTrade only (shared USTECH market feed)",
                     "INFO",
@@ -2906,7 +2945,8 @@ class TradeOpssAIApp:
                 except Exception:
                     pass
 
-            start_m1_dashboard_sync(url, email, "ustech", log_fn=_sync_log, force=True)
+            m1_sync.start_m1_dashboard_sync(
+                url, email, "ustech", log_fn=_sync_log, force=True)
             self.log("📊 M1 shared Plexy USTECH sync started (gap + backfill + live)", "INFO")
         except Exception as exc:
             self.log(f"📊 M1 dashboard sync failed: {exc}", "WARN")
@@ -10494,7 +10534,7 @@ class TradeOpssAIApp:
         api = self._get_mt5_trading_api()
         if api and MT5_AVAILABLE:
             try:
-                import MetaTrader5 as _mt5
+                _mt5 = importlib.import_module("MetaTrader5")
                 acc = _mt5.account_info()
                 if acc is not None:
                     return float(acc.margin_free)
@@ -10510,7 +10550,7 @@ class TradeOpssAIApp:
         if not sym:
             return None
         try:
-            import MetaTrader5 as _mt5
+            _mt5 = importlib.import_module("MetaTrader5")
             if not _mt5.symbol_select(sym, True):
                 return None
             tick = _mt5.symbol_info_tick(sym)
@@ -11745,7 +11785,9 @@ class TradeOpssAIApp:
             self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_after_scan)
             return
 
-        if self._start_auto_trade(immediate=True, automatic=True):
+        immediate = (now.hour * 60 + now.minute
+                     < AUTO_WAKE_ENTRY_RANDOMIZE_MINUTE)
+        if self._start_auto_trade(immediate=immediate, automatic=True):
             self._mark_auto_wake_started(scheduled_date)
             return
         self.root.after(self._AUTO_WAKE_POLL_SEC * 1000, self._auto_wake_after_scan)
@@ -11770,10 +11812,10 @@ class TradeOpssAIApp:
         self._save_auto_wake_state()
 
     # ── Day-watch: trade accounts purchased/added after the morning wake ──
-    # From 08:00 until end of session, periodically rescan the dashboard for
+    # From 07:59 until end of session, rescan the dashboard for
     # any newly tradeable account (e.g. a replacement purchase after a Fail)
     # and arm a fresh, randomly-staggered batch for it — fully autonomous.
-    _DAY_WATCH_POLL_SEC = 300  # 5 minutes
+    _DAY_WATCH_POLL_SEC = 60  # notice new tradeable accounts within about a minute
 
     def _start_day_watch(self):
         if getattr(self, "_day_watch_started", False):
@@ -11796,7 +11838,9 @@ class TradeOpssAIApp:
         now = kenya_now()
         if now.weekday() >= 5:
             return
-        if not (8 <= now.hour < TRADING_SESSION_END_HOUR):
+        minute_of_day = now.hour * 60 + now.minute
+        if not (AUTO_WAKE_ENTRY_RANDOMIZE_MINUTE
+            <= minute_of_day < TRADING_SESSION_END_HOUR * 60):
             return
         if self.auto_trade_enabled or getattr(self, "_auto_wake_pending_date", None):
             return  # a batch is live, or the morning wake scan is in flight
@@ -11807,6 +11851,15 @@ class TradeOpssAIApp:
         self._day_watch_scan_active = True
         self._load_active_trades()
         self.root.after(5000, self._day_watch_after_scan)
+
+    def _missing_trade_brokers(self):
+        missing = []
+        for row in getattr(self, "_active_trade_rows", []) or []:
+            firm = (row.get("eval") or {}).get(
+                "Prop Firm", row.get("firm_code", ""))
+            if not self._get_broker_for_firm(firm):
+                missing.append(str(firm or row.get("firm_code") or "Unknown"))
+        return sorted(set(missing))
 
     def _day_watch_after_scan(self):
         """Arm a new randomized batch once the rescan settles, if anything is new."""
@@ -11820,6 +11873,19 @@ class TradeOpssAIApp:
         if self.auto_trade_enabled or not getattr(self, "_last_trade_scan_succeeded", False):
             return
         if not self._active_trade_rows:
+            return
+        missing = self._missing_trade_brokers()
+        if missing:
+            notice = tuple(missing)
+            if getattr(self, "_day_watch_last_notice", None) != notice:
+                self.log("⏳ Day-watch waiting for broker connection(s): "
+                         + ", ".join(missing))
+                self._day_watch_last_notice = notice
+            return
+        self._day_watch_last_notice = None
+        if (self.hedge_mode_var.get() == "Hedging"
+                and not self._get_mt5_trading_api()):
+            self.log("⏳ Day-watch waiting for the configured MT5 hedge connection")
             return
         self.log(f"🔎 Day-watch: {len(self._active_trade_rows)} newly tradeable "
                  "account(s) found — arming Auto-Trade")
@@ -12132,6 +12198,11 @@ class TradeOpssAIApp:
         if not connected_firms:
             self.log("⚠ Connect at least one broker before enabling auto-trade", "WARN")
             return False
+        missing_firms = self._missing_trade_brokers()
+        if missing_firms:
+            self.log("⚠ Auto-trade waiting for broker connection(s): "
+                     + ", ".join(missing_firms), "WARN")
+            return False
 
         # Validation: hedging mode needs MT5
         if self.hedge_mode_var.get() == "Hedging":
@@ -12146,9 +12217,9 @@ class TradeOpssAIApp:
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
-        # Auto-trade randomizes normal starts; the guarded command enters now.
-        offset_minutes = 0 if immediate else random.randint(0, 120)
-        scheduled_eat = now_eat + timedelta(minutes=offset_minutes)
+        # Immediate commands stay immediate; randomized starts stay in-session.
+        scheduled_eat = (now_eat if immediate
+                 else randomized_auto_trade_start(now_eat))
 
         self._auto_trade_use_signal = True
         self._auto_trade_random_scope = self.random_signal_scope_var.get()
@@ -12497,7 +12568,7 @@ class TradeOpssAIApp:
 
         if MT5_AVAILABLE and COMMENT_PARSER_AVAILABLE:
             try:
-                import MetaTrader5 as mt5
+                mt5 = importlib.import_module("MetaTrader5")
                 if mt5.terminal_info():
                     parser = MT5CommentParser()
                     for pos in (mt5.positions_get() or []):
@@ -12727,46 +12798,72 @@ class TradeOpssAIApp:
             stop_event.wait(timeout=chunk)
         return stop_event.is_set()
 
-    def _auto_trade_loop(self):
-        """Background thread: schedule, then keep scanning until all rows are traded."""
-        from datetime import datetime, timedelta, timezone
-        EAT = timezone(timedelta(hours=3))
-
+    def _schedule_auto_trade_resume(self, now, reason):
+        scheduled = randomized_auto_trade_start(now)
+        self._auto_trade_scheduled_dt = scheduled
         self._auto_trade_waiting_gate = True
-        while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
-            now = datetime.now(EAT)
-            if now >= self._auto_trade_scheduled_dt:
-                break
-            remaining = (self._auto_trade_scheduled_dt - now).total_seconds()
-            self._auto_trade_wait_with_keepalive(
-                min(remaining, self._AUTO_TRADE_PROP_KEEPALIVE_SEC),
-                stop_event=self._auto_trade_stop,
-                context="auto-trade-schedule",
-            )
-        self._auto_trade_waiting_gate = False
+        self.log(f"⏸ {reason}; {len(self._active_trade_rows)} row(s) retained for "
+                 f"{scheduled.strftime('%A %I:%M %p EAT')}")
+        self.root.after(0, self._tick_auto_trade_countdown)
 
-        if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
-            return
-
-        self._sync_auto_trade_firm_sides()
-
+    def _auto_trade_loop(self):
+        """Keep queued entries armed, resuming them inside valid sessions."""
         while (self.auto_trade_enabled and not self._auto_trade_stop.is_set()
                and self._active_trade_rows):
+            self._auto_trade_waiting_gate = True
+            scheduled = self._auto_trade_scheduled_dt or kenya_now()
+            while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
+                now = kenya_now()
+                if now >= scheduled:
+                    break
+                remaining = (scheduled - now).total_seconds()
+                self._auto_trade_wait_with_keepalive(
+                    min(remaining, self._AUTO_TRADE_PROP_KEEPALIVE_SEC),
+                    stop_event=self._auto_trade_stop,
+                    context="auto-trade-schedule",
+                )
+            self._auto_trade_waiting_gate = False
+
+            if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
+                return
+
+            now = kenya_now()
+            allowed, _window = self._trading_window_open(now)
+            futures_queued = any(
+                not self._is_api_only_firm(
+                    rd.get("firm_code") or (rd.get("eval") or {}).get("Prop Firm"))
+                for rd in self._active_trade_rows
+            )
+            if not allowed and futures_queued:
+                self._schedule_auto_trade_resume(
+                    now, "futures session is closed")
+                continue
+
             self._sync_auto_trade_firm_sides()
             self.root.after(0, self._update_auto_trade_progress)
+            self._run_auto_trade_batch_and_wait()
 
             if (not self.auto_trade_enabled or self._auto_trade_stop.is_set()
                     or not self._active_trade_rows):
                 break
 
-            self._run_auto_trade_batch_and_wait()
+            left = len(self._active_trade_rows)
+            now = kenya_now()
+            allowed, _window = self._trading_window_open(now)
+            futures_queued = any(
+                not self._is_api_only_firm(
+                    rd.get("firm_code") or (rd.get("eval") or {}).get("Prop Firm"))
+                for rd in self._active_trade_rows
+            )
+            if not allowed and futures_queued:
+                self._schedule_auto_trade_resume(
+                    now, f"{left} trade(s) remain after the futures session closed")
+                continue
 
-            if self._active_trade_rows and self.auto_trade_enabled:
-                left = len(self._active_trade_rows)
-                self.log(f"🔄 {left} trade(s) still queued — continuing batch execution…")
-                if self._auto_trade_wait_with_keepalive(
-                        10, stop_event=self._auto_trade_stop, context="batch-gap"):
-                    break
+            self.log(f"🔄 {left} trade(s) still queued — continuing batch execution…")
+            if self._auto_trade_wait_with_keepalive(
+                    10, stop_event=self._auto_trade_stop, context="batch-gap"):
+                break
 
         if self.auto_trade_enabled and not self._auto_trade_stop.is_set():
             self.root.after(0, self._complete_auto_trade)
@@ -12966,9 +13063,12 @@ class TradeOpssAIApp:
                           or self._is_api_only_firm(
                               (rd.get("eval") or {}).get("Prop Firm"))]
             if not perps_rows:
-                self.log(f"⛔ Auto-trade stopped — outside the {window} EAT trading window", "WARN")
-                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
-                self._stop_auto_trade()
+                self.log(f"⏸ Auto-trade held — outside the {window} EAT trading window; "
+                         "queued futures rows are retained", "WARN")
+                self._finish_auto_trade_batch(
+                    stop_when_done=stop_when_done and not self.auto_trade_enabled)
+                if not self.auto_trade_enabled and stop_when_done:
+                    self._stop_auto_trade()
                 return
             self.log(f"🌙 Outside the {window} EAT futures window — "
                      f"continuing with {len(perps_rows)} perps row(s) only (24/7)")
@@ -16464,18 +16564,70 @@ class TradeOpssAIApp:
                 return c["account"]
         return None
 
+    def _prompt_vest_otp(self, prompt):
+        if not GUI_AVAILABLE:
+            return ""
+        completed = threading.Event()
+        answer = {}
+
+        def _ask():
+            try:
+                answer["code"] = simpledialog.askstring(
+                    "Vest Markets sign-in", prompt, parent=self.root)
+            except Exception:
+                answer["code"] = ""
+            finally:
+                completed.set()
+
+        try:
+            self.root.after(0, _ask)
+        except Exception:
+            return ""
+        if not completed.wait(timeout=300):
+            return ""
+        return str(answer.get("code") or "").strip()
+
     def _connect_vest_broker(self, firm, token_file=None, account_id=None, email=None):
+        try:
+            from trader_companion.vest_connector import default_token_file
+        except ImportError:
+            from vest_connector import default_token_file
+        session_path = os.path.normcase(os.path.abspath(
+            token_file or default_token_file(email)))
+        with _VEST_CONNECT_LOCK:
+            if session_path in _VEST_CONNECTING_SESSIONS:
+                self.log(f"ℹ {firm}: Vest session connection already in progress")
+                return
+            _VEST_CONNECTING_SESSIONS.add(session_path)
+        try:
+            self._connect_vest_broker_once(
+                firm, token_file=session_path, account_id=account_id, email=email)
+        finally:
+            with _VEST_CONNECT_LOCK:
+                _VEST_CONNECTING_SESSIONS.discard(session_path)
+
+    def _connect_vest_broker_once(self, firm, token_file=None, account_id=None, email=None):
         """Headless Vest login from the persisted token chain; bootstraps the chain
         (Chrome + mailbox code) from `email` when no session exists yet."""
         try:
-            from trader_companion.vest_connector import VestClient
+            from trader_companion.vest_connector import VestClient, VestError
         except ImportError:
-            from vest_connector import VestClient
+            from vest_connector import VestClient, VestError
         try:
             client = VestClient(token_file=token_file, account_id=account_id, email=email)
             saved_email = (getattr(client, "email", None) or "").lower()
             wrong_login = bool(email and saved_email and saved_email != email.lower())
-            if not client.logged_in or wrong_login:
+            reauthenticate = not client.logged_in or wrong_login
+            if not reauthenticate:
+                try:
+                    client.login()
+                except VestError as exc:
+                    if not email or exc.status != 401:
+                        raise
+                    reauthenticate = True
+                    self.log(f"⚠ {firm}: saved Vest refresh chain was rejected; "
+                             "starting a fresh email login", "WARN")
+            if reauthenticate:
                 if not email:
                     raise RuntimeError(
                         f"no Vest session at {client.token_file} — add the login email on the "
@@ -16490,7 +16642,8 @@ class TradeOpssAIApp:
                     from vest_login import bootstrap as _vest_bootstrap
                     from vest_connector import default_token_file as _vest_tf
                 target_file = _vest_tf(email) if wrong_login else client.token_file
-                client = _vest_bootstrap(email, token_file=target_file)
+                client = _vest_bootstrap(
+                    email, token_file=target_file, otp_prompt=self._prompt_vest_otp)
                 if account_id:
                     client.account_id = account_id
             client.login()
@@ -16539,7 +16692,9 @@ class TradeOpssAIApp:
         self.root.after(0, lambda: self.log(
             f"🪟 {firm}: opening the Vest terminal in Chrome for {email}"))
         try:
-            driver, ok = open_observer(email, symbol=symbol_for_now(kenya_now().weekday()))
+            driver, ok = open_observer(
+                email, symbol=symbol_for_now(kenya_now().weekday()),
+                otp_prompt=self._prompt_vest_otp)
         except Exception as exc:
             self.root.after(0, lambda e=str(exc): self.log(
                 f"⚠ {firm}: could not open the Vest window: {e}", "WARN"))
@@ -18023,6 +18178,10 @@ class TradeOpssAIApp:
                 self._refresh_local_signal()
             except Exception:
                 pass
+            try:
+                self._verify_ml_predictions()
+            except Exception:
+                pass
             for _ in range(self._SIGNAL_STREAM_INTERVAL_SEC):
                 if not self._signal_stream_enabled:
                     return
@@ -18138,12 +18297,12 @@ class TradeOpssAIApp:
                 if direction not in ("buy", "sell"):
                     return
 
-                    def _apply():
-                        for row_data in list(getattr(self, "_active_trade_rows", []) or []):
-                            firm = (row_data.get("eval") or {}).get("Prop Firm", "")
-                            if self._broker_login_family(firm) in families:
-                                self._style_direction_buttons(row_data, direction)
-                        self.log(f"🧠 Current ML bias (Tradovate NQ): {direction.upper()}")
+                def _apply():
+                    for row_data in list(getattr(self, "_active_trade_rows", []) or []):
+                        firm = (row_data.get("eval") or {}).get("Prop Firm", "")
+                        if self._broker_login_family(firm) in families:
+                            self._style_direction_buttons(row_data, direction)
+                    self.log(f"🧠 Current ML bias (Tradovate NQ): {direction.upper()}")
 
                 self.root.after(0, _apply)
             finally:
@@ -18220,7 +18379,24 @@ class TradeOpssAIApp:
         pass
 
     def _verify_ml_predictions(self):
-        pass
+        try:
+            from trader_companion.signals import prediction_tracker
+            from trader_companion.tradovate_md_feed import get_tradovate_md_feed
+
+            feed = get_tradovate_md_feed()
+            if not feed:
+                return
+            rates = feed.get_rates_minutes(1, 300)
+            if rates is None or len(rates) == 0:
+                return
+            prediction_tracker.verify_pending(
+                symbol="ustech",
+                rates=rates,
+                log_fn=lambda message: self.root.after(
+                    0, lambda text=message: self.log(f"🧠 ML learning: {text}")),
+            )
+        except Exception as exc:
+            self.log(f"⚠ ML prediction verification failed: {exc}", "WARN")
 
     def _run_ai_diagnostics_body(self, t):
         pass

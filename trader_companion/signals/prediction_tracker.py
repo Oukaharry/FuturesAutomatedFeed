@@ -43,6 +43,7 @@ DEFAULT_HORIZON_MIN = 20         # matches ml_direction HORIZON_BARS (4 x M5)
 MAX_EVAL_WINDOW_MIN = 240        # stop looking for TP/SL after 4 hours
 MAX_RECORDS = 2000               # journal cap (memory + disk)
 STATS_WINDOW = 40                # adaptive gate looks at the last N verified
+MIN_LIVE_GATE_SAMPLES = 15        # do not alter live signals before this evidence
 
 _records: Dict[str, List[Dict[str, Any]]] = {}
 _lock = threading.Lock()
@@ -148,26 +149,28 @@ def _verify_one(rec: Dict[str, Any], rates) -> bool:
     bars = [r for r in rates if int(r[0]) >= int(pred_ts)] if rates is not None else []
     if not bars:
         return False
+    cutoff = pred_ts + MAX_EVAL_WINDOW_MIN * 60
+    if int(bars[0][0]) > cutoff:
+        rec["expired"] = True
+        rec["expired_at"] = time.time()
+        return False
+    horizon_bar = next((r for r in bars
+                        if pred_ts + horizon_sec <= int(r[0]) <= cutoff), None)
+    if horizon_bar is None:
+        return False
     entry = rec["price"]
     sign = 1.0 if rec["lean"] == "buy" else -1.0
     tp_level = entry + sign * rec["tp_points"]
     sl_level = entry - sign * rec["sl_points"]
 
     # Move over the horizon (closest bar at/after pred_ts + horizon)
-    move = None
-    for r in bars:
-        if int(r[0]) >= pred_ts + horizon_sec:
-            move = float(r[4]) - entry
-            break
-    if move is None:
-        move = float(bars[-1][4]) - entry  # window not fully elapsed in data
+    move = float(horizon_bar[4]) - entry
 
     # TP/SL first-touch walk + MFE/MAE (within the capped window)
     outcome = "none"
     outcome_min = None
     mfe = 0.0   # max favorable excursion (signed by lean)
     mae = 0.0   # max adverse excursion
-    cutoff = pred_ts + MAX_EVAL_WINDOW_MIN * 60
     for r in bars:
         t, high, low = int(r[0]), float(r[2]), float(r[3])
         if t > cutoff:
@@ -204,7 +207,7 @@ def verify_pending(symbol: str = "ustech",
     with _lock:
         _load(symbol)
         pending = [r for r in _records.get(key, [])
-                   if not r.get("verified")
+                   if not r.get("verified") and not r.get("expired")
                    and time.time() - r["ts"] >= r["horizon_min"] * 60]
         if not pending:
             return 0
@@ -213,9 +216,11 @@ def verify_pending(symbol: str = "ustech",
         if rates is None or len(rates) == 0:
             return 0
         n = 0
+        changed = False
         for rec in pending:
             if _verify_one(rec, rates):
                 n += 1
+                changed = True
                 if log_fn:
                     try:
                         mark = ("market FOLLOWED the prediction" if rec["correct"]
@@ -229,7 +234,9 @@ def verify_pending(symbol: str = "ustech",
                                f"| MFE +{rec['mfe_points']:.1f} MAE -{rec['mae_points']:.1f}")
                     except Exception:
                         pass
-        if n:
+            elif rec.get("expired"):
+                changed = True
+        if changed:
             _save(symbol)
         return n
 
@@ -240,8 +247,8 @@ def ingest_simulation(symbol: str, *, entry_ts: int, price: float, lean: str,
                       mfe_points: float, mae_points: float) -> None:
     """Add a paper-trade simulation outcome directly as verified training data.
 
-    Simulated samples are tagged ``simulated=True`` — the adaptive gate blends
-    them with live outcomes when live evidence is thin (<20 verified).
+    Simulated samples are tagged ``simulated=True`` — they may inform regime
+    analysis, but are excluded from the live confidence gate.
     """
     key = symbol.lower()
     sign = 1.0 if lean == "buy" else -1.0
@@ -286,7 +293,8 @@ def ingest_simulation(symbol: str, *, entry_ts: int, price: float, lean: str,
         _save(symbol)
 
 
-def get_stats(symbol: str = "ustech", window: int = STATS_WINDOW) -> Dict[str, Any]:
+def get_stats(symbol: str = "ustech", window: int = STATS_WINDOW,
+              live_only: bool = False) -> Dict[str, Any]:
     """Rolling stats over the most recent verified predictions."""
     key = symbol.lower()
     with _lock:
@@ -294,8 +302,10 @@ def get_stats(symbol: str = "ustech", window: int = STATS_WINDOW) -> Dict[str, A
         verified = [r for r in _records.get(key, []) if r.get("verified")]
     live = [r for r in verified if not r.get("simulated")]
     sim = [r for r in verified if r.get("simulated")]
-    # Prefer live; backfill with simulations when live evidence is thin
-    if len(live) >= 10:
+    # Simulations can help reports, but must not control live trading behavior.
+    if live_only:
+        pool = live
+    elif len(live) >= 10:
         pool = live
     else:
         pool = live + sim
@@ -391,14 +401,13 @@ def effective_confidence_threshold(base: float, symbol: str = "ustech") -> float
     """Adaptive gate — the feedback loop from verified outcomes to behavior.
 
     Poor recent live accuracy → demand MORE confidence before acting.
-    Strong live accuracy → relax slightly toward the base. Uses live
-    outcomes when available; blends in paper simulations when live count
-    is still building (<10 verified live samples).
+    Strong live accuracy → relax slightly toward the base. Simulations are
+    deliberately excluded from this live-trading control.
     """
-    s = get_stats(symbol)
+    s = get_stats(symbol, live_only=True)
     n = s.get("n_verified", 0)
     acc = s.get("accuracy")
-    if n < 15 or acc is None:
+    if n < MIN_LIVE_GATE_SAMPLES or acc is None:
         return base
     if acc < 0.45:
         return min(base + 0.10, 0.80)

@@ -6403,6 +6403,26 @@ def api_trade_attribution():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/ml_effectiveness')
+@require_role('super_admin')
+def api_ml_effectiveness():
+    """Weekly/monthly ML scorecard: win rate, edge vs coin flip, calibration."""
+    period = request.args.get('period', 'week')
+    try:
+        days = min(max(int(request.args.get('days', 90)), 7), 365)
+    except (TypeError, ValueError):
+        days = 90
+    try:
+        from dashboard.database import get_trade_ledger_rows
+        from dashboard.ml_effectiveness import build_ml_effectiveness
+        rows = get_trade_ledger_rows(days=days)
+        data = build_ml_effectiveness(rows, period)
+        data['days'] = days
+        return jsonify({'status': 'success', 'data': data})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 
 @app.route('/admin/<admin_name>')
 @require_session
