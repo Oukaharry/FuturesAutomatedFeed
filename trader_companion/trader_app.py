@@ -5849,6 +5849,9 @@ class TradeOpssAIApp:
                 current, corrected = self._reconcile_outcome_placeholder(ev)
                 if not current or not corrected:
                     continue
+                manual = set(ev.get("_manual_push_fields") or [])
+                if current in manual or corrected in manual:
+                    continue
                 label = self._cell(ev.get(current))
                 if self._parse_day_token(label) is None:
                     continue

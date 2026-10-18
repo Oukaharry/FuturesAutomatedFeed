@@ -295,6 +295,17 @@ def cell_is_pure_weekday_placeholder(value):
     return v in _WEEKDAY_LABELS
 
 
+def normalize_weekday_placeholder_cell(value):
+    """Canonical uppercase label for dashboard/companion storage (Mon → MONDAY)."""
+    v = str(value or '').strip()
+    if not v:
+        return v
+    upper = v.upper()
+    if upper in _WEEKDAY_LABELS:
+        return upper
+    return v
+
+
 def cell_is_settled_day_value(value):
     """True when a hedge/prop day cell already has a result (not a queue label)."""
     s = str(value or '').strip()
