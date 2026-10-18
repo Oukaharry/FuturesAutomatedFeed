@@ -193,6 +193,8 @@ def _mailbox_code(since: float, recipient: str = None, timeout: int = 180):
         return None
     mb = Mailbox.from_env()
     if mb is None:
+        print("Mailbox not configured (MAIL_IMAP_USER / MAIL_IMAP_PASSWORD missing from .env) "
+              "— the code must be typed manually.")
         return None
     print(f"Fetching the code for {recipient or 'this login'} from the mailbox…")
     code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)

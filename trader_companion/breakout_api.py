@@ -11,7 +11,9 @@ need a CSRF token: GET /session/expiration → header x-internal-auth → GET
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 import threading
 import time
 from typing import Optional
@@ -40,7 +42,9 @@ KORIGIN = korigin()
 
 class BreakoutBrowserAPI:
     def __init__(self, port: int = PORT, url_hint: str = "trade.breakoutprop.com"):
-        self.cap = CDPCapture(port, ("breakoutprop.com",), "/tmp/breakout_capture/api", url_hint=url_hint)
+        self.cap = CDPCapture(port, ("breakoutprop.com",),
+                              os.path.join(tempfile.gettempdir(), "breakout_capture", "api"),
+                              url_hint=url_hint)
         self.cap.target = self.cap.pick_target()
         self.cap.ws = websocket.create_connection(self.cap.target["webSocketDebuggerUrl"],
                                                   suppress_origin=True, timeout=60)

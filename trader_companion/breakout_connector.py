@@ -74,7 +74,7 @@ class BreakoutSession:
     # ── login / terminal ─────────────────────────────────────────────
 
     def _cap(self) -> CDPCapture:
-        cap = CDPCapture(self.port, probe.HOSTS, "/tmp/breakout_capture/session", url_hint="breakoutprop.com")
+        cap = CDPCapture(self.port, probe.HOSTS, os.path.join(probe.OUT, "session"), url_hint="breakoutprop.com")
         return cap.start()
 
     @staticmethod

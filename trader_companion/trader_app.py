@@ -1870,6 +1870,10 @@ class TradeOpssAIApp:
         self._last_trade_scan_succeeded = False
         self._day_watch_started = False
         self._day_watch_scan_active = False
+        self._day_watch_primed = False
+        self._day_watch_join_known = None
+        # {(client email, date): shared start time} — one bunch per KYC per day.
+        self._kyc_batch_starts = {}
 
         # Trading engine state
         self.trading_api = None
@@ -2611,72 +2615,8 @@ class TradeOpssAIApp:
                               ttk.Label(settings, textvariable=self.hierarchy_var)
         # Don't pack — hidden
 
-        # ── Import Data ──
-        imp_card = self._section_card(settings, "IMPORT DATA", "📋")
-        imp_card.pack(fill="x", padx=4, pady=2)
-
-        imp_inner = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                    tk.Frame(imp_card, bg="#161B22")
-        imp_inner.pack(fill="x", padx=12, pady=(4, 4))
-
-        self.import_source = tk.StringVar(value="sheet")
-        if CTK_AVAILABLE:
-            ctk.CTkRadioButton(imp_inner, text="Google Sheets", variable=self.import_source,
-                               value="sheet", command=self._toggle_import_source,
-                               font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 14))
-            ctk.CTkRadioButton(imp_inner, text="CSV File", variable=self.import_source,
-                               value="csv", command=self._toggle_import_source,
-                               font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left")
-        else:
-            ttk.Radiobutton(imp_inner, text="Google Sheets", variable=self.import_source,
-                            value="sheet", command=self._toggle_import_source).pack(side="left", padx=(0, 12))
-            ttk.Radiobutton(imp_inner, text="CSV File", variable=self.import_source,
-                            value="csv", command=self._toggle_import_source).pack(side="left")
-
-        # Sheet URL row
-        self.sheet_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                                 tk.Frame(imp_card, bg="#161B22")
-        self.sheet_input_frame.pack(fill="x", padx=12, pady=4)
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(self.sheet_input_frame, text="URL:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
-        self.sheet_url_entry = self._ctk_entry(self.sheet_input_frame, width=380, placeholder="Google Sheet URL...")
-        self.sheet_url_entry.pack(side="left", fill="x", expand=True)
-
-        # CSV row (hidden by default)
-        self.csv_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                               tk.Frame(imp_card, bg="#161B22")
-        self.csv_path_var = tk.StringVar()
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(self.csv_input_frame, text="File:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
-            self.csv_path_entry = ctk.CTkEntry(self.csv_input_frame, textvariable=self.csv_path_var,
-                                               width=280, height=32, state="disabled",
-                                               fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                                               text_color=self.C_TEXT)
-        else:
-            self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var,
-                                            width=36, state='readonly')
-        self.csv_path_entry.pack(side="left", padx=(0, 6))
-        self._ctk_button(self.csv_input_frame, text="Browse…", command=self._browse_csv,
-                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="left")
-
-        imp_btn_row = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                      tk.Frame(imp_card, bg="#161B22")
-        imp_btn_row.pack(fill="x", padx=12, pady=(4, 8))
-        self.import_btn = self._ctk_button(imp_btn_row, text="Import Sheet Data", command=self._do_import,
-                                           fg="#6366F1", hover="#4F46E5", width=180)
-        self.import_btn.pack(side="left")
-        self.import_hint_text = "Sheet must be publicly shared"
-        if CTK_AVAILABLE:
-            self.import_hint = ctk.CTkLabel(imp_btn_row, text=self.import_hint_text,
-                                            font=("Segoe UI", 9, "italic"),
-                                            text_color=self.C_TEXT_DIM)
-        else:
-            self.import_hint = ttk.Label(imp_btn_row, text=self.import_hint_text)
-        self.import_hint.pack(side="left", padx=(12, 0))
+        # ── Today's trading summary (where Import Data used to be) ──
+        self._build_today_panel(settings)
 
     def log(self, message, level="INFO"):
         """Add a message to the log, live activity display, and mt5_trading.log."""
@@ -4738,237 +4678,6 @@ class TradeOpssAIApp:
             self.log(f"❌ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
 
-    # ── Import source toggle helpers ──
-
-    def _toggle_import_source(self):
-        """Show/hide the correct input row based on selected import source."""
-        if self.import_source.get() == 'sheet':
-            self.csv_input_frame.pack_forget()
-            self.sheet_input_frame.pack(fill="x", pady=2)
-            self.import_btn.configure(text="Import Sheet Data")
-            self.import_hint.configure(text="Sheet must be publicly shared")
-        else:
-            self.sheet_input_frame.pack_forget()
-            self.csv_input_frame.pack(fill="x", pady=2)
-            self.import_btn.configure(text="Import CSV File")
-            self.import_hint.configure(text="Use a CSV exported from the dashboard")
-
-    def _browse_csv(self):
-        """Open file dialog to pick a CSV file."""
-        path = filedialog.askopenfilename(
-            title="Select CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if path:
-            self.csv_path_var.set(path)
-
-    def _do_import(self):
-        """Route to the correct import method."""
-        if self.import_source.get() == 'sheet':
-            self.migrate_from_sheet()
-        else:
-            self.import_from_csv()
-
-    def import_from_csv(self):
-        """Import evaluation data from a CSV file previously exported from the dashboard."""
-        email = self.client_email_entry.get().strip()
-        csv_path = self.csv_path_var.get().strip()
-        dashboard_url = self.url_entry.get().strip().rstrip('/')
-
-        if not email:
-            messagebox.showerror("Error", "Please enter your client email first")
-            return
-
-        if not csv_path:
-            messagebox.showerror("Error", "Please select a CSV file first")
-            return
-
-        if not os.path.isfile(csv_path):
-            messagebox.showerror("Error", f"File not found:\n{csv_path}")
-            return
-
-        if not self.client_info:
-            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
-            return
-
-        client_name = self.client_info.get('client', '')
-        if not client_name:
-            messagebox.showerror("Error", "Client lookup failed - no client name found")
-            return
-
-        # Confirm before proceeding
-        if not messagebox.askyesno("Confirm CSV Import",
-                f"This will import CSV data into {client_name}'s dashboard.\n\n"
-                f"File: {os.path.basename(csv_path)}\n\n"
-                "Existing rows matched by Account # will be updated.\n"
-                "New rows will be appended.\n\nContinue?"):
-            return
-
-        self.log(f"📂 Importing CSV for {client_name}...")
-        self.status_var.set("Importing CSV...")
-        self.import_btn.configure(state="disabled")
-        self.root.update_idletasks()
-
-        def _do_import():
-            try:
-                with open(csv_path, 'rb') as f:
-                    response = requests.post(
-                        f"{dashboard_url}/api/client/import_csv_companion",
-                        data={"email": email},
-                        files={"file": (os.path.basename(csv_path), f, "text/csv")},
-                        headers={"X-Companion-Version": APP_VERSION},
-                        timeout=120
-                    )
-
-                if response.status_code != 200:
-                    error_msg = f"HTTP {response.status_code}"
-                    try:
-                        error_msg = response.json().get("message", error_msg)
-                    except:
-                        pass
-                    def _on_http_err(msg=error_msg):
-                        self.log(f"❌ CSV import failed: {msg}", "ERROR")
-                        self.status_var.set("Import failed")
-                        self.import_btn.configure(state="normal")
-                        messagebox.showerror("Error", msg)
-                    self.root.after(0, _on_http_err)
-                    return
-
-                data = response.json()
-                if data.get("status") != "success":
-                    error_msg = data.get("message", "Import failed")
-                    def _on_api_err(msg=error_msg):
-                        self.log(f"❌ {msg}", "ERROR")
-                        self.status_var.set("Import failed")
-                        self.import_btn.configure(state="normal")
-                        messagebox.showerror("Error", msg)
-                    self.root.after(0, _on_api_err)
-                    return
-
-                updated = data.get('updated', 0)
-                added = data.get('added', 0)
-                total = data.get('total_rows', 0)
-                def _on_success():
-                    self.log(f"   ✅ CSV import complete!")
-                    self.log(f"   {updated} rows updated, {added} rows added ({total} total evaluations)")
-                    self.status_var.set(f"Imported {updated + added} rows from CSV")
-                    self.import_btn.configure(state="normal")
-                    messagebox.showinfo("Success",
-                        f"CSV import complete!\n\n"
-                        f"• {updated} rows updated\n"
-                        f"• {added} rows added\n"
-                        f"• {total} total evaluations")
-                    self.lookup_client()
-                self.root.after(0, _on_success)
-
-            except requests.exceptions.Timeout:
-                def _on_timeout():
-                    self.log("❌ Connection timeout during CSV import", "ERROR")
-                    self.status_var.set("Timeout")
-                    self.import_btn.configure(state="normal")
-                    messagebox.showerror("Timeout", "Connection timed out. Please try again.")
-                self.root.after(0, _on_timeout)
-            except requests.exceptions.ConnectionError:
-                def _on_conn_err():
-                    self.log("❌ Could not connect to dashboard server", "ERROR")
-                    self.status_var.set("Connection failed")
-                    self.import_btn.configure(state="normal")
-                    messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
-                self.root.after(0, _on_conn_err)
-            except Exception as e:
-                def _on_exc(err=str(e)):
-                    self.log(f"❌ CSV import error: {err}", "ERROR")
-                    self.status_var.set("Import failed")
-                    self.import_btn.configure(state="normal")
-                    messagebox.showerror("Error", err)
-                self.root.after(0, _on_exc)
-
-        threading.Thread(target=_do_import, daemon=True).start()
-
-    def migrate_from_sheet(self):
-        """Migrate data from Google Sheets to the dashboard with verification."""
-        email = self.client_email_entry.get().strip()
-        sheet_url = self.sheet_url_entry.get().strip()
-        dashboard_url = self.url_entry.get().strip().rstrip('/')
-        
-        if not email:
-            messagebox.showerror("Error", "Please enter your client email first")
-            return
-        
-        if not sheet_url:
-            messagebox.showerror("Error", "Please enter the Google Sheet URL")
-            return
-        
-        if 'docs.google.com/spreadsheets' not in sheet_url:
-            messagebox.showerror("Error", "Please enter a valid Google Sheets URL")
-            return
-        
-        self.log(f"Migrating sheet data to dashboard...")
-        self.status_var.set("Migrating sheet data...")
-        self.root.update_idletasks()
-
-        def _do_migrate():
-            try:
-                response = requests.post(
-                    f"{dashboard_url}/api/client/migrate_sheet",
-                    json={"email": email, "sheet_url": sheet_url},
-                    headers=_companion_request_headers(),
-                    timeout=180
-                )
-                
-                if response.status_code != 200:
-                    error_msg = f"HTTP {response.status_code}"
-                    try:
-                        error_msg = response.json().get("message", error_msg)
-                    except:
-                        pass
-                    def _on_err(msg=error_msg):
-                        self.log(f"❌ Migration failed: {msg}", "ERROR")
-                        self.status_var.set("Migration failed")
-                        messagebox.showerror("Error", msg)
-                    self.root.after(0, _on_err)
-                    return
-                
-                data = response.json()
-                if data.get("status") != "success":
-                    error_msg = data.get("message", "Migration failed")
-                    def _on_api_err(msg=error_msg):
-                        self.log(f"❌ {msg}", "ERROR")
-                        self.status_var.set("Migration failed")
-                        messagebox.showerror("Error", msg)
-                    self.root.after(0, _on_api_err)
-                    return
-                
-                records = data.get("records_imported", 0)
-                def _on_success():
-                    self.log(f"   ✅ Successfully imported {records} records")
-                    self.log(f"   Dashboard data fully replaced.")
-                    self.status_var.set(f"Imported {records} records")
-                    messagebox.showinfo("Success", f"Successfully imported {records} records.\nDashboard data has been updated.")
-                    self.lookup_client()
-                self.root.after(0, _on_success)
-                    
-            except requests.exceptions.Timeout:
-                def _on_timeout():
-                    self.log("❌ Connection timeout - server is still processing the sheet", "ERROR")
-                    self.status_var.set("Timeout")
-                    messagebox.showerror("Timeout", "Connection timed out. The sheet may be too large or the server is busy. Please try again.")
-                self.root.after(0, _on_timeout)
-            except requests.exceptions.ConnectionError:
-                def _on_conn_err():
-                    self.log("❌ Could not connect to dashboard server", "ERROR")
-                    self.status_var.set("Connection failed")
-                    messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
-                self.root.after(0, _on_conn_err)
-            except Exception as e:
-                def _on_exc(err=str(e)):
-                    self.log(f"❌ Migration error: {err}", "ERROR")
-                    self.status_var.set("Migration failed")
-                    messagebox.showerror("Error", err)
-                self.root.after(0, _on_exc)
-
-        threading.Thread(target=_do_migrate, daemon=True).start()
-    
     def verify_stats(self, local_stats, dashboard_stats):
         """Compare local stats with dashboard stats and return list of discrepancies."""
         discrepancies = []
@@ -6269,9 +5978,9 @@ class TradeOpssAIApp:
         """Build the Trading Engine section with CTk styled cards."""
 
         if not TRADOVATE_ONLY_MODE:
-            # ── MT5 Connection Card ──
+            # MT5 connection is no longer shown. The widgets are still built (but
+            # never packed) because dashboard auto-fill and the AI data feed read them.
             mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
-            mt5_card.pack(fill="x", padx=4, pady=(4, 2))
 
             mt5_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
                       tk.Frame(mt5_card, bg="#161B22")
@@ -6305,14 +6014,14 @@ class TradeOpssAIApp:
 
         if not TRADOVATE_ONLY_MODE and not TRADING_ENGINE_AVAILABLE:
             if CTK_AVAILABLE:
-                ctk.CTkLabel(mt5_card, text="Trading engine modules not loaded — broker trading unavailable.",
+                ctk.CTkLabel(parent, text="Trading engine modules not loaded — broker trading unavailable.",
                              font=("Segoe UI", 9, "italic"), text_color=self.C_GOLD,
                              wraplength=500).pack(padx=12, pady=(0, 8))
             return
 
-        # ── Broker Connections Card ──
+        # The per-firm connect rows (credential entries) are built but never packed:
+        # the auto-connect code drives them. The visible list is _build_broker_status_panel.
         broker_card = self._section_card(parent, "BROKER CONNECTIONS", "🏦")
-        broker_card.pack(fill="x", padx=4, pady=2)
 
         self.prop_firm_var = tk.StringVar(value="MFFU_Flex")
         self.phase_var = tk.StringVar(value="challenge_trade1")
@@ -6448,32 +6157,32 @@ class TradeOpssAIApp:
                          text="Load trades to populate prop firm connections",
                          font=("Segoe UI", 9, "italic"), text_color="#4A5568").pack(pady=4)
 
-        # ── Hedge Mode / Direction (inline) ──
+        # ── Broker list: status of every connection, with reconnect ──
+        self._build_broker_status_panel(parent)
+
+        # ── Direction (inline) ──
         opts_row = ctk.CTkFrame(parent, fg_color="transparent") if CTK_AVAILABLE else \
                    tk.Frame(parent)
         opts_row.pack(fill="x", padx=10, pady=(2, 2))
 
-        # Hedging is opt-in: everyone starts BrokerOnly; MT5 still connects for AI data.
+        # Hedging is removed: the mode is fixed to BrokerOnly (nothing else sets it).
         self.hedge_mode_var = tk.StringVar(value="BrokerOnly")
         self.hedge_mode_var.trace_add('write', self._on_hedge_mode_changed)
-        if TRADOVATE_ONLY_MODE:
-            if CTK_AVAILABLE:
-                ctk.CTkLabel(opts_row, text="Tradovate broker trading", font=("Segoe UI", 11),
-                             text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 20))
-            else:
-                ttk.Label(opts_row, text="Tradovate broker trading").pack(side="left", padx=(0, 16))
-        elif CTK_AVAILABLE:
-            ctk.CTkRadioButton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
-                               value="Hedging", font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 12))
-            ctk.CTkRadioButton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
-                               value="BrokerOnly", font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 20))
+        # The Simulation/Live selector lived in the hidden broker card; keep it reachable.
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(opts_row, text="Mode:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            ctk.CTkComboBox(opts_row, variable=self.trading_mode_var,
+                            values=["Simulation", "Live"], state="readonly",
+                            width=120, height=32, fg_color=self.C_BG_THIRD,
+                            border_color=self.C_BORDER, button_color=self.C_ACCENT,
+                            text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 20))
         else:
-            ttk.Radiobutton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
-                            value="Hedging").pack(side="left", padx=(0, 8))
-            ttk.Radiobutton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
-                            value="BrokerOnly").pack(side="left", padx=(0, 16))
+            ttk.Label(opts_row, text="Mode:").pack(side="left", padx=(0, 4))
+            ttk.Combobox(opts_row, textvariable=self.trading_mode_var,
+                         values=["Simulation", "Live"], state='readonly',
+                         width=12).pack(side="left", padx=(0, 16))
 
         self.direction_var = tk.StringVar(value="All Trades")
         if CTK_AVAILABLE:
@@ -11135,6 +10844,7 @@ class TradeOpssAIApp:
                         self.log(f"🔄 Auto-status: {acct_num} → {_sf}='In Progress'")
 
                 # Remove row from list
+                self._record_trade_taken(row_data, side, acct_num)
                 def _remove():
                     row_data["frame"].destroy()
                     if row_data in self._active_trade_rows:
@@ -11716,7 +11426,8 @@ class TradeOpssAIApp:
         if now.date().isoformat() != scheduled_date:
             return
         if now.hour >= 8:
-            self.log("⏭ Auto-wake missed the 03:00–08:00 EAT window; next run is tomorrow", "WARN")
+            self.log("⏭ Auto-wake window (03:00–08:00 EAT) already passed; Day-watch will start "
+                     "today's active trades now with a randomized start", "WARN")
             self._auto_wake_attempt_date = None
             self._auto_wake_state["scheduled_date"] = ""
             self._auto_wake_state["scheduled_at"] = ""
@@ -11829,12 +11540,22 @@ class TradeOpssAIApp:
 
     def _day_watch_loop(self):
         while not self._auto_wake_stop.is_set():
-            if self._auto_wake_stop.wait(self._DAY_WATCH_POLL_SEC):
+            # Until the first scan runs, poll quickly so active trades found after
+            # the wake window start right away instead of a full interval later.
+            interval = self._DAY_WATCH_POLL_SEC if self._day_watch_primed else 10
+            if self._auto_wake_stop.wait(interval):
                 return
             try:
                 self.root.after(0, self._day_watch_tick)
             except Exception:
                 return
+
+    def _auto_trade_countdown_pending(self, now=None):
+        """True while a batch is armed but its shared start time has not arrived."""
+        scheduled = getattr(self, "_auto_trade_scheduled_dt", None)
+        return bool(self.auto_trade_enabled and scheduled
+                    and getattr(self, "_auto_trade_waiting_gate", False)
+                    and (now or kenya_now()) < scheduled)
 
     def _day_watch_tick(self):
         """Rescan for newly tradeable accounts and arm them when the day permits."""
@@ -11845,13 +11566,21 @@ class TradeOpssAIApp:
         if not (AUTO_WAKE_ENTRY_RANDOMIZE_MINUTE
             <= minute_of_day < TRADING_SESSION_END_HOUR * 60):
             return
-        if self.auto_trade_enabled or getattr(self, "_auto_wake_pending_date", None):
-            return  # a batch is live, or the morning wake scan is in flight
+        if getattr(self, "_auto_wake_pending_date", None):
+            return  # the morning wake scan is in flight
+        countdown_pending = self._auto_trade_countdown_pending(now)
+        if self.auto_trade_enabled and not countdown_pending:
+            return  # a batch is already executing
         if getattr(self, "_day_watch_scan_active", False):
             return
         if not self._dashboard_credentials_ready() or not self.client_info:
             return
+        self._day_watch_primed = True
         self._day_watch_scan_active = True
+        # Accounts bought while the countdown runs join the same batch.
+        self._day_watch_join_known = (
+            {str(rd.get("acct_num")) for rd in self._active_trade_rows}
+            if countdown_pending else None)
         self._load_active_trades()
         self.root.after(5000, self._day_watch_after_scan)
 
@@ -11864,6 +11593,19 @@ class TradeOpssAIApp:
                 missing.append(str(firm or row.get("firm_code") or "Unknown"))
         return sorted(set(missing))
 
+    def _join_kyc_batch(self, known_accounts):
+        """Fold accounts added during the countdown into the already-armed batch."""
+        rows = list(self._active_trade_rows)
+        self._auto_trade_total = len(rows)
+        added = [rd for rd in rows if str(rd.get("acct_num")) not in known_accounts]
+        if not added:
+            return
+        scheduled = self._auto_trade_scheduled_dt
+        when = scheduled.strftime("%I:%M %p EAT") if scheduled else "the scheduled time"
+        self.log(f"🔎 Day-watch: {len(added)} new account(s) joined this KYC's batch "
+                 f"starting {when}")
+        self._update_auto_trade_progress()
+
     def _day_watch_after_scan(self):
         """Arm a new randomized batch once the rescan settles, if anything is new."""
         try:
@@ -11873,7 +11615,13 @@ class TradeOpssAIApp:
         except Exception:
             pass
         self._day_watch_scan_active = False
-        if self.auto_trade_enabled or not getattr(self, "_last_trade_scan_succeeded", False):
+        known = self._day_watch_join_known
+        self._day_watch_join_known = None
+        if self.auto_trade_enabled:
+            if known is not None and getattr(self, "_last_trade_scan_succeeded", False):
+                self._join_kyc_batch(known)
+            return
+        if not getattr(self, "_last_trade_scan_succeeded", False):
             return
         if not self._active_trade_rows:
             return
@@ -12220,9 +11968,13 @@ class TradeOpssAIApp:
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
-        # Immediate commands stay immediate; randomized starts stay in-session.
-        scheduled_eat = (now_eat if immediate
-                 else randomized_auto_trade_start(now_eat))
+        # Immediate commands stay immediate; every account of this KYC (client
+        # email) shares one start time per day, including accounts added later.
+        if immediate:
+            scheduled_eat = now_eat
+            self._set_kyc_batch_start(scheduled_eat)
+        else:
+            scheduled_eat = self._kyc_batch_start(now_eat)
 
         self._auto_trade_use_signal = True
         self._auto_trade_random_scope = self.random_signal_scope_var.get()
@@ -12720,7 +12472,7 @@ class TradeOpssAIApp:
                 pass
 
         self.root.after(0, _ui)
-        self.log(f"⚠ {firm_name}: {reason} — use Retry in Controls to reconnect", "WARN")
+        self.log(f"⚠ {firm_name}: {reason} — use Reconnect under Broker Connections", "WARN")
 
     def _clear_broker_session_lost(self, firm_name):
         conn = (getattr(self, "_broker_connections", None) or {}).get(firm_name)
@@ -12801,8 +12553,34 @@ class TradeOpssAIApp:
             stop_event.wait(timeout=chunk)
         return stop_event.is_set()
 
+    def _kyc_key(self, now):
+        email = str(getattr(self, "_auto_wake_client_email", "") or "").strip().lower()
+        if not email:
+            try:
+                email = self.client_email_entry.get().strip().lower()
+            except Exception:
+                email = ""
+        return (email, now.astimezone(KENYA_TZ).date())
+
+    def _set_kyc_batch_start(self, scheduled):
+        self._kyc_batch_starts[self._kyc_key(kenya_now())] = scheduled
+
+    def _kyc_batch_start(self, now):
+        """Shared start for all of this KYC's accounts today.
+
+        The first batch draws the randomized start; accounts found later join
+        the same time, or start right away once that time has already passed.
+        """
+        existing = self._kyc_batch_starts.get(self._kyc_key(now))
+        if existing is not None:
+            return max(existing, now)
+        scheduled = randomized_auto_trade_start(now)
+        self._kyc_batch_starts[self._kyc_key(now)] = scheduled
+        return scheduled
+
     def _schedule_auto_trade_resume(self, now, reason):
         scheduled = randomized_auto_trade_start(now)
+        self._set_kyc_batch_start(scheduled)
         self._auto_trade_scheduled_dt = scheduled
         self._auto_trade_waiting_gate = True
         self.log(f"⏸ {reason}; {len(self._active_trade_rows)} row(s) retained for "
@@ -13360,6 +13138,8 @@ class TradeOpssAIApp:
                         ok = self._auto_execute_perps_row(row_data, p_side)
                     with total_success:
                         counters["success" if ok else "fail"] += 1
+                    if not ok:
+                        self._record_trade_failed(acct_num, firm_name, "order not placed — see log")
                     continue
 
                 # For AlphaTrader, auto-detect account size from live balance when
@@ -13493,6 +13273,7 @@ class TradeOpssAIApp:
                         "WARN"))
                     with total_success:
                         counters["skipped"] += 1
+                    self._record_trade_skipped()
                     continue
 
                 # Direction: AI/ML signal at execution time (mandatory).
@@ -13795,6 +13576,7 @@ class TradeOpssAIApp:
 
                     with total_success:
                         counters["success"] += 1
+                    self._record_trade_taken(row_data, side, acct_num)
 
                     self._auto_trade_firm_sides[family_key] = side
                     self._auto_trade_side_lock_logged.add((family_key, side))
@@ -13830,6 +13612,7 @@ class TradeOpssAIApp:
                 except Exception as e:
                     with total_success:
                         counters["fail"] += 1
+                    self._record_trade_failed(acct_num, firm_name, e)
                     self._ai_trace("WARN", f"{acct_num}: trade FAILED — {e}")
                     self.root.after(0, lambda an=acct_num, err=str(e):
                         self.log(f"❌ Auto-trade failed for {an}: {err}", "ERROR"))
@@ -14062,6 +13845,9 @@ class TradeOpssAIApp:
                     "account": existing_account,
                     "row_frame": None,
                     "creds_source": "dashboard" if perps_key else "missing",
+                    "reconnect": (self._thread_launcher(
+                        self._connect_perps_broker, firm, perps_key, perps_email)
+                        if perps_key else None),
                 }
                 self._start_perps_md_feed()
                 if existing_account:
@@ -14093,6 +13879,9 @@ class TradeOpssAIApp:
                     "row_frame": None,
                     "creds_source": "dashboard" if (dx_user and dx_pass) else "missing",
                     "portal": portal if all(portal) else None,
+                    "reconnect": (self._thread_launcher(
+                        self._connect_dxtrade_broker, firm, dx_user, dx_pass, dx_host)
+                        if (dx_user and dx_pass) else None),
                 }
                 if existing_account:
                     auto_count += 1
@@ -14130,6 +13919,9 @@ class TradeOpssAIApp:
                     "account": existing_account,
                     "row_frame": None,
                     "creds_source": "token_file" if have_session else ("dashboard" if vest_email else "missing"),
+                    "reconnect": (self._thread_launcher(
+                        self._connect_vest_broker, firm, token_file, vest_acct, vest_email)
+                        if (have_session or vest_email) else None),
                 }
                 if existing_account:
                     auto_count += 1
@@ -14153,6 +13945,9 @@ class TradeOpssAIApp:
                     "account": existing_account,
                     "row_frame": None,
                     "creds_source": "dashboard" if bo_email else "missing",
+                    "reconnect": (self._thread_launcher(
+                        self._connect_breakout_broker, firm, bo_email)
+                        if bo_email else None),
                 }
                 if existing_account:
                     auto_count += 1
@@ -14378,7 +14173,9 @@ class TradeOpssAIApp:
         conn["status_var"].set("⏳")
         conn["connect_btn"].configure(text="...")
 
-        def _do_connect():
+        def _do_connect(attempt=1):
+            account = None
+            established = False
             try:
                 if platform == "Tradovate":
                     if not TRADOVATE_AVAILABLE:
@@ -14420,6 +14217,7 @@ class TradeOpssAIApp:
                     return
 
                 conn["account"] = account
+                established = True
                 # Also keep legacy references for backward compatibility
                 if platform == "Tradovate":
                     self.tradovate_account = account
@@ -14460,6 +14258,10 @@ class TradeOpssAIApp:
                     self.root.after(0, self._start_status_polling)
 
             except Exception as e:
+                if not established:
+                    self._close_failed_session(account)
+                    if self._prepare_connection_restart(firm_name, e, attempt):
+                        return _do_connect(attempt + 1)
                 def _fail():
                     conn["status_var"].set("❌")
                     conn["connect_btn"].configure(text="Retry", fg_color="#450A0A")
@@ -14542,6 +14344,677 @@ class TradeOpssAIApp:
                     state="normal", text="Capture Frames"))
 
         threading.Thread(target=_do_capture, daemon=True, name="ws-sniff").start()
+
+    # ── Today's trading summary (section on the Settings tab) ──
+    _TODAY_REFRESH_MS = 1000
+    _TODAY_LOCK = threading.Lock()
+    _TODAY_FIELDS = (
+        ("state", "Auto-trade"), ("start", "Scheduled start"), ("wake", "Auto-wake"),
+        ("taken", "Trades today"), ("queue", "Queue"), ("firms", "By prop firm"),
+        ("last", "Last trade"), ("issues", "Last problem"), ("brokers", "Brokers"),
+        ("client", "Client (KYC)"), ("session", "Futures session"), ("mode", "Mode / Direction"),
+    )
+
+    @staticmethod
+    def _today_path():
+        return os.path.join(os.path.dirname(__file__), "trades_today.json")
+
+    def _today_state(self, now=None):
+        """Today's tally (EAT). Loads the saved file once and starts over each new day."""
+        day = (now or kenya_now()).date().isoformat()
+        state = getattr(self, "_today_trades", None)
+        if state is None:
+            try:
+                with open(self._today_path(), "r", encoding="utf-8") as f:
+                    state = json.load(f)
+            except Exception:
+                state = None
+        if not isinstance(state, dict) or state.get("date") != day:
+            state = {"date": day}
+        state.setdefault("taken", [])
+        state.setdefault("failed", [])
+        state.setdefault("skipped", 0)
+        self._today_trades = state
+        return state
+
+    def _save_today_trades(self):
+        path = self._today_path()
+        temp_path = path + ".tmp"
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(self._today_trades, f, indent=2)
+            os.replace(temp_path, path)
+        except Exception:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+
+    def _record_trade_taken(self, row_data, side="", acct_num=None):
+        """Count a filled trade in today's summary (call once per real fill)."""
+        try:
+            row = row_data or {}
+            evaluation = row.get("eval") or {}
+            entry = {
+                "time": kenya_now().isoformat(timespec="seconds"),
+                "firm": str(evaluation.get("Prop Firm") or row.get("firm_code") or "Unknown").strip(),
+                "account": str(acct_num or row.get("acct_num") or "").strip(),
+                "side": str(side or "").upper(),
+                "phase": str(row.get("current_phase") or "").strip(),
+            }
+            with self._TODAY_LOCK:
+                self._today_state()["taken"].append(entry)
+                self._save_today_trades()
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.today").debug("record trade failed: %s", exc)
+
+    def _record_trade_failed(self, acct_num, firm, reason=""):
+        try:
+            with self._TODAY_LOCK:
+                self._today_state()["failed"].append({
+                    "time": kenya_now().isoformat(timespec="seconds"),
+                    "account": str(acct_num or "").strip(), "firm": str(firm or "").strip(),
+                    "reason": str(reason or "")[:160]})
+                self._save_today_trades()
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.today").debug("record failure failed: %s", exc)
+
+    def _record_trade_skipped(self):
+        try:
+            with self._TODAY_LOCK:
+                state = self._today_state()
+                state["skipped"] = int(state.get("skipped") or 0) + 1
+                self._save_today_trades()
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.today").debug("record skip failed: %s", exc)
+
+    @staticmethod
+    def _clock_text(moment):
+        return moment.astimezone(KENYA_TZ).strftime("%I:%M %p").lstrip("0") + " EAT"
+
+    @staticmethod
+    def _countdown_text(seconds):
+        hours, rest = divmod(max(0, int(seconds)), 3600)
+        minutes, secs = divmod(rest, 60)
+        if hours:
+            return f"{hours}h {minutes:02d}m"
+        return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
+
+    def _today_summary(self, now=None):
+        """Display strings for the Today's Trading section."""
+        now = now or kenya_now()
+        today = now.date().isoformat()
+        with self._TODAY_LOCK:
+            state = self._today_state(now)
+            taken = list(state["taken"])
+            failed = list(state["failed"])
+            skipped = int(state.get("skipped") or 0)
+        rows = list(getattr(self, "_active_trade_rows", []) or [])
+        queued = len(rows)
+        enabled = bool(getattr(self, "auto_trade_enabled", False))
+        scheduled = getattr(self, "_auto_trade_scheduled_dt", None)
+        total = int(getattr(self, "_auto_trade_total", 0) or 0)
+
+        if enabled and scheduled and now < scheduled:
+            auto_state = f"⏳ Armed — starts in {self._countdown_text((scheduled - now).total_seconds())}"
+        elif enabled and queued:
+            auto_state = f"⚡ Executing — {queued} remaining"
+        elif enabled:
+            auto_state = "✅ Finishing up"
+        elif taken and not queued:
+            auto_state = "✅ Complete — every queued trade was taken"
+        elif queued:
+            auto_state = f"Idle — {queued} queued, not armed yet"
+        else:
+            auto_state = "Idle — nothing queued"
+
+        batch_start = scheduled if (enabled and scheduled) else (
+            getattr(self, "_kyc_batch_starts", {}) or {}).get(self._kyc_key(now))
+        if batch_start:
+            clock = self._clock_text(batch_start)
+            start = (f"{clock}  (in {self._countdown_text((batch_start - now).total_seconds())})"
+                     if now < batch_start else f"{clock}  (started)")
+        else:
+            start = "Not scheduled yet"
+
+        wake_state = getattr(self, "_auto_wake_state", None) or {}
+        wake_at = None
+        try:
+            if wake_state.get("scheduled_at"):
+                wake_at = datetime.fromisoformat(wake_state["scheduled_at"])
+                if wake_at.tzinfo is None:
+                    wake_at = wake_at.replace(tzinfo=KENYA_TZ)
+        except (TypeError, ValueError):
+            wake_at = None
+        wake_clock = self._clock_text(wake_at) + " — " if wake_at else ""
+        if wake_state.get("started_date") == today:
+            wake = f"{wake_clock}started today"
+        elif wake_at and wake_state.get("scheduled_date") == today:
+            wake = f"{wake_clock}{'due now' if now >= wake_at else 'waiting'}"
+        else:
+            wake = "Next window 3:00–8:00 AM EAT"
+
+        by_firm = {}
+        for entry in taken:
+            by_firm[entry.get("firm") or "Unknown"] = by_firm.get(entry.get("firm") or "Unknown", 0) + 1
+        firms = "  ·  ".join(f"{name} {count}" for name, count in sorted(by_firm.items())) or "—"
+
+        def _entry_line(entry):
+            try:
+                clock = self._clock_text(datetime.fromisoformat(entry["time"]))
+            except (KeyError, TypeError, ValueError):
+                clock = "?"
+            account = str(entry.get("account") or "")
+            return (f"{clock}  {entry.get('firm', '')}  {account[-10:]}  "
+                    f"{entry.get('side', '')}").rstrip()
+
+        last = _entry_line(taken[-1]) if taken else "No trades yet today"
+        if failed:
+            issue = f"{_entry_line(failed[-1])} — {failed[-1].get('reason') or 'see log'}"
+        else:
+            issue = "None"
+
+        states = [self._broker_connection_state(c)[0]
+                  for c in (getattr(self, "_broker_connections", {}) or {}).values()]
+        connected = sum(1 for s in states if s == "connected")
+        brokers = f"{connected}/{len(states)} connected" if states else "None loaded yet"
+
+        try:
+            email = self.client_email_entry.get().strip()
+        except Exception:
+            email = ""
+        client = (email or "—") + f"   ·   {queued} account(s) queued"
+
+        allowed, window = self._trading_window_open(now)
+        if allowed:
+            session = "Open — new orders allowed until 8:00 PM EAT"
+        elif now.weekday() >= 5:
+            session = "Closed — weekend"
+        else:
+            session = f"Closed — orders allowed {window} EAT"
+
+        try:
+            mode = f"{self.trading_mode_var.get()}  ·  {self.direction_var.get()}"
+        except Exception:
+            mode = "—"
+
+        queue = (f"{queued} remaining of {total} in this batch"
+                 if enabled and total else f"{queued} queued")
+        if enabled and queued:
+            state_color = "#38BDF8" if not (scheduled and now < scheduled) else "#FBBF24"
+        elif taken and not queued:
+            state_color = "#22C55E"
+        else:
+            state_color = "#94A3B8"
+        done_plus_left = len(taken) + queued
+        if done_plus_left:
+            progress = len(taken) / done_plus_left
+            progress_text = f"{len(taken)} of {done_plus_left} done"
+        else:
+            progress, progress_text = 0.0, "No trades queued"
+        if not states:
+            brokers_color = "#94A3B8"
+        elif connected == len(states):
+            brokers_color = "#22C55E"
+        elif connected:
+            brokers_color = "#FBBF24"
+        else:
+            brokers_color = "#F87171"
+        summary = {
+            "state": auto_state, "start": start, "wake": wake,
+            "taken": f"{len(taken)} taken   ·   {len(failed)} failed   ·   {skipped} skipped",
+            "queue": queue, "firms": firms, "last": last, "issues": issue,
+            "brokers": brokers, "client": client, "session": session, "mode": mode,
+            "date": now.strftime("%A %d %b %Y  ·  %H:%M EAT"),
+            "recent": "\n".join(_entry_line(e) for e in reversed(taken[-5:])) or "—",
+            # Structured values for the visual layout
+            "n_taken": len(taken), "n_failed": len(failed), "n_skipped": skipped,
+            "n_queued": queued, "progress": progress, "progress_text": progress_text,
+            "state_color": state_color, "brokers_color": brokers_color,
+            "session_color": "#22C55E" if allowed else "#F59E0B",
+            "has_issue": bool(failed),
+            "recent_rows": [
+                (self._clock_text(datetime.fromisoformat(e["time"])) if e.get("time") else "?",
+                 e.get("firm") or "", str(e.get("account") or "")[-12:], e.get("side") or "")
+                for e in reversed(taken[-5:])],
+        }
+        return summary
+
+    def _build_today_panel(self, parent):
+        """Section showing today's schedule, trades taken and queue state."""
+        card = self._section_card(parent, "TODAY'S TRADING", "📊")
+        card.pack(fill="x", padx=4, pady=2)
+        self._today_panel = card
+        self._today_cache = {}
+        if not CTK_AVAILABLE:
+            self._today_vars = {key: tk.StringVar(value="—") for key, _ in self._TODAY_FIELDS}
+            for row, (key, label) in enumerate(self._TODAY_FIELDS):
+                line = ttk.Frame(card)
+                line.pack(fill="x", padx=10)
+                ttk.Label(line, text=label, width=18).pack(side="left")
+                ttk.Label(line, textvariable=self._today_vars[key]).pack(side="left")
+            self._refresh_today_panel()
+            return
+
+        tile_bg, tile_border, dim = "#0A1220", "#0F1A2A", "#64748B"
+        w = {}
+        self._today_widgets = w
+
+        # Header: weekday / date / clock on the right
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill="x", padx=12, pady=(0, 4))
+        w["date"] = ctk.CTkLabel(head, text="", font=("Consolas", 10), text_color=dim)
+        w["date"].pack(side="right")
+
+        # Status banner: coloured accent, headline, start time and progress bar
+        banner = ctk.CTkFrame(card, fg_color=tile_bg, corner_radius=8,
+                              border_width=1, border_color=tile_border)
+        banner.pack(fill="x", padx=10, pady=(0, 6))
+        w["accent"] = ctk.CTkFrame(banner, width=5, height=10, fg_color="#94A3B8", corner_radius=0)
+        w["accent"].pack(side="left", fill="y")
+        body = ctk.CTkFrame(banner, fg_color="transparent")
+        body.pack(side="left", fill="x", expand=True, padx=12, pady=8)
+        w["state"] = ctk.CTkLabel(body, text="", anchor="w", font=("Segoe UI", 15, "bold"),
+                                  text_color="#94A3B8")
+        w["state"].pack(fill="x")
+        w["start"] = ctk.CTkLabel(body, text="", anchor="w", font=("Consolas", 10),
+                                  text_color=self.C_TEXT_DIM)
+        w["start"].pack(fill="x", pady=(0, 6))
+        bar_row = ctk.CTkFrame(body, fg_color="transparent")
+        bar_row.pack(fill="x")
+        w["progress"] = ctk.CTkProgressBar(bar_row, height=8, corner_radius=4,
+                                           fg_color="#162338", progress_color="#22C55E")
+        w["progress"].set(0)
+        w["progress"].pack(side="left", fill="x", expand=True)
+        w["progress_text"] = ctk.CTkLabel(bar_row, text="", font=("Consolas", 9),
+                                          text_color=dim, width=110, anchor="e")
+        w["progress_text"].pack(side="left", padx=(8, 0))
+
+        # Stat tiles
+        tiles = ctk.CTkFrame(card, fg_color="transparent")
+        tiles.pack(fill="x", padx=10, pady=(0, 6))
+        w["tiles"] = {}
+        for col, (key, title, color) in enumerate((
+                ("n_taken", "TAKEN", "#22C55E"), ("n_failed", "FAILED", "#F87171"),
+                ("n_skipped", "SKIPPED", "#FBBF24"), ("n_queued", "QUEUED", "#38BDF8"))):
+            tiles.grid_columnconfigure(col, weight=1, uniform="today_tiles")
+            tile = ctk.CTkFrame(tiles, fg_color=tile_bg, corner_radius=8,
+                                border_width=1, border_color=tile_border)
+            tile.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 4, 0))
+            ctk.CTkFrame(tile, height=3, fg_color=color, corner_radius=0).pack(fill="x")
+            w["tiles"][key] = ctk.CTkLabel(tile, text="0", font=("Segoe UI", 26, "bold"),
+                                           text_color=color)
+            w["tiles"][key].pack(pady=(4, 0))
+            ctk.CTkLabel(tile, text=title, font=("Consolas", 8, "bold"),
+                         text_color=dim).pack(pady=(0, 6))
+
+        # Info chips (two per row)
+        chips = ctk.CTkFrame(card, fg_color="transparent")
+        chips.pack(fill="x", padx=10, pady=(0, 6))
+        w["chips"] = {}
+        layout = (("wake", "AUTO-WAKE"), ("brokers", "BROKERS"),
+                  ("session", "FUTURES SESSION"), ("mode", "MODE / DIRECTION"),
+                  ("client", "CLIENT (KYC)"), ("firms", "BY PROP FIRM"))
+        for index, (key, title) in enumerate(layout):
+            row, col = divmod(index, 2)
+            chips.grid_columnconfigure(col, weight=1, uniform="today_chips")
+            chip = ctk.CTkFrame(chips, fg_color=tile_bg, corner_radius=8,
+                                border_width=1, border_color=tile_border)
+            chip.grid(row=row, column=col, sticky="ew", pady=(0, 4),
+                      padx=(0 if col == 0 else 4, 0))
+            ctk.CTkLabel(chip, text=title, anchor="w", font=("Consolas", 8, "bold"),
+                         text_color=dim).pack(fill="x", padx=10, pady=(6, 0))
+            w["chips"][key] = ctk.CTkLabel(chip, text="—", anchor="w", justify="left",
+                                           font=("Segoe UI", 11), text_color=self.C_TEXT,
+                                           wraplength=330)
+            w["chips"][key].pack(fill="x", padx=10, pady=(0, 6))
+
+        # Recent trades and the latest problem
+        recent_card = ctk.CTkFrame(card, fg_color=tile_bg, corner_radius=8,
+                                   border_width=1, border_color=tile_border)
+        recent_card.pack(fill="x", padx=10, pady=(0, 10))
+        ctk.CTkLabel(recent_card, text="RECENT TRADES", anchor="w", font=("Consolas", 8, "bold"),
+                     text_color=dim).pack(fill="x", padx=10, pady=(6, 2))
+        w["recent"] = ctk.CTkFrame(recent_card, fg_color="transparent")
+        w["recent"].pack(fill="x", padx=6)
+        w["problem"] = ctk.CTkLabel(recent_card, text="", anchor="w", justify="left",
+                                    font=("Consolas", 10), text_color="#F87171", wraplength=700)
+        w["problem"].pack(fill="x", padx=10, pady=(2, 6))
+        self._refresh_today_panel()
+
+    def _draw_today_recent(self, rows):
+        frame = self._today_widgets["recent"]
+        for child in frame.winfo_children():
+            child.destroy()
+        if not rows:
+            ctk.CTkLabel(frame, text="No trades taken yet today", anchor="w",
+                         font=("Segoe UI", 10, "italic"), text_color="#4A5568"
+                         ).pack(fill="x", padx=6, pady=2)
+            return
+        for clock, firm, account, side in rows:
+            buy = str(side).upper() == "BUY"
+            line = ctk.CTkFrame(frame, fg_color="transparent", height=26)
+            line.pack(fill="x", pady=1)
+            ctk.CTkLabel(line, text=clock, width=90, anchor="w", font=("Consolas", 10),
+                         text_color="#64748B").pack(side="left", padx=(6, 0))
+            ctk.CTkLabel(line, text=(side or "—").upper(), width=48, height=20, corner_radius=6,
+                         font=("Consolas", 9, "bold"),
+                         fg_color="#052E16" if buy else "#2D0A0A",
+                         text_color="#4ADE80" if buy else "#F87171").pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(line, text=firm[:22], width=160, anchor="w",
+                         font=("Consolas", 10, "bold"),
+                         text_color=self.PROP_FIRM_COLORS.get(firm, "#95A5A6")).pack(side="left")
+            ctk.CTkLabel(line, text=account, anchor="w", font=("Consolas", 10),
+                         text_color="#94A3B8").pack(side="left")
+
+    def _refresh_today_panel(self):
+        """Update the Today's Trading section every second; re-arms itself."""
+        try:
+            if not self._today_panel.winfo_exists():
+                return
+            summary = self._today_summary()
+            if not CTK_AVAILABLE:
+                for key, var in self._today_vars.items():
+                    if var.get() != summary.get(key):
+                        var.set(summary.get(key, "—"))
+            else:
+                self._apply_today_summary(summary)
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.today").debug("today panel refresh failed: %s", exc)
+        try:
+            self.root.after(self._TODAY_REFRESH_MS, self._refresh_today_panel)
+        except Exception:
+            pass
+
+    def _apply_today_summary(self, summary):
+        w, cache = self._today_widgets, self._today_cache
+
+        def _set(widget_key, sub_key, text=None, **options):
+            """Configure a widget only when its content changed."""
+            widget = w[widget_key] if sub_key is None else w[widget_key][sub_key]
+            marker = (widget_key, sub_key)
+            value = (text, tuple(sorted(options.items())))
+            if cache.get(marker) != value:
+                cache[marker] = value
+                kwargs = dict(options)
+                if text is not None:
+                    kwargs["text"] = text
+                widget.configure(**kwargs)
+
+        _set("date", None, summary["date"])
+        _set("state", None, summary["state"], text_color=summary["state_color"])
+        _set("start", None, "Start: " + summary["start"])
+        _set("progress_text", None, summary["progress_text"])
+        if cache.get("progress") != summary["progress"]:
+            cache["progress"] = summary["progress"]
+            w["progress"].set(summary["progress"])
+        if cache.get("accent") != summary["state_color"]:
+            cache["accent"] = summary["state_color"]
+            w["accent"].configure(fg_color=summary["state_color"])
+        for key in ("n_taken", "n_failed", "n_skipped", "n_queued"):
+            _set("tiles", key, str(summary[key]))
+        for key, color in (("wake", self.C_TEXT), ("brokers", summary["brokers_color"]),
+                           ("session", summary["session_color"]), ("mode", self.C_TEXT),
+                           ("client", self.C_TEXT), ("firms", self.C_TEXT)):
+            _set("chips", key, summary[key], text_color=color)
+        if cache.get("recent_rows") != summary["recent_rows"]:
+            cache["recent_rows"] = list(summary["recent_rows"])
+            self._draw_today_recent(summary["recent_rows"])
+        _set("problem", None,
+             ("⚠  " + summary["issues"]) if summary["has_issue"] else "✓  No problems today",
+             text_color="#F87171" if summary["has_issue"] else "#3B6B4F")
+
+    @staticmethod
+    def _thread_launcher(target, *args):
+        """Callable that runs target(*args) on a daemon thread (a stored reconnect action)."""
+        return lambda: threading.Thread(target=target, args=args, daemon=True).start()
+
+    # ── Failed connection → close its Chrome and start again ──
+    _BROKER_CONNECT_ATTEMPTS = 3
+    _BROKER_INTERACTIVE_ATTEMPTS = 2   # sign-in needs the user (emailed link / code)
+    _BROKER_RETRY_DELAY_SEC = 5
+    # Retrying a rejected login can lock the account, so never restart on these.
+    _CREDENTIAL_ERROR_HINTS = (
+        "invalid", "incorrect", "wrong password", "credential", "unauthorized",
+        "locked", "banned", "forbidden", "401", "403", "denied")
+
+    @staticmethod
+    def _close_failed_session(session):
+        """Close whatever Chrome/driver a failed connection attempt left behind."""
+        closer = getattr(session, "close", None)
+        if callable(closer):
+            try:
+                closer()
+            except Exception:
+                pass
+
+    def _is_credential_error(self, exc):
+        text = str(exc).lower()
+        return any(hint in text for hint in self._CREDENTIAL_ERROR_HINTS)
+
+    def _prepare_connection_restart(self, firm, exc, attempt, attempts=None):
+        """After a failed attempt: True when a fresh Chrome should be started again.
+
+        The caller has already closed the failed session's Chrome. Logs the
+        restart, keeps the broker list on "Connecting…" and waits briefly.
+        """
+        attempts = attempts or self._BROKER_CONNECT_ATTEMPTS
+        if attempt >= attempts:
+            return False
+        if self._is_credential_error(exc):
+            self.log(f"⚠ {firm}: login was rejected — not restarting automatically "
+                     "(fix the credentials, then Reconnect)", "WARN")
+            return False
+        stop = getattr(self, "_auto_wake_stop", None)
+        if stop is not None and stop.is_set():
+            return False
+        self.log(f"🔄 {firm}: connection failed ({exc}) — closed its Chrome, "
+                 f"starting again ({attempt + 1}/{attempts})", "WARN")
+        conn = (getattr(self, "_broker_connections", None) or {}).get(firm)
+        if isinstance(conn, dict):
+            conn["reconnect_started"] = time.time()
+        if stop is not None:
+            return not stop.wait(self._BROKER_RETRY_DELAY_SEC)
+        time.sleep(self._BROKER_RETRY_DELAY_SEC)
+        return True
+
+    # ── Broker connections panel: status list + reconnect ──
+    _BROKER_PANEL_REFRESH_MS = 2000
+    _BROKER_RECONNECT_COOLDOWN_SEC = 20
+    _BROKER_CONNECTING_WINDOW_SEC = 90
+    _BROKER_STATE_COLORS = {
+        "connected": "#22C55E", "connecting": "#FBBF24", "lost": "#F87171",
+        "failed": "#F87171", "missing": "#F59E0B", "disabled": "#64748B",
+        "idle": "#64748B",
+    }
+
+    def _broker_connection_state(self, conn):
+        """(state, label) for one broker connection."""
+        if conn.get("creds_source") == "disabled":
+            return "disabled", f"Disabled ({str(conn.get('status') or 'inactive').title()})"
+        account = conn.get("account")
+        if account is not None:
+            logged_in = getattr(account, "logged_in", None)
+            if conn.get("session_lost") or (logged_in is not None and not logged_in):
+                return "lost", "Session lost"
+            return "connected", "Connected"
+        status_var = conn.get("status_var")
+        status_icon = status_var.get() if status_var is not None else ""
+        started = conn.get("reconnect_started") or 0
+        if status_icon == "⏳" or time.time() - started < self._BROKER_CONNECTING_WINDOW_SEC:
+            return "connecting", "Connecting…"
+        user_entry, pass_entry = conn.get("user_entry"), conn.get("pass_entry")
+        if conn.get("creds_source") == "missing" or (
+                user_entry is not None and pass_entry is not None
+                and not (user_entry.get().strip() and pass_entry.get().strip())):
+            return "missing", "Credentials missing"
+        if status_icon == "❌":
+            return "failed", "Connection failed"
+        return "idle", "Not connected"
+
+    def _build_broker_status_panel(self, parent):
+        """Visible list of every broker connection with its status and a reconnect button."""
+        card = self._section_card(parent, "BROKER CONNECTIONS", "🏦")
+        card.pack(fill="x", padx=4, pady=2)
+        head = ctk.CTkFrame(card, fg_color="transparent") if CTK_AVAILABLE else \
+               tk.Frame(card, bg="#161B22")
+        head.pack(fill="x", padx=10, pady=(2, 2))
+        self.broker_panel_summary_var = tk.StringVar(value="No brokers loaded yet")
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(head, textvariable=self.broker_panel_summary_var,
+                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM).pack(side="left")
+        else:
+            ttk.Label(head, textvariable=self.broker_panel_summary_var).pack(side="left")
+        self._ctk_button(head, text="Reconnect All", command=self._reconnect_all_brokers,
+                         fg="#24292F", hover="#000000", width=110).pack(side="right")
+        self._broker_panel_rows = ctk.CTkFrame(card, fg_color="transparent") if CTK_AVAILABLE \
+            else tk.Frame(card, bg="#161B22")
+        self._broker_panel_rows.pack(fill="x", padx=6, pady=(0, 6))
+        self._broker_panel_signature = None
+        self._refresh_broker_status_panel()
+
+    def _redraw_broker_status_panel_if_changed(self):
+        rows_frame = self._broker_panel_rows
+        if not rows_frame.winfo_exists():
+            return False
+        entries = []
+        for firm, conn in sorted(self._broker_connections.items(),
+                                 key=lambda kv: str(kv[0]).lower()):
+            state, label = self._broker_connection_state(conn)
+            entries.append((firm, state, label))
+        signature = tuple(entries)
+        if signature != self._broker_panel_signature:
+            self._broker_panel_signature = signature
+            self._draw_broker_status_rows(rows_frame, entries)
+        return True
+
+    def _refresh_broker_status_panel(self):
+        """Periodic redraw of the broker list; re-arms itself while the window exists."""
+        try:
+            if not self._redraw_broker_status_panel_if_changed():
+                return
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.brokers").debug("broker panel refresh failed: %s", exc)
+        try:
+            self.root.after(self._BROKER_PANEL_REFRESH_MS, self._refresh_broker_status_panel)
+        except Exception:
+            pass
+
+    def _draw_broker_status_rows(self, rows_frame, entries):
+        for child in rows_frame.winfo_children():
+            child.destroy()
+        connected = sum(1 for _f, state, _l in entries if state == "connected")
+        self.broker_panel_summary_var.set(
+            f"{connected}/{len(entries)} connected" if entries else "No brokers loaded yet")
+        if not entries:
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(rows_frame, text="Load trades to populate broker connections",
+                             font=("Segoe UI", 9, "italic"), text_color="#4A5568").pack(pady=4)
+            return
+        for firm, state, label in entries:
+            color = self._BROKER_STATE_COLORS.get(state, "#64748B")
+            try:
+                platform = self._platform_for_firm(firm, default="") or ""
+            except Exception:
+                platform = ""
+            if state == "connected":
+                action = "Reconnect"
+            elif state in ("lost", "failed"):
+                action = "Retry"
+            else:
+                action = "Connect"
+            can_act = state not in ("connecting", "disabled")
+            if CTK_AVAILABLE:
+                row = ctk.CTkFrame(rows_frame, fg_color="#0A1220", corner_radius=4, height=34,
+                                   border_width=1, border_color="#0F1A2A")
+                row.pack(fill="x", padx=4, pady=1)
+                row.pack_propagate(False)
+                ctk.CTkFrame(row, width=3, fg_color=color, corner_radius=0).pack(side="left", fill="y")
+                ctk.CTkLabel(row, text=str(firm)[:22], width=150, anchor="w",
+                             font=("Consolas", 10, "bold"),
+                             text_color=self.PROP_FIRM_COLORS.get(firm, "#95A5A6")
+                             ).pack(side="left", padx=(8, 0))
+                ctk.CTkLabel(row, text=platform, width=80, anchor="w",
+                             font=("Consolas", 9), text_color="#4A7C8F").pack(side="left")
+                ctk.CTkLabel(row, text=f"● {label}", anchor="w", font=("Segoe UI", 10),
+                             text_color=color).pack(side="left", padx=(8, 0))
+                btn = ctk.CTkButton(row, text=action, width=84, height=24,
+                                    state="normal" if can_act else "disabled",
+                                    fg_color="#1A2332", hover_color="#24292F",
+                                    border_width=1, border_color=self.C_BORDER,
+                                    font=("Consolas", 9), text_color=self.C_TEXT, corner_radius=4,
+                                    command=lambda f=firm: self._reconnect_broker(f))
+                btn.pack(side="right", padx=(8, 6))
+            else:
+                row = tk.Frame(rows_frame, bg="#0A1220")
+                row.pack(fill="x", padx=4, pady=1)
+                tk.Label(row, text=str(firm)[:22], width=22, anchor="w",
+                         bg="#0A1220", fg=color, font=("Consolas", 9)).pack(side="left", padx=2)
+                tk.Label(row, text=f"{platform}  {label}", anchor="w",
+                         bg="#0A1220", fg=color).pack(side="left", padx=2)
+                ttk.Button(row, text=action,
+                           state="normal" if can_act else "disabled",
+                           command=lambda f=firm: self._reconnect_broker(f)).pack(side="right", padx=2)
+
+    def _reconnect_broker(self, firm):
+        """Drop the broker's current session (if any) and connect it again."""
+        conn = self._broker_connections.get(firm)
+        if not conn:
+            return
+        if conn.get("creds_source") == "disabled":
+            self._connect_broker_firm(firm)  # logs why it cannot launch
+            return
+        now = time.time()
+        if now - (conn.get("reconnect_started") or 0) < self._BROKER_RECONNECT_COOLDOWN_SEC:
+            return
+        state, _label = self._broker_connection_state(conn)
+        if state == "connected" and not messagebox.askyesno(
+                "Reconnect broker",
+                f"{firm} is connected. Reconnect it anyway?\n\n"
+                "Its browser session will be closed and opened again."):
+            return
+        reconnect = conn.get("reconnect")
+        if not reconnect and not conn.get("user_entry"):
+            self.log(f"⚠ {firm}: no saved login to reconnect with — add it on the dashboard "
+                     "Prop Firm Accounts tab", "WARN")
+            return
+        account = conn.get("account")
+        if account is not None:
+            closer = getattr(account, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception as exc:
+                    self.log(f"⚠ {firm}: closing the old session failed: {exc}", "WARN")
+            conn["account"] = None
+        conn["reconnect_started"] = now
+        self.log(f"🔄 Reconnecting {firm}…")
+        self._broker_panel_signature = None
+        if reconnect:
+            reconnect()
+        else:
+            self._connect_broker_firm(firm)
+        try:
+            self._redraw_broker_status_panel_if_changed()
+        except Exception:
+            pass
+
+    def _reconnect_all_brokers(self):
+        """Reconnect every broker that is not currently healthy or already connecting."""
+        targets = [f for f, c in self._broker_connections.items()
+                   if self._broker_connection_state(c)[0] in ("lost", "failed", "idle")]
+        if not targets:
+            self.log("All brokers are connected or already connecting")
+            return
+        self.log(f"🔄 Reconnecting {len(targets)} broker(s)…")
+
+        def _run():
+            for firm in targets:
+                self.root.after(0, lambda f=firm: self._reconnect_broker(f))
+                time.sleep(3)  # stagger browser launches
+
+        threading.Thread(target=_run, daemon=True, name="reconnect-all-brokers").start()
 
     def _connect_all_brokers(self):
         """Connect all prop firms that have credentials filled in."""
@@ -16246,11 +16719,22 @@ class TradeOpssAIApp:
         except ImportError:
             from dxtrade_browser import DXTradeBrowserSession
         try:
-            sess = DXTradeBrowserSession(
-                username, password,
-                host=host or os.environ.get("DXTRADE_HOST", "dx.tradeify247.co"),
-                domain=domain or os.environ.get("DXTRADE_DOMAIN", "default"))
-            sess.login(api_login=True)
+            sess = None
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    sess = DXTradeBrowserSession(
+                        username, password,
+                        host=host or os.environ.get("DXTRADE_HOST", "dx.tradeify247.co"),
+                        domain=domain or os.environ.get("DXTRADE_DOMAIN", "default"))
+                    sess.login(api_login=True)
+                    break
+                except Exception as exc:
+                    self._close_failed_session(sess)
+                    sess = None
+                    if not self._prepare_connection_restart(firm, exc, attempt):
+                        raise
             conn = self._broker_connections.setdefault(firm, {})
             conn["account"] = sess
             codes = sess.account_codes()
@@ -16434,7 +16918,7 @@ class TradeOpssAIApp:
                 pos = result.get("position") or {}
                 self.log(f"✅ Tradeify247 {side.upper()} filled @ {pos.get('openPrice')} — "
                          f"bracket live (TP {plan['tp_price']} / SL {plan['sl_price']})")
-                self._after_dxtrade_fill(row_data, code, plan)
+                self._after_dxtrade_fill(row_data, code, plan, side)
             except Exception as exc:
                 self.log(f"❌ Tradeify247 trade failed: {exc}", "ERROR")
                 def _reenable():
@@ -16462,14 +16946,15 @@ class TradeOpssAIApp:
             _ulog(f"✅ {acct_num}: {side.upper()} {plan['quantity']} {plan['symbol']} filled @ "
                   f"{pos.get('openPrice')} — TP {plan['tp_price']} (+${plan['tp_usd']:,.0f}) "
                   f"/ SL {plan['sl_price']} (-${plan['sl_usd']:,.0f})")
-            self.root.after(0, lambda: self._after_dxtrade_fill(row_data, code, plan))
+            self.root.after(0, lambda: self._after_dxtrade_fill(row_data, code, plan, side))
             return True
         except Exception as exc:
             _ulog(f"❌ {acct_num}: Tradeify247 trade failed: {exc}", "ERROR")
             return False
 
-    def _after_dxtrade_fill(self, row_data, code, plan):
+    def _after_dxtrade_fill(self, row_data, code, plan, side=""):
         """Mark the row In Progress, record the SL as the breach floor, drop the row."""
+        self._record_trade_taken(row_data, side, str(code).split(":", 1)[-1])
         if ":" in str(code):            # DXtrade account codes are "domain:account"
             self._mark_dxtrade_attempt(code)
         _ev = row_data.get("eval")
@@ -16575,6 +17060,14 @@ class TradeOpssAIApp:
 
         def _ask():
             try:
+                # Chrome is in front during login; surface the dialog so it isn't missed.
+                try:
+                    self.root.deiconify()
+                    self.root.lift()
+                    self.root.attributes("-topmost", True)
+                    self.root.after(500, lambda: self.root.attributes("-topmost", False))
+                except Exception:
+                    pass
                 answer["code"] = simpledialog.askstring(
                     "Vest Markets sign-in", prompt, parent=self.root)
             except Exception:
@@ -16609,7 +17102,8 @@ class TradeOpssAIApp:
             with _VEST_CONNECT_LOCK:
                 _VEST_CONNECTING_SESSIONS.discard(session_path)
 
-    def _connect_vest_broker_once(self, firm, token_file=None, account_id=None, email=None):
+    def _connect_vest_broker_once(self, firm, token_file=None, account_id=None, email=None,
+                                  attempt=1):
         """Headless Vest login from the persisted token chain; bootstraps the chain
         (Chrome + mailbox code) from `email` when no session exists yet."""
         try:
@@ -16668,6 +17162,17 @@ class TradeOpssAIApp:
             if email:
                 self._open_vest_observer(firm, email)
         except Exception as exc:
+            established = (self._broker_connections.get(firm) or {}).get("account") is not None
+            if not established:
+                # The sign-in Chrome is already quit by bootstrap; close the Vest
+                # terminal window too, then start the whole login again.
+                if email:
+                    self._close_vest_observer(email)
+                if self._prepare_connection_restart(
+                        firm, exc, attempt, self._BROKER_INTERACTIVE_ATTEMPTS):
+                    return self._connect_vest_broker_once(
+                        firm, token_file=token_file, account_id=account_id,
+                        email=email, attempt=attempt + 1)
             self.root.after(0, lambda e=str(exc): self.log(
                 f"❌ {firm} Vest connection failed: {e}", "ERROR"))
 
@@ -16709,6 +17214,15 @@ class TradeOpssAIApp:
         store[email.lower()] = driver
         self.root.after(0, lambda: self.log(
             f"🪟 {firm}: Vest window {'ready' if ok else 'open — finish the sign-in in Chrome'}"))
+
+    def _close_vest_observer(self, email):
+        """Close one login's Vest window (if open) so it can start fresh."""
+        d = (getattr(self, "_vest_observers", {}) or {}).pop(str(email or "").lower(), None)
+        if d is not None:
+            try:
+                d.quit()
+            except Exception:
+                pass
 
     def _close_vest_observers(self):
         for _email, d in list((getattr(self, "_vest_observers", {}) or {}).items()):
@@ -16862,7 +17376,7 @@ class TradeOpssAIApp:
                 pos = result.get("position") or {}
                 self.log(f"✅ Vest {side.upper()} filled @ {pos.get('openPrice')} — "
                          f"bracket live (TP {plan['tp_price_str']} / SL {plan['sl_price_str']})")
-                self._after_vest_fill(row_data, code, plan)
+                self._after_vest_fill(row_data, code, plan, side)
             except Exception as exc:
                 self.log(f"❌ Vest trade failed: {exc}", "ERROR")
                 def _reenable():
@@ -16890,13 +17404,13 @@ class TradeOpssAIApp:
             _ulog(f"✅ {acct_num}: {side.upper()} {plan['quantity_str']} {plan['symbol']} filled @ "
                   f"{pos.get('openPrice')} — TP {plan['tp_price_str']} (+${plan['tp_usd']:,.0f}) "
                   f"/ SL {plan['sl_price_str']} (-${plan['sl_usd']:,.0f})")
-            self.root.after(0, lambda: self._after_vest_fill(row_data, code, plan))
+            self.root.after(0, lambda: self._after_vest_fill(row_data, code, plan, side))
             return True
         except Exception as exc:
             _ulog(f"❌ {acct_num}: Vest trade failed: {exc}", "ERROR")
             return False
 
-    def _after_vest_fill(self, row_data, code, plan):
+    def _after_vest_fill(self, row_data, code, plan, side=""):
         """Same bookkeeping as a DXtrade fill: In Progress, breach floor, drop row."""
         self._mark_vest_attempt(code)
         bp = plan.get("blueprint") or {}
@@ -16906,7 +17420,7 @@ class TradeOpssAIApp:
                      + f" — SL ${plan['sl_usd']:,.0f} / TP ${plan['tp_usd']:,.0f} / notional ${plan['notional']:,.0f}")
         except Exception:
             pass
-        self._after_dxtrade_fill(row_data, code, plan)
+        self._after_dxtrade_fill(row_data, code, plan, side)
 
     # ── Breakout (Kraken-backed perps: plain Chrome tab, browser-as-API) ──
 
@@ -17233,8 +17747,20 @@ class TradeOpssAIApp:
             self.root.after(0, lambda: self.log(
                 f"🔗 {firm}: opening Chrome — click the sign-in link Breakout emails to {email} "
                 f"(the tab then opens the terminal by itself)"))
-            sess = BreakoutSession(email)
-            sess.login()
+            sess = None
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    sess = BreakoutSession(email)
+                    sess.login()
+                    break
+                except Exception as exc:
+                    self._close_failed_session(sess)
+                    sess = None
+                    if not self._prepare_connection_restart(
+                            firm, exc, attempt, self._BROKER_INTERACTIVE_ATTEMPTS):
+                        raise
             conn = self._broker_connections.setdefault(firm, {})
             conn["account"] = sess
             codes = sess.account_codes()
@@ -17369,7 +17895,7 @@ class TradeOpssAIApp:
                 self.log(f"✅ Breakout {side.upper()} filled — order {result.get('order_ids')} "
                          f"bracket {'live' if result.get('protected') else 'UNCONFIRMED'} "
                          f"(TP {plan['tp_price_str']} / SL {plan['sl_price_str']})")
-                self._after_breakout_fill(row_data, code, plan)
+                self._after_breakout_fill(row_data, code, plan, side)
             except Exception as exc:
                 self.log(f"❌ Breakout trade failed: {exc}", "ERROR")
                 def _reenable():
@@ -17396,13 +17922,13 @@ class TradeOpssAIApp:
             _ulog(f"✅ {acct_num}: {side.upper()} {plan['quantity_str']} {plan['symbol']} filled — "
                   f"TP {plan['tp_price_str']} (+${plan['tp_usd']:,.0f}) / SL {plan['sl_price_str']} "
                   f"(-${plan['sl_usd']:,.0f}) bracket {'live' if result.get('protected') else 'UNCONFIRMED'}")
-            self.root.after(0, lambda: self._after_breakout_fill(row_data, code, plan))
+            self.root.after(0, lambda: self._after_breakout_fill(row_data, code, plan, side))
             return True
         except Exception as exc:
             _ulog(f"❌ {acct_num}: Breakout trade failed: {exc}", "ERROR")
             return False
 
-    def _after_breakout_fill(self, row_data, code, plan):
+    def _after_breakout_fill(self, row_data, code, plan, side=""):
         self._mark_breakout_attempt(code)
         bp = plan.get("blueprint") or {}
         try:
@@ -17412,7 +17938,7 @@ class TradeOpssAIApp:
                        f"/ price target ${plan['tp_usd']:,.0f} / notional ${plan['notional']:,.0f}")
         except Exception:
             pass
-        self._after_dxtrade_fill(row_data, code, plan)
+        self._after_dxtrade_fill(row_data, code, plan, side)
 
     # ── MyFundedPerps Elite 50K: $-ladder planner hook ──────────────────
 
@@ -17510,8 +18036,19 @@ class TradeOpssAIApp:
         except ImportError:
             from perps_connector import MFPClient, unwrap
         try:
-            client = MFPClient(api_key)
-            accounts = unwrap(client.list_accounts()) or []
+            client = None
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    client = MFPClient(api_key)
+                    accounts = unwrap(client.list_accounts()) or []
+                    break
+                except Exception as exc:
+                    # The terminal window is this firm's only Chrome; reopen it fresh.
+                    self._close_perps_observer(email)
+                    if not self._prepare_connection_restart(firm, exc, attempt):
+                        raise
             conn = self._broker_connections.setdefault(firm, {})
             conn["account"] = client
             nums = ", ".join(str(a.get("account_number") or "?") for a in accounts) or "none"
@@ -17560,6 +18097,15 @@ class TradeOpssAIApp:
         store[email.lower()] = driver
         self.root.after(0, lambda: self.log(
             f"🪟 {firm}: MyFundedPerps window {'ready' if ok else 'open — finish sign-in in Chrome'}"))
+
+    def _close_perps_observer(self, email):
+        """Close one login's MyFundedPerps window (if open) so it can start fresh."""
+        d = (getattr(self, "_perps_observers", {}) or {}).pop(str(email or "").lower(), None)
+        if d is not None:
+            try:
+                d.quit()
+            except Exception:
+                pass
 
     def _close_perps_observers(self):
         for _email, d in list((getattr(self, "_perps_observers", {}) or {}).items()):
@@ -17662,6 +18208,7 @@ class TradeOpssAIApp:
                     if not _cur or _cur in ("not started", "in progress"):
                         _ev["Status P1"] = "In Progress"
                 self._shift_day_placeholder_after_api_fill(row_data)
+                self._record_trade_taken(row_data, side, acct.get("account_number"))
 
                 def _remove():
                     try:
@@ -17748,6 +18295,7 @@ class TradeOpssAIApp:
                 if not _cur or _cur in ("not started", "in progress"):
                     _ev["Status P1"] = "In Progress"
             self._shift_day_placeholder_after_api_fill(row_data)
+            self._record_trade_taken(row_data, side, acct.get("account_number") or acct_num)
             def _remove():
                 try:
                     row_data["frame"].destroy()
@@ -20229,7 +20777,6 @@ class TradeOpssAIApp:
         config = {
             "dashboard_url": self.url_entry.get(),  # Save dynamic URL
             "client_email": self.client_email_entry.get(),
-            "sheet_url": self.sheet_url_entry.get(),
             "mt5_login": self.mt5_login.get(),
             "mt5_server": self.mt5_server.get(),
         }
@@ -20270,10 +20817,6 @@ class TradeOpssAIApp:
                 if config.get('client_email'):
                     self.client_email_entry.delete(0, tk.END)
                     self.client_email_entry.insert(0, config.get('client_email', ''))
-                
-                if config.get('sheet_url'):
-                    self.sheet_url_entry.delete(0, tk.END)
-                    self.sheet_url_entry.insert(0, config.get('sheet_url', ''))
                 
                 if config.get('mt5_login'):
                     self.mt5_login.delete(0, tk.END)

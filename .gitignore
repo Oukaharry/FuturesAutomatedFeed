@@ -18,6 +18,7 @@ tests/test_funded_next_flex_tp_target.py
 
 # Virtual environments
 venv/
+venv312/
 .venv/
 
 # Local env/secrets
@@ -94,6 +95,7 @@ TradeopssAI_v1.11.15/
 *.exe
 trader_companion/breach_state.json
 trader_companion/auto_wake_state.json
+trader_companion/trades_today.json
 trader_companion/vest_session.json
 trader_companion/vest_session_harry.json
 trader_companion/vest_session_*.json

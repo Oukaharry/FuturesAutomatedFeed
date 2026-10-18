@@ -18,7 +18,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.request
 
@@ -172,11 +175,36 @@ def verify_link_in_tab(cap: CDPCapture, link: str) -> dict:
             "flowStatus": data.get("status"), "error": (data.get("error") or {}).get("message")
             if isinstance(data.get("error"), dict) else data.get("error")}
 
-OUT = "/tmp/breakout_capture"
+TMP_ROOT = tempfile.gettempdir()
+OUT = os.path.join(TMP_ROOT, "breakout_capture")
 HOSTS = ("breakoutprop.com", "kraken.com", "payward")
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+
+def find_chrome() -> str:
+    """Chrome executable for this OS (BREAKOUT_CHROME_PATH overrides)."""
+    override = (os.environ.get("BREAKOUT_CHROME_PATH") or "").strip()
+    if override and os.path.isfile(override):
+        return override
+    if sys.platform == "win32":
+        roots = [os.environ.get(v) for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        candidates = [os.path.join(r, "Google", "Chrome", "Application", "chrome.exe")
+                      for r in roots if r]
+    elif sys.platform == "darwin":
+        candidates = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+    else:
+        candidates = []
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    for name in ("chrome", "google-chrome", "google-chrome-stable", "chromium"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise RuntimeError("Google Chrome not found — install it or set BREAKOUT_CHROME_PATH")
+
+
 PORT = 9333
-PROFILE = "/tmp/chrome_profiles/breakout_cdp"
+PROFILE = os.path.join(TMP_ROOT, "chrome_profiles", "breakout_cdp")
 TRADE_URL = "https://trade.breakoutprop.com/app"
 PORTAL_APP = "portal.breakoutprop.com/app"
 SIGNIN_URL = "https://portal.breakoutprop.com/sign-in?redirect=https%3A%2F%2Ftrade.breakoutprop.com%2Fapp"
@@ -191,7 +219,7 @@ def chrome_for(email: str) -> tuple:
         return PORT, PROFILE
     h = int(hashlib.sha1(key.encode()).hexdigest()[:6], 16)
     slug = re.sub(r"[^a-z0-9]+", "_", key.split("@")[0])[:24]
-    return 9400 + (h % 400), f"/tmp/chrome_profiles/breakout_{slug}"
+    return 9400 + (h % 400), os.path.join(TMP_ROOT, "chrome_profiles", f"breakout_{slug}")
 
 
 def _cdp_alive(port: int = None) -> bool:
@@ -208,7 +236,7 @@ def launch_chrome(url=SIGNIN_URL, port: int = None, profile: str = None):
     if _cdp_alive(port):
         return
     os.makedirs(profile, exist_ok=True)
-    subprocess.Popen([CHROME, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+    subprocess.Popen([find_chrome(), f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
                       "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", url],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
@@ -249,8 +277,15 @@ def quit_chrome(port: int = None, wait_sec: float = 5.0) -> bool:
         time.sleep(0.25)
     # Chrome ignored the request (e.g. a beforeunload prompt) — kill by port flag.
     try:
-        subprocess.run(["pkill", "-f", f"--remote-debugging-port={port}"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        if sys.platform == "win32":
+            import psutil
+            flag = f"--remote-debugging-port={port}"
+            for proc in psutil.process_iter(["name", "cmdline"]):
+                if (proc.info["name"] or "").lower() == "chrome.exe" and flag in (proc.info["cmdline"] or []):
+                    proc.kill()
+        else:
+            subprocess.run(["pkill", "-f", f"--remote-debugging-port={port}"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
     except Exception as exc:
         log.debug("pkill for Chrome port %s failed: %s", port, exc)
     time.sleep(0.5)
