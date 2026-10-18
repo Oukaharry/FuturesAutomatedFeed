@@ -338,16 +338,28 @@ def canonical_weekday_placeholder_field(ev, fields):
     if not isinstance(ev, dict):
         return None
     cleared = set(ev.get('_cleared_fields') or [])
-    for field in fields or []:
+
+    def _eligible(field):
+        if field in cleared:
+            return False
         val = ev.get(field)
-        s = str(val or '').strip()
         if cell_is_settled_day_value(val):
+            return False
+        return True
+
+    # Pass 1: keep the leftmost existing weekday label. Scanning for an empty
+    # slot first (old behavior) deleted MONDAY in HR2 whenever HR1 was blank.
+    for field in fields or []:
+        if not _eligible(field):
             continue
-        if cell_is_pure_weekday_placeholder(val):
+        if cell_is_pure_weekday_placeholder(ev.get(field)):
             return field
+    # Pass 2: no label yet — first open slot in progression order.
+    for field in fields or []:
+        if not _eligible(field):
+            continue
+        s = str(ev.get(field) or '').strip()
         if s in ('', '-', '—', '–'):
-            if field in cleared:
-                continue
             return field
     return None
 

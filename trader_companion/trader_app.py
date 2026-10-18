@@ -6614,6 +6614,22 @@ class TradeOpssAIApp:
             return 0.0
         return default_start
 
+    def _infer_phase_key_for_row(self, ev, firm_code, current_display):
+        """Blueprint strategy key from the tradeable day cell (not always trade 1)."""
+        resolved, _, _ = self._resolve_phase_key_from_day(
+            ev, firm_code, current_display or "Challenge",
+        )
+        if resolved:
+            return self._effective_phase_key(ev, firm_code, resolved)
+        cd = current_display or "Challenge"
+        if cd == "Farming":
+            fallback = "farming"
+        elif cd == "Funded":
+            fallback = "funded_trade1"
+        else:
+            fallback = "challenge_trade1"
+        return self._effective_phase_key(ev, firm_code, fallback)
+
     def _detect_eval_phase(self, ev):
         """Determine current phase display name and blueprint key for an evaluation."""
         challenge_status = self._cell(ev.get("Status P1")).lower()
@@ -6643,26 +6659,30 @@ class TradeOpssAIApp:
         # Funded columns take priority: if a funded Hedge Result N.1 slot still holds an
         # active day-name placeholder, the row is still in the Funded phase even if
         # farming data (Hedge Day / Prop Day) has already been entered for the account.
+        current_display = "Challenge"
         if has_funded_acct and funded_status not in self._FAILED_STATUSES:
             for field in self._FUNDED_HEDGE_FIELDS:
                 val = self._cell(ev.get(field))
                 if val and self._parse_day_token(val) is not None:
-                    return "Funded", "funded_trade1"
+                    current_display = "Funded"
+                    break
 
-        # Farming if: hedge/prop day placeholders or prop-day grid in use
-        if (
-            (has_farming_marker and has_hedge_day_data)
-            or has_hedge_day_placeholder
-            or has_prop_day_placeholder
-        ):
-            return "Farming", "farming"
-        # Both Account # + Account #.1 → eval passed; never trade challenge leg.
-        if passed_funded:
-            return "Funded", "funded_trade1"
-        elif has_funded_acct and funded_status not in self._FAILED_STATUSES:
-            return "Funded", "funded_trade1"
-        else:
-            return "Challenge", "challenge_trade1"
+        if current_display != "Funded":
+            # Farming if: hedge/prop day placeholders or prop-day grid in use
+            if (
+                (has_farming_marker and has_hedge_day_data)
+                or has_hedge_day_placeholder
+                or has_prop_day_placeholder
+            ):
+                current_display = "Farming"
+            elif passed_funded:
+                current_display = "Funded"
+            elif has_funded_acct and funded_status not in self._FAILED_STATUSES:
+                current_display = "Funded"
+
+        firm_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
+        phase_key = self._infer_phase_key_for_row(ev, firm_code, current_display)
+        return current_display, phase_key
 
     @staticmethod
     def _phase_badge_label(current_phase: str, phase_key: str) -> str:
@@ -7198,7 +7218,15 @@ class TradeOpssAIApp:
                     continue
                 _date, outcome = self._latest_resolved_outcome(account)
                 if outcome not in ("win", "loss"):
-                    continue
+                    # Dashboard Hit TP/SL markers are typed before companion
+                    # outcome history exists (common on Tradeify batches).
+                    low = status.strip().lower()
+                    if "tp" in low:
+                        outcome = "win"
+                    elif "sl" in low:
+                        outcome = "loss"
+                    else:
+                        continue
                 n = int(m.group(1))
                 fields = self._get_phase_fields(phase)
                 if n <= 0 or not fields:
@@ -7208,19 +7236,31 @@ class TradeOpssAIApp:
                     field = fields[idx]
                     if field in manual:
                         continue
-                    if self._parse_day_token(self._cell(ev.get(field))) is None:
+                    cur = self._cell(ev.get(field))
+                    if self._parse_day_token(cur) is None:
                         continue
                     ev[field] = "$0.00"
                     changed.append(field)
                     row_changed = True
+                traded_field = fields[min(n, len(fields)) - 1]
                 if row_changed:
-                    traded_field = fields[min(n, len(fields)) - 1]
                     queued = self._try_queue_next_weekday_after_trade(
                         ev, phase, traded_field, outcome=outcome, changed=changed,
                     )
                     self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday → $0.00 — "
                              f"{status_field} shows {status}"
                              + (f", next → {queued}" if queued else ""))
+                elif outcome in ("win", "loss"):
+                    # Hit TP/SL but the hedge cell is already blank (often after
+                    # server placeholder dedupe or a manual clear). Still queue the
+                    # next session label in the next column when allowed.
+                    queued = self._try_queue_next_weekday_after_trade(
+                        ev, phase, traded_field, outcome=outcome, changed=changed,
+                    )
+                    if queued:
+                        self.log(
+                            f"🩹 {account}: {status_field} shows {status} with empty "
+                            f"{traded_field} — queued next session → {queued}")
 
             if traded_today:
                 for phase in ("Challenge", "Funded", "Farming"):
@@ -8207,12 +8247,13 @@ class TradeOpssAIApp:
         elif current_phase == "Double Dip":
             return list(self._FUNDED_HEDGE_FIELDS)
         elif current_phase == "Farming":
-            return list(self._FARMING_SCAN_FIELDS)
+            return list(self._FARMING_HEDGE_DAY_FIELDS)
         return []
 
-    # Farming SCAN/trade cells: hedge leg + prop-firm day placeholders (Prop Day 21 = FRIDAY, etc.)
+    # Hedge-day columns drive farming blueprint slot index; Prop Day is prop P/L only.
+    _FARMING_HEDGE_DAY_FIELDS = [f"Hedge Day {i}" for i in range(1, 61)]
     _FARMING_SCAN_FIELDS = (
-        [f"Hedge Day {i}" for i in range(1, 61)]
+        list(_FARMING_HEDGE_DAY_FIELDS)
         + [f"Prop Day {i}" for i in range(1, 61)]
     )
 
@@ -8220,7 +8261,7 @@ class TradeOpssAIApp:
     _ALL_PHASE_FIELD_SETS = [
         ("Challenge",  [f"Hedge Result {i}" for i in range(1, 6)]),
         ("Funded",     list(_FUNDED_HEDGE_FIELDS)),
-        ("Farming",    list(_FARMING_SCAN_FIELDS)),
+        ("Farming",    list(_FARMING_HEDGE_DAY_FIELDS)),
     ]
 
     def _count_completed_trades(self, ev, current_phase):
@@ -10282,8 +10323,12 @@ class TradeOpssAIApp:
         """Estimate MT5 hedge margin for one active-trade row."""
         if not self.prop_firm_mgr:
             return None
-        config = self.prop_firm_mgr.get_strategy_config(
-            row_data["firm_code"], row_data["phase_key"], row_data["acct_size"])
+        config = self._strategy_config_for_row(
+            row_data["firm_code"],
+            row_data["phase_key"],
+            row_data["acct_size"],
+            row_data.get("eval"),
+        )
         if not config:
             return None
         mt5_sym = self._resolve_mt5_hedge_symbol(config)
@@ -12662,15 +12707,23 @@ class TradeOpssAIApp:
 
     @staticmethod
     def _is_lucid_eval_phase(firm_code, phase_key):
-        """Lucid challenge uses fixed eval TP/SL — never TP-by-stage."""
+        """Firms with fixed per-day eval TP/SL — never TP-by-stage.
+
+        Dynamic TP-by-stage treats negative stage P/L as "catch up" and can
+        raise Tradovate TP up to 2× blueprint. On 50%-consistency evals that
+        caps each day near ~$1,500 (e.g. Tradeify Select 152t × 2 NQ), that
+        produces ~$3,000 brackets — breaking the consistency rule.
+        """
+        pk = str(phase_key or "").lower()
+        if not pk.startswith("challenge_trade"):
+            return False
         f = str(firm_code or "").strip()
+        if f in ("Tradeify Select", "Tradeify Select 50K"):
+            return True
         if f in ("Lucid", "LucidMaxx"):
-            pass
-        else:
-            compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
-            if compact not in ("lucid", "lucidmaxx") and not compact.startswith("lucid"):
-                return False
-        return str(phase_key or "").lower().startswith("challenge_trade")
+            return True
+        compact = f.lower().replace("_", "").replace("-", "").replace(" ", "")
+        return compact in ("lucid", "lucidmaxx") or compact.startswith("lucid")
 
     def _is_funded_phase_key(self, phase_key=None):
         """True for funded / double-dip / Apex payout trade keys."""

@@ -2082,11 +2082,13 @@ class PropFirmManager:
                 "challenge_trade1": {"50k": {
                     "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 152, "tradovate_sl_ticks": 200,
+                    "disable_tp_adjustment": True,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 "challenge_trade2": {"50k": {
                     "tradovate_symbol": "NQZ6", "tradovate_qty": 2,
                     "tradovate_tp_ticks": 152, "tradovate_sl_ticks": 200,
+                    "disable_tp_adjustment": True,
                     "mt5_volume": 0, "mt5_tp_points": 0, "mt5_sl_points": 0,
                 }},
                 # Funded build — 4 cycles, each into Farming on TP
