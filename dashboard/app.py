@@ -1544,12 +1544,15 @@ def normalize_evaluations(evaluations, user_changed=None):
         if not isinstance(ev, dict):
             continue
         manual = set(ev.get('_manual_push_fields') or [])
+        from utils.data_processor import normalize_weekday_placeholder_cell
         for key in fields:
             if (isinstance(key, str)
                     and (key.startswith('Hedge Result')
                          or key.startswith('Hedge Day')
                          or key.startswith('Prop Day'))):
                 manual.add(key)
+                if key in ev:
+                    ev[key] = normalize_weekday_placeholder_cell(ev.get(key))
         if manual:
             ev['_manual_push_fields'] = sorted(manual)
     _apply_server_eval_guards(evaluations)
@@ -1640,9 +1643,12 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
     ) and not k.startswith('_')]
     
     for key in _day_keys:
+        existing_val = base_row.get(key)
+        if key in base_manual_locked and _eval_has_non_blank_value(existing_val):
+            merged[key] = existing_val
+            continue
         if key in force_fields:
             continue
-        existing_val = base_row.get(key)
         incoming_val = incoming_row.get(key)
         merged_val = merged.get(key)
         
@@ -1692,16 +1698,16 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
                     or _k.startswith('Prop Day')):
                 _push_cell_keys.add(_k)
     for key in _push_cell_keys:
+        existing_val = base_row.get(key)
+        if key in manual_locked and _eval_has_non_blank_value(existing_val):
+            merged[key] = existing_val
+            continue
         if key in force_fields:
             continue
-        existing_val = base_row.get(key)
         if not existing_val or str(existing_val).strip() in ('', '-'):
             continue
         incoming_val = incoming_row.get(key)
         if _cell_is_payout_marker(existing_val):
-            merged[key] = existing_val
-            continue
-        if key in manual_locked:
             merged[key] = existing_val
             continue
         if not _hedge_cell_currency_only(existing_val):
@@ -3545,6 +3551,26 @@ def _record_status_change_events(client_id, existing_evals, merged_evals):
         app.logger.warning(f"Status-change event log failed for {client_id}: {exc}")
 
 
+def _merge_eval_row_metadata(merged, base_row, incoming_row):
+    """Union manual/clear locks from DB and incoming so dashboard edits survive pushes."""
+    if not isinstance(merged, dict):
+        return
+    base_row = base_row if isinstance(base_row, dict) else {}
+    incoming_row = incoming_row if isinstance(incoming_row, dict) else {}
+    manual = set(base_row.get('_manual_push_fields') or [])
+    manual |= set(incoming_row.get('_manual_push_fields') or [])
+    cleared = set(base_row.get('_cleared_fields') or [])
+    cleared |= set(incoming_row.get('_cleared_fields') or [])
+    if manual:
+        merged['_manual_push_fields'] = sorted(manual)
+    elif '_manual_push_fields' in merged and not manual:
+        merged.pop('_manual_push_fields', None)
+    if cleared:
+        merged['_cleared_fields'] = sorted(cleared)
+    elif '_cleared_fields' in merged and not cleared:
+        merged.pop('_cleared_fields', None)
+
+
 def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
     """Merge incoming evaluation rows into the full stored list by row identity.
 
@@ -3605,6 +3631,7 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             merged = dict(out[idx])
             merged.update(ev_in)
             _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
+            _merge_eval_row_metadata(merged, base_snapshot, ev_in)
             if _row_should_clear_day_placeholders(merged):
                 _clear_system_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
@@ -3612,6 +3639,7 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
         else:
             merged = dict(ev_in)
             _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
+            _merge_eval_row_metadata(merged, {}, ev_in)
             if _row_should_clear_day_placeholders(merged):
                 _clear_system_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
