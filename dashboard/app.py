@@ -3265,10 +3265,15 @@ def merge_dashboard_update_evaluations(
             merged.pop('_manual_push_fields', None)
 
         if _row_should_clear_day_placeholders(merged):
-            _clear_system_day_placeholders(merged)
+            from utils.data_processor import mark_failed_row_day_placeholders
+            mark_failed_row_day_placeholders(merged)
         _clear_stale_zero_trade_markers(merged)
-        from utils.data_processor import enforce_eval_day_placeholder_order
-        enforce_eval_day_placeholder_order(merged)
+        from utils.data_processor import (
+            enforce_eval_day_placeholder_order,
+            row_has_failed_day_placeholder_mark,
+        )
+        if not row_has_failed_day_placeholder_mark(merged):
+            enforce_eval_day_placeholder_order(merged)
 
         out[idx] = merged
 
@@ -3633,7 +3638,8 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
             _merge_eval_row_metadata(merged, base_snapshot, ev_in)
             if _row_should_clear_day_placeholders(merged):
-                _clear_system_day_placeholders(merged)
+                from utils.data_processor import mark_failed_row_day_placeholders
+                mark_failed_row_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
             out[idx] = merged
         else:
@@ -3641,7 +3647,8 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
             _merge_eval_row_metadata(merged, {}, ev_in)
             if _row_should_clear_day_placeholders(merged):
-                _clear_system_day_placeholders(merged)
+                from utils.data_processor import mark_failed_row_day_placeholders
+                mark_failed_row_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
             appended.append(merged)
 
@@ -3678,10 +3685,15 @@ def recalculate_hedge_nets(evaluations):
             return _num(val)
 
         def _hr1_effectively_blank():
+            from utils.data_processor import cell_is_failed_day_marker
             hr1 = ev.get('Hedge Result 1')
             if _is_blank(hr1):
                 return True
-            return _is_zero_trade_marker(hr1)
+            if _is_zero_trade_marker(hr1):
+                return True
+            if cell_is_failed_day_marker(hr1):
+                return True
+            return False
 
         # --- Hedge Net (Phase 1) ---
         # =IF(OR(ISBLANK(HR1), Status P1<>"Fail"), "", -Fee + HR1+HR2+HR3+HR4+HR5)
@@ -4253,13 +4265,20 @@ def _apply_server_eval_guards(evaluations):
         _heal_eval_challenge_status_progression(ev)
         _stamp_fail_end_date(ev, 'Status P1', 'Date Ended')
         _stamp_fail_end_date(ev, 'Status', 'Date Ended.1')
-        _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
-        _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
         from utils.data_processor import (
             FARMING_HEDGE_DAY_FIELDS,
             FARMING_PROP_DAY_FIELDS,
             enforce_single_ordered_weekday_placeholder,
+            mark_failed_row_day_placeholders,
+            row_has_failed_day_placeholder_mark,
         )
+        mark_failed_row_day_placeholders(ev)
+        if row_has_failed_day_placeholder_mark(ev):
+            _heal_stored_lucid_farming_fail(ev)
+            _heal_failed_funded_with_payout_to_completed(ev)
+            continue
+        _keep_first_weekday_placeholder(ev, _CHALLENGE_HEDGE_FIELDS)
+        _keep_first_weekday_placeholder(ev, _FUNDED_HEDGE_FIELDS)
         enforce_single_ordered_weekday_placeholder(ev, FARMING_HEDGE_DAY_FIELDS)
         enforce_single_ordered_weekday_placeholder(ev, FARMING_PROP_DAY_FIELDS)
         _heal_stored_lucid_farming_fail(ev)
@@ -12137,7 +12156,13 @@ def get_data():
                     logging.error(f"Error injecting notes: {e}")
 
             try:
-                from utils.data_processor import compute_evaluations_total_fees
+                from utils.data_processor import (
+                    compute_evaluations_total_fees,
+                    mark_failed_row_day_placeholders,
+                )
+                for _ev in data.get('evaluations') or []:
+                    if isinstance(_ev, dict):
+                        mark_failed_row_day_placeholders(_ev)
                 stats = data.setdefault('statistics', {})
                 fee_total = compute_evaluations_total_fees(data.get('evaluations'))
                 stats['evaluations_total_fees'] = fee_total

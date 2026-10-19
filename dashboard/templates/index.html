@@ -4675,9 +4675,61 @@
             return false;
         }
 
+        const _WEEKDAY_PLACEHOLDER_LABELS = new Set([
+            'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+            'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN',
+        ]);
+        function isWeekdayDayPlaceholder(v) {
+            const s = String(v || '').trim().toUpperCase();
+            return s !== '' && _WEEKDAY_PLACEHOLDER_LABELS.has(s);
+        }
+        function isSettledHedgeDayCell(v) {
+            const s = String(v || '').trim();
+            if (!s || s === '-' || s === '—') return false;
+            if (isWeekdayDayPlaceholder(v)) return false;
+            if (s.toLowerCase() === 'fail') return false;
+            if (s.toUpperCase() === 'PAYOUT') return true;
+            const n = parseFloat(s.replace(/[$,]/g, ''));
+            return !isNaN(n);
+        }
+        function shouldMarkDaySlotAsFail(v) {
+            if (String(v || '').trim().toLowerCase() === 'fail') return false;
+            if (isSettledHedgeDayCell(v)) return false;
+            if (isWeekdayDayPlaceholder(v)) return true;
+            const s = String(v || '').trim();
+            return !s || s === '-' || s === '—';
+        }
+        function markFailedDayPlaceholdersForRow(row, changedFields, rowIndex) {
+            const p1Fail = isTerminalEvalStatus(String(row['Status P1'] || ''), false);
+            const fundedStatus = String(row['Status'] || row['Status Funded'] || '');
+            const fundedFail = isTerminalEvalStatus(fundedStatus, true);
+            const keys = [];
+            if (p1Fail) {
+                for (let i = 1; i <= 5; i++) keys.push('Hedge Result ' + i);
+            }
+            if (fundedFail) {
+                for (let i = 1; i <= 5; i++) keys.push('Hedge Result ' + i + '.1');
+                keys.push('Hedge Result 6', 'Hedge Result 7');
+                for (let i = 8; i <= 30; i++) keys.push('Hedge Result ' + i);
+                for (let i = 1; i <= 60; i++) {
+                    keys.push('Hedge Day ' + i);
+                    keys.push('Prop Day ' + i);
+                }
+            }
+            keys.forEach((fieldKey) => {
+                if (!shouldMarkDaySlotAsFail(row[fieldKey])) return;
+                row[fieldKey] = 'Fail';
+                if (changedFields && rowIndex != null) {
+                    if (!changedFields[rowIndex]) changedFields[rowIndex] = new Set();
+                    changedFields[rowIndex].add(fieldKey);
+                }
+            });
+        }
+
         function computeHedgeNet(ev) {
             const hr1 = ev['Hedge Result 1'];
-            if (hr1 == null || String(hr1).trim() === '') return '';
+            const hr1s = hr1 == null ? '' : String(hr1).trim();
+            if (!hr1s || hr1s.toLowerCase() === 'fail') return '';
             if (String(ev['Status P1'] || '').trim() !== 'Fail') return '';
             const fee = _numVal(ev['Fee']);
             let sum = 0;
@@ -8592,6 +8644,9 @@
                 value = normalizeTradeifyPropFirmDefault(value);
             }
             currentData.evaluations[index][key] = value;
+            if ((key === 'Status P1' || key === 'Status') && statusToken.startsWith('fail')) {
+                markFailedDayPlaceholdersForRow(row, _changedFields, index);
+            }
 
             // Auto-detect prop firm when account number is entered (challenge or funded leg)
             if ((key === 'Account #' || key === 'Account #.1') && value && String(value).trim().length >= 4) {
