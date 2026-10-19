@@ -1899,6 +1899,7 @@ class TradeOpssAIApp:
         self._auto_trade_batch_event = threading.Event()
         self._auto_trade_scheduled_dt = None
         self._auto_trade_waiting_gate = False
+        self._auto_trade_armed_snapshot = []
         self._planned_trade_configs = {}
         self._auto_wake_stop = threading.Event()
         self._auto_wake_scheduler_started = False
@@ -11681,6 +11682,10 @@ class TradeOpssAIApp:
         if getattr(self, "_auto_wake_pending_date", None):
             return  # the morning wake scan is in flight
         countdown_pending = self._auto_trade_countdown_pending(now)
+        if countdown_pending:
+            # Reloading clears _active_trade_rows on the UI thread and can block
+            # entry at the shared start time — keep the armed snapshot intact.
+            return
         if self.auto_trade_enabled and not countdown_pending:
             return  # a batch is already executing
         if getattr(self, "_day_watch_scan_active", False):
@@ -11689,10 +11694,7 @@ class TradeOpssAIApp:
             return
         self._day_watch_primed = True
         self._day_watch_scan_active = True
-        # Accounts bought while the countdown runs join the same batch.
-        self._day_watch_join_known = (
-            {str(rd.get("acct_num")) for rd in self._active_trade_rows}
-            if countdown_pending else None)
+        self._day_watch_join_known = None
         self._load_active_trades()
         self.root.after(5000, self._day_watch_after_scan)
 
@@ -11716,6 +11718,7 @@ class TradeOpssAIApp:
         when = scheduled.strftime("%I:%M %p EAT") if scheduled else "the scheduled time"
         self.log(f"🔎 Day-watch: {len(added)} new account(s) joined this KYC's batch "
                  f"starting {when}")
+        self._auto_trade_armed_snapshot = list(rows)
         self._update_auto_trade_progress()
 
     def _day_watch_after_scan(self):
@@ -12093,6 +12096,7 @@ class TradeOpssAIApp:
         self._auto_trade_scheduled_dt = scheduled_eat
         self._auto_trade_enter_now = immediate
         self.auto_trade_enabled = True
+        self._auto_trade_armed_snapshot = list(self._active_trade_rows)
         self._auto_trade_stop.clear()
         self._auto_trade_side_lock_logged = set()
 
@@ -12298,6 +12302,7 @@ class TradeOpssAIApp:
         self.auto_trade_firms_var.set("")
         self._auto_trade_firm_sides = {}
         self._auto_trade_waiting_gate = False
+        self._auto_trade_armed_snapshot = []
         self._auto_trade_side_lock_logged = set()
         self.log("⏹ Auto-trade cancelled")
 
@@ -12379,6 +12384,7 @@ class TradeOpssAIApp:
         self.auto_trade_countdown_var.set("")
         self.auto_trade_firms_var.set("")
         self._auto_trade_firm_sides = {}
+        self._auto_trade_armed_snapshot = []
         self._auto_trade_side_lock_logged = set()
         self.log("✅ Auto-trade finished — all queued trades taken")
 
@@ -12502,10 +12508,44 @@ class TradeOpssAIApp:
         self._auto_trade_firm_sides = sides
         return sides
 
-    def _run_auto_trade_batch_and_wait(self):
-        """Dispatch one execute batch on the UI thread and block until it finishes."""
+    def _armed_auto_trade_rows(self):
+        """Rows queued for the current auto-trade session (survives UI reloads)."""
+        active = list(getattr(self, "_active_trade_rows", []) or [])
+        if active:
+            return active
+        return list(getattr(self, "_auto_trade_armed_snapshot", None) or [])
+
+    def _messagebox_on_ui(self, kind, title, message):
+        """Show a Tk dialog on the main thread (safe from auto-trade workers)."""
+        def _show():
+            try:
+                fn = getattr(messagebox, kind, messagebox.showinfo)
+                fn(title, message)
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _show)
+        except Exception:
+            pass
+
+    def _run_auto_trade_batch_and_wait(self, execution_rows=None):
+        """Run one execute batch off the UI thread and block until it finishes."""
+        rows = list(execution_rows or self._armed_auto_trade_rows())
+        if not rows:
+            self.log("⚠ Auto-trade batch skipped — no armed rows at entry time", "WARN")
+            return
         self._auto_trade_batch_event.clear()
-        self.root.after(0, lambda: self._auto_execute_all_trades(stop_when_done=False))
+
+        def _worker():
+            try:
+                self._auto_execute_all_trades(
+                    stop_when_done=False, execution_rows=rows)
+            except Exception as exc:
+                self.log(f"❌ Auto-trade batch error: {exc}", "ERROR")
+                self._finish_auto_trade_batch(stop_when_done=False)
+
+        threading.Thread(
+            target=_worker, daemon=True, name="auto-trade-batch").start()
         deadline = time.time() + 7200
         last_keepalive = 0.0
         while time.time() < deadline:
@@ -12518,6 +12558,12 @@ class TradeOpssAIApp:
                 last_keepalive = now
                 self._keep_prop_brokers_alive(context="batch-exec")
             self._auto_trade_batch_event.wait(timeout=1.0)
+        self.log(
+            "❌ Auto-trade batch timed out after 2h — execution did not finish "
+            "(UI blocked or batch hung)",
+            "ERROR",
+        )
+        self._auto_trade_batch_event.set()
 
     def _finish_auto_trade_batch(self, stop_when_done=False):
         self._auto_trade_batch_event.set()
@@ -12702,7 +12748,7 @@ class TradeOpssAIApp:
     def _auto_trade_loop(self):
         """Keep queued entries armed, resuming them inside valid sessions."""
         while (self.auto_trade_enabled and not self._auto_trade_stop.is_set()
-               and self._active_trade_rows):
+               and self._armed_auto_trade_rows()):
             self._auto_trade_waiting_gate = True
             scheduled = self._auto_trade_scheduled_dt or kenya_now()
             while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
@@ -12722,10 +12768,11 @@ class TradeOpssAIApp:
 
             now = kenya_now()
             allowed, _window = self._trading_window_open(now)
+            armed_rows = self._armed_auto_trade_rows()
             futures_queued = any(
                 not self._is_api_only_firm(
                     rd.get("firm_code") or (rd.get("eval") or {}).get("Prop Firm"))
-                for rd in self._active_trade_rows
+                for rd in armed_rows
             )
             if not allowed and futures_queued:
                 self._schedule_auto_trade_resume(
@@ -12734,19 +12781,20 @@ class TradeOpssAIApp:
 
             self._sync_auto_trade_firm_sides()
             self.root.after(0, self._update_auto_trade_progress)
-            self._run_auto_trade_batch_and_wait()
+            self._run_auto_trade_batch_and_wait(armed_rows)
 
             if (not self.auto_trade_enabled or self._auto_trade_stop.is_set()
-                    or not self._active_trade_rows):
+                    or not self._armed_auto_trade_rows()):
                 break
 
-            left = len(self._active_trade_rows)
+            left = len(self._armed_auto_trade_rows())
             now = kenya_now()
             allowed, _window = self._trading_window_open(now)
+            armed_rows = self._armed_auto_trade_rows()
             futures_queued = any(
                 not self._is_api_only_firm(
                     rd.get("firm_code") or (rd.get("eval") or {}).get("Prop Firm"))
-                for rd in self._active_trade_rows
+                for rd in armed_rows
             )
             if not allowed and futures_queued:
                 self._schedule_auto_trade_resume(
@@ -12944,7 +12992,7 @@ class TradeOpssAIApp:
             self._auto_trade_wait_with_keepalive(wait, context="signal-bar-align")
         return True
 
-    def _auto_execute_all_trades(self, stop_when_done=True):
+    def _auto_execute_all_trades(self, stop_when_done=True, execution_rows=None):
         """Execute trades for ALL loaded rows, parallel across prop firms.
 
         Each prop firm has its own Chrome instance opened during initialization.
@@ -12959,7 +13007,7 @@ class TradeOpssAIApp:
         allowed, window = self._trading_window_open()
         if not allowed:
             # Perps / DXtrade trade 24/7: outside the futures window keep only those rows.
-            perps_rows = [rd for rd in self._active_trade_rows
+            perps_rows = [rd for rd in (execution_rows or self._active_trade_rows)
                           if self._is_api_only_firm(rd.get("firm_code"))
                           or self._is_api_only_firm(
                               (rd.get("eval") or {}).get("Prop Firm"))]
@@ -12975,7 +13023,7 @@ class TradeOpssAIApp:
                      f"continuing with {len(perps_rows)} perps row(s) only (24/7)")
         firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
-        rows = list(self._active_trade_rows)  # snapshot
+        rows = list(execution_rows if execution_rows is not None else self._active_trade_rows)
         for row_data in rows:
             self._use_funded_trade_account(row_data)
 
@@ -12997,9 +13045,10 @@ class TradeOpssAIApp:
         default_platform = self.broker_var.get()
         mt5_api = self._get_mt5_trading_api() if hedging else None
         if hedging and not mt5_api:
-            messagebox.showerror(
+            self._messagebox_on_ui(
+                "showerror",
                 "MT5 Not Connected",
-                "Connect MT5 first, or switch to 'Broker Only' mode to skip MT5 hedging."
+                "Connect MT5 first, or switch to 'Broker Only' mode to skip MT5 hedging.",
             )
             self.log("❌ Auto-trade aborted — MT5 not connected (Hedging mode requires MT5)")
             self._finish_auto_trade_batch(stop_when_done=stop_when_done)
@@ -13157,7 +13206,8 @@ class TradeOpssAIApp:
                 rows_by_firm, firm_sides)
             if margin_skipped > 0 and free_m is not None:
                 total_queued = affordable_n + margin_skipped
-                messagebox.showwarning(
+                self._messagebox_on_ui(
+                    "showwarning",
                     "Free Margin Limited",
                     f"Free margin is not enough for all hedges.\n\n"
                     f"MT5 free margin: ${free_m:,.0f}\n"
@@ -13169,7 +13219,8 @@ class TradeOpssAIApp:
                     f"{margin_skipped} skipped")
             if not rows_by_firm:
                 free_txt = f"${free_m:,.0f}" if free_m is not None else "unknown"
-                messagebox.showerror(
+                self._messagebox_on_ui(
+                    "showerror",
                     "Insufficient Margin",
                     f"MT5 free margin ({free_txt}) is not enough to open any hedges.",
                 )
@@ -13736,6 +13787,9 @@ class TradeOpssAIApp:
                         rd["frame"].destroy()
                         if rd in self._active_trade_rows:
                             self._active_trade_rows.remove(rd)
+                        snap = getattr(self, "_auto_trade_armed_snapshot", None) or []
+                        if rd in snap:
+                            snap.remove(rd)
                         self._update_auto_trade_progress()
                     self.root.after(0, _remove)
 
