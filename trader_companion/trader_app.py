@@ -33,6 +33,10 @@ if hasattr(sys, '_MEIPASS'):
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
 APP_VERSION = "1.12.9"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
+# /api/client/data — retry when the dashboard is queued (small worker pool + minute scans).
+COMPANION_DATA_POST_TIMEOUT = 30
+COMPANION_DATA_POST_ATTEMPTS = 4
+COMPANION_DATA_POST_BACKOFF_SEC = (2, 5, 8)
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = False
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -509,6 +513,41 @@ def _companion_request_headers(extra=None):
 def _companion_auth_headers():
     """Headers for TradeOpssAI-only /api/companion/auth."""
     return _companion_request_headers()
+
+
+def _companion_dashboard_post(
+    url,
+    payload,
+    *,
+    timeout=COMPANION_DATA_POST_TIMEOUT,
+    attempts=COMPANION_DATA_POST_ATTEMPTS,
+    backoff=COMPANION_DATA_POST_BACKOFF_SEC,
+):
+    """POST JSON to the dashboard; retry transient overload and network errors."""
+    retry_status = {429, 502, 503}
+    last_exc = None
+    last_resp = None
+    for attempt in range(attempts):
+        try:
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=_companion_request_headers(),
+                timeout=timeout,
+            )
+            last_resp = resp
+            if resp.status_code in retry_status and attempt + 1 < attempts:
+                time.sleep(backoff[min(attempt, len(backoff) - 1)])
+                continue
+            return resp
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(backoff[min(attempt, len(backoff) - 1)])
+    if last_exc is not None:
+        raise last_exc
+    return last_resp
 
 
 def _gzip_post(url, payload, timeout=120, **kwargs):
@@ -5531,11 +5570,11 @@ class TradeOpssAIApp:
             # Deliver any $0.00 marks whose fill-time write failed, BEFORE the
             # fetch below so this pass sees the healed cells.
             self._retry_pending_day_cell_marks()
-            resp = requests.post(
+            resp = _companion_dashboard_post(
                 f"{dashboard_url}/api/client/data",
-                json={"email": email},
-                headers=_companion_request_headers(),
-                timeout=10,
+                {"email": email},
+                timeout=20,
+                attempts=3,
             )
             if resp.status_code != 200:
                 return False
@@ -9895,17 +9934,10 @@ class TradeOpssAIApp:
 
         def _do_load():
             try:
-                r = None
-                for attempt in range(3):
-                    r = requests.post(
-                        f"{dashboard_url}/api/client/data",
-                        json={"email": email},
-                        headers=_companion_request_headers(),
-                        timeout=15
-                    )
-                    if r.status_code != 429:
-                        break
-                    time.sleep(3 if attempt == 0 else 5)
+                r = _companion_dashboard_post(
+                    f"{dashboard_url}/api/client/data",
+                    {"email": email},
+                )
                 if r.status_code != 200:
                     msg = "Unknown error"
                     try:
