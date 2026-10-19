@@ -6581,18 +6581,19 @@ class TradeOpssAIApp:
         return p1_dead and not has_funded_acct
 
     def _scrub_failed_row_day_placeholders(self, evaluations):
-        """Clear queued weekday cells on dead rows. Returns the cleared field names."""
+        """Stamp Fail on open weekday queue slots for dead rows."""
+        from utils.data_processor import mark_failed_row_day_placeholders
         cleared = []
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
             if not self._row_trading_is_over(ev):
                 continue
-            fields = self._clear_system_day_placeholders(ev)
+            fields = mark_failed_row_day_placeholders(ev)
             if fields:
                 cleared.extend(fields)
                 self.log(f"🧹 {self._primary_trade_account(ev)}: account failed — "
-                         f"cleared {len(fields)} day placeholder(s)")
+                         f"marked {len(fields)} day slot(s) as Fail")
         return cleared
 
     # ── Funded-phase starting balance map ─────────────────────────────
@@ -12529,23 +12530,22 @@ class TradeOpssAIApp:
             pass
 
     def _run_auto_trade_batch_and_wait(self, execution_rows=None):
-        """Run one execute batch off the UI thread and block until it finishes."""
+        """Dispatch one execute batch on the UI thread and block until it finishes."""
         rows = list(execution_rows or self._armed_auto_trade_rows())
         if not rows:
             self.log("⚠ Auto-trade batch skipped — no armed rows at entry time", "WARN")
             return
         self._auto_trade_batch_event.clear()
 
-        def _worker():
+        def _start_batch(batch_rows=rows):
             try:
                 self._auto_execute_all_trades(
-                    stop_when_done=False, execution_rows=rows)
+                    stop_when_done=False, execution_rows=batch_rows)
             except Exception as exc:
                 self.log(f"❌ Auto-trade batch error: {exc}", "ERROR")
                 self._finish_auto_trade_batch(stop_when_done=False)
 
-        threading.Thread(
-            target=_worker, daemon=True, name="auto-trade-batch").start()
+        self.root.after(0, _start_batch)
         deadline = time.time() + 7200
         last_keepalive = 0.0
         while time.time() < deadline:
@@ -12571,7 +12571,7 @@ class TradeOpssAIApp:
             self.root.after(0, self._complete_auto_trade)
 
     _AUTO_TRADE_PROP_KEEPALIVE_SEC = 45
-    _BROKER_IDLE_KEEPALIVE_SEC = 60
+    _BROKER_IDLE_KEEPALIVE_SEC = 45
 
     def _start_broker_idle_keepalive(self):
         """Ping broker Chrome sessions while idle so Tradovate does not time out."""
@@ -12581,7 +12581,7 @@ class TradeOpssAIApp:
         self._broker_keepalive_thread = threading.Thread(
             target=self._broker_idle_keepalive_loop, daemon=True, name="broker-idle-keepalive")
         self._broker_keepalive_thread.start()
-        self.log("🔄 Broker idle keepalive started (every 60s while connected)")
+        self.log("🔄 Broker idle keepalive started (every 45s while connected)")
 
     def _broker_idle_keepalive_loop(self):
         while self._broker_keepalive_active:
@@ -12596,6 +12596,63 @@ class TradeOpssAIApp:
                 self._keep_prop_brokers_alive(context="idle")
             except Exception:
                 pass
+
+    def _schedule_auto_broker_reconnect(self, firm_name, delay_sec=15):
+        """Try to restore Tradovate/TopStepX without forcing the user to click Retry."""
+        key = str(firm_name or "").strip()
+        if not key:
+            return
+        pending = getattr(self, "_broker_auto_reconnect_pending", None)
+        if pending is None:
+            pending = set()
+            self._broker_auto_reconnect_pending = pending
+        if key in pending:
+            return
+        pending.add(key)
+
+        def _run():
+            pending.discard(key)
+            conn = (getattr(self, "_broker_connections", None) or {}).get(key)
+            if not conn or not conn.get("session_lost"):
+                return
+            account = conn.get("account")
+
+            def _work():
+                restored = False
+                try:
+                    if account and hasattr(account, "_attempt_reconnect"):
+                        restored = bool(
+                            account._attempt_reconnect(context="auto-restore"))
+                except Exception as exc:
+                    self.log(f"⚠ {key}: auto-reconnect failed: {exc}", "WARN")
+                if restored:
+                    self.root.after(0, lambda f=key: self._clear_broker_session_lost(f))
+                    self.root.after(0, lambda f=key, c=conn: self._restore_broker_connected_ui(f, c))
+                    self.log(f"✅ {key}: broker session auto-restored")
+                else:
+                    self.root.after(0, lambda f=key: self._connect_broker_firm(f))
+
+            threading.Thread(target=_work, daemon=True, name=f"auto-reconnect-{key}").start()
+
+        threading.Timer(delay_sec, _run).start()
+
+    def _restore_broker_connected_ui(self, firm_name, conn):
+        try:
+            conn = conn or (self._broker_connections or {}).get(firm_name) or {}
+            conn["status_var"].set("✅")
+            btn = conn.get("connect_btn")
+            if btn and hasattr(btn, "configure"):
+                btn.configure(text="Connected", fg_color="#14532D")
+            lbl = conn.get("status_lbl")
+            if lbl and hasattr(lbl, "configure"):
+                lbl.configure(text_color="#22C55E")
+            connected = sum(
+                1 for c in (self._broker_connections or {}).values()
+                if c.get("account") and getattr(c.get("account"), "logged_in", False))
+            total = len(self._broker_connections or {})
+            self.broker_status_var.set(f"{connected}/{total} connected")
+        except Exception:
+            pass
 
     def _mark_broker_session_lost(self, firm_name, reason="session expired"):
         """Sync Controls UI when Chrome reverted to login but status still shows Connected."""
@@ -12630,7 +12687,8 @@ class TradeOpssAIApp:
                 pass
 
         self.root.after(0, _ui)
-        self.log(f"⚠ {firm_name}: {reason} — use Reconnect under Broker Connections", "WARN")
+        self.log(f"⚠ {firm_name}: {reason} — auto-reconnect in ~15s (or use Reconnect)", "WARN")
+        self._schedule_auto_broker_reconnect(firm_name)
 
     def _clear_broker_session_lost(self, firm_name):
         conn = (getattr(self, "_broker_connections", None) or {}).get(firm_name)

@@ -315,12 +315,89 @@ def cell_is_settled_day_value(value):
         return False
     if s.upper() == 'PAYOUT':
         return True
+    if str(s).strip().lower() == 'fail':
+        return False
     try:
         float(s.replace('$', '').replace(',', '').strip())
         return True
     except (TypeError, ValueError):
         pass
     return True
+
+
+FAILED_DAY_PLACEHOLDER = 'Fail'
+
+
+def cell_is_failed_day_marker(value) -> bool:
+    return str(value or '').strip().lower() == FAILED_DAY_PLACEHOLDER.lower()
+
+
+def _day_slot_should_mark_fail(value) -> bool:
+    """True when an open queue slot should become Fail (not settled P&L)."""
+    if cell_is_failed_day_marker(value):
+        return False
+    if cell_is_settled_day_value(value):
+        return False
+    if cell_is_pure_weekday_placeholder(value):
+        return True
+    s = str(value or '').strip()
+    if not s or s in ('-', '—', '–'):
+        return True
+    try:
+        if abs(float(s.replace('$', '').replace(',', '').strip())) < 1e-9:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
+def failed_day_placeholder_field_lists(ev):
+    """Hedge/prop day columns to stamp Fail for this row's terminal phase(s)."""
+    if not isinstance(ev, dict):
+        return []
+    p1_fail = is_eval_phase_failed(ev.get('Status P1'))
+    funded_raw = str(ev.get('Status') or ev.get('Status Funded') or '')
+    funded_fail = is_eval_phase_failed(funded_raw)
+    funded_ended = is_funded_phase_ended(funded_raw)
+    if not p1_fail and not funded_fail and not funded_ended:
+        return []
+    lists = []
+    if p1_fail:
+        lists.append(CHALLENGE_HEDGE_DAY_FIELDS)
+    if funded_fail or funded_ended:
+        lists.extend([
+            FUNDED_HEDGE_DAY_FIELDS,
+            FARMING_HEDGE_DAY_FIELDS,
+            FARMING_PROP_DAY_FIELDS,
+        ])
+    return lists
+
+
+def mark_failed_row_day_placeholders(ev):
+    """Replace weekday / empty queue slots with Fail on terminal rows."""
+    field_lists = failed_day_placeholder_field_lists(ev)
+    if not field_lists:
+        return []
+    changed = []
+    for fields in field_lists:
+        for key in fields:
+            if not _day_slot_should_mark_fail(ev.get(key)):
+                continue
+            ev[key] = FAILED_DAY_PLACEHOLDER
+            changed.append(key)
+            manual = set(ev.get('_manual_push_fields') or [])
+            if key in manual:
+                manual.discard(key)
+                if manual:
+                    ev['_manual_push_fields'] = sorted(manual)
+                else:
+                    ev.pop('_manual_push_fields', None)
+    return changed
+
+
+def row_has_failed_day_placeholder_mark(ev) -> bool:
+    """True when this row is in a phase failure state (weekday guards should not run)."""
+    return bool(failed_day_placeholder_field_lists(ev))
 
 
 CHALLENGE_HEDGE_DAY_FIELDS = [f'Hedge Result {i}' for i in range(1, 6)]
