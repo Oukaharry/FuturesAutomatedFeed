@@ -8410,6 +8410,69 @@ def _fallback_mt5_credentials():
     return {}
 
 
+# Brief cache: load-trades + minute scan + outcome correction often hit /client/data together.
+_CLIENT_DATA_CACHE: dict[str, tuple[float, dict]] = {}
+_CLIENT_DATA_CACHE_SEC = 5.0
+_client_data_cache_lock = threading.Lock()
+
+
+def _invalidate_client_data_cache(client_id: str | None) -> None:
+    if not client_id:
+        return
+    with _client_data_cache_lock:
+        _CLIENT_DATA_CACHE.pop(client_id, None)
+
+
+def _build_client_data_payload(client_info: dict, client_data: dict) -> dict:
+    client_id = client_info['client']
+    all_evaluations = client_data.get("evaluations", []) or []
+    evaluations = []
+    for ev in all_evaluations:
+        if not isinstance(ev, dict):
+            continue
+        payout_pending = _evaluation_has_payout_pending(ev)
+        active = is_evaluation_active_only_row(ev)
+        ev["_is_active"] = active
+        if payout_pending:
+            ev["_payout_pending"] = True
+        if active:
+            evaluations.append(ev)
+    if len(evaluations) < len(all_evaluations):
+        app.logger.info(
+            "%s: companion /client/data serving %s active evaluation(s) "
+            "(%s inactive hidden from SCAN)",
+            client_id,
+            len(evaluations),
+            len(all_evaluations) - len(evaluations),
+        )
+
+    mt5_credentials = client_data.get("mt5_credentials", {})
+    if not _client_mt5_creds_present(client_data):
+        fallback = _fallback_mt5_credentials()
+        if fallback:
+            mt5_credentials = fallback
+            app.logger.info(
+                f"🔗 {client_id}: no MT5 credentials — serving shared data-only account")
+
+    return {
+        "status": "success",
+        "evaluations": evaluations,
+        "prop_accounts": client_data.get("prop_accounts", []),
+        "hedge_accounts": client_data.get("hedge_accounts", []),
+        "mt5_credentials": mt5_credentials,
+        "mfp_api_key": next(
+            (str(a.get("api_key") or "").strip()
+             for a in client_data.get("prop_accounts", [])
+             if a.get("prop_firm") == "MyFundedPerps" and str(a.get("api_key") or "").strip()),
+            client_data.get("mfp_api_key", "")),
+        "identity": {
+            "client": client_info['client'],
+            "trader": client_info['trader'],
+            "admin": client_info['admin'],
+        },
+    }
+
+
 @app.route('/api/client/data', methods=['POST'])
 @limiter.limit("120 per minute")
 def api_client_data():
@@ -8437,6 +8500,12 @@ def api_client_data():
             return jsonify({"status": "error", "message": "Email not registered"}), 404
 
         client_id = client_info['client']
+        now = time.monotonic()
+        with _client_data_cache_lock:
+            cached = _CLIENT_DATA_CACHE.get(client_id)
+            if cached and (now - cached[0]) < _CLIENT_DATA_CACHE_SEC:
+                return jsonify(cached[1])
+
         client_data = get_client_data(client_id, include_deals=False)
         if not client_data:
             return jsonify({"status": "error", "message": "No data found for client"}), 404
@@ -8445,55 +8514,10 @@ def api_client_data():
         if denied:
             return denied
 
-        # Companion SCAN only needs rows the dashboard shows with «Active only».
-        # Inactive history stays in DB; push merge preserves it when the
-        # companion sends partial evaluation updates.
-        all_evaluations = client_data.get("evaluations", []) or []
-        evaluations = []
-        for ev in all_evaluations:
-            if not isinstance(ev, dict):
-                continue
-            payout_pending = _evaluation_has_payout_pending(ev)
-            active = is_evaluation_active_only_row(ev)
-            ev["_is_active"] = active
-            if payout_pending:
-                ev["_payout_pending"] = True
-            if active:
-                evaluations.append(ev)
-        if len(evaluations) < len(all_evaluations):
-            app.logger.info(
-                "%s: companion /client/data serving %s active evaluation(s) "
-                "(%s inactive hidden from SCAN)",
-                client_id,
-                len(evaluations),
-                len(all_evaluations) - len(evaluations),
-            )
-
-        mt5_credentials = client_data.get("mt5_credentials", {})
-        if not _client_mt5_creds_present(client_data):
-            fallback = _fallback_mt5_credentials()
-            if fallback:
-                mt5_credentials = fallback
-                app.logger.info(
-                    f"🔗 {client_id}: no MT5 credentials — serving shared data-only account")
-
-        return jsonify({
-            "status": "success",
-            "evaluations": evaluations,
-            "prop_accounts": client_data.get("prop_accounts", []),
-            "hedge_accounts": client_data.get("hedge_accounts", []),
-            "mt5_credentials": mt5_credentials,
-            "mfp_api_key": next(
-                (str(a.get("api_key") or "").strip()
-                 for a in client_data.get("prop_accounts", [])
-                 if a.get("prop_firm") == "MyFundedPerps" and str(a.get("api_key") or "").strip()),
-                client_data.get("mfp_api_key", "")),
-            "identity": {
-                "client": client_info['client'],
-                "trader": client_info['trader'],
-                "admin": client_info['admin'],
-            }
-        })
+        payload = _build_client_data_payload(client_info, client_data)
+        with _client_data_cache_lock:
+            _CLIENT_DATA_CACHE[client_id] = (now, payload)
+        return jsonify(payload)
 
     except Exception as e:
         return _companion_db_error_response(e, endpoint='client/data')
@@ -9193,6 +9217,7 @@ def api_client_push():
         return jsonify({"status": "error", "message": "Failed to save client data"}), 500
 
     app.logger.info(f"✅ SAVED to database successfully (v{version})")
+    _invalidate_client_data_cache(client_id)
     app.logger.info(f"🔄 Updated Statistics:")
     stats_complete = statistics.get('profitability_completed', {})
     stats_inprogress = statistics.get('cashflow_inprogress', {})

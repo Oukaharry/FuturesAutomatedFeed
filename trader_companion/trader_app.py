@@ -31,8 +31,12 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.7"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
+APP_VERSION = "1.12.9"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
+# /api/client/data — retry when the dashboard is queued (small worker pool + minute scans).
+COMPANION_DATA_POST_TIMEOUT = 30
+COMPANION_DATA_POST_ATTEMPTS = 4
+COMPANION_DATA_POST_BACKOFF_SEC = (2, 5, 8)
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = False
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -509,6 +513,41 @@ def _companion_request_headers(extra=None):
 def _companion_auth_headers():
     """Headers for TradeOpssAI-only /api/companion/auth."""
     return _companion_request_headers()
+
+
+def _companion_dashboard_post(
+    url,
+    payload,
+    *,
+    timeout=COMPANION_DATA_POST_TIMEOUT,
+    attempts=COMPANION_DATA_POST_ATTEMPTS,
+    backoff=COMPANION_DATA_POST_BACKOFF_SEC,
+):
+    """POST JSON to the dashboard; retry transient overload and network errors."""
+    retry_status = {429, 502, 503}
+    last_exc = None
+    last_resp = None
+    for attempt in range(attempts):
+        try:
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=_companion_request_headers(),
+                timeout=timeout,
+            )
+            last_resp = resp
+            if resp.status_code in retry_status and attempt + 1 < attempts:
+                time.sleep(backoff[min(attempt, len(backoff) - 1)])
+                continue
+            return resp
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(backoff[min(attempt, len(backoff) - 1)])
+    if last_exc is not None:
+        raise last_exc
+    return last_resp
 
 
 def _gzip_post(url, payload, timeout=120, **kwargs):
@@ -5531,11 +5570,11 @@ class TradeOpssAIApp:
             # Deliver any $0.00 marks whose fill-time write failed, BEFORE the
             # fetch below so this pass sees the healed cells.
             self._retry_pending_day_cell_marks()
-            resp = requests.post(
+            resp = _companion_dashboard_post(
                 f"{dashboard_url}/api/client/data",
-                json={"email": email},
-                headers=_companion_request_headers(),
-                timeout=10,
+                {"email": email},
+                timeout=20,
+                attempts=3,
             )
             if resp.status_code != 200:
                 return False
@@ -5701,16 +5740,21 @@ class TradeOpssAIApp:
             return False
         return True
 
+    @staticmethod
+    def _valid_prop_account_key(account_number) -> bool:
+        """False for placeholder keys shared by many no-account eval rows."""
+        key = str(account_number or "").strip().lower()
+        return bool(key) and key not in ("—", "-", "n/a", "?", "none")
+
     def _account_has_open_position(self, evaluation):
         """Whether a connected broker reports an open position for this row."""
         if not isinstance(evaluation, dict):
             return False
         account_number = self._primary_trade_account(evaluation)
         firm_name = self._cell(evaluation.get("Prop Firm"))
-        if not account_number or not firm_name:
+        if not self._valid_prop_account_key(account_number) or not firm_name:
             return False
-        connection = (getattr(self, "_broker_connections", {}) or {}).get(firm_name)
-        broker = (connection or {}).get("account")
+        broker = self._get_broker_for_firm(firm_name)
         if not broker or not hasattr(broker, "has_open_position_for_account"):
             return False
         try:
@@ -6988,6 +7032,11 @@ class TradeOpssAIApp:
             k: v for k, v in (state.get("prop_fills_kenya_day") or {}).items()
             if v == _today_iso
         }
+        _fill_fields = dict(state.get("prop_fill_day_field") or {})
+        self._prop_fill_day_field = {
+            k: v for k, v in _fill_fields.items()
+            if self._prop_fills_kenya_day.get(k) == _today_iso
+        }
         if self._pending_breach_alerts:
             try:
                 self.log(f"🚨 Restored breach state: {len(self._pending_breach_alerts)} "
@@ -7007,6 +7056,8 @@ class TradeOpssAIApp:
                 "payout_counts": dict(getattr(self, "_known_payout_counts", {}) or {}),
                 "prop_fills_kenya_day": dict(
                     getattr(self, "_prop_fills_kenya_day", {}) or {}),
+                "prop_fill_day_field": dict(
+                    getattr(self, "_prop_fill_day_field", {}) or {}),
             }
             with open(self._breach_state_path(), "w") as f:
                 json.dump(state, f, indent=1)
@@ -7190,6 +7241,42 @@ class TradeOpssAIApp:
             changed.append(next_field)
         return next_field
 
+    def _reconcile_single_prop_fill_day_cell(
+            self, ev, account, manual, today_wd, today_iso, resolved_outcome, changed):
+        """Heal only the hedge cell that actually filled today — not every MONDAY cell."""
+        key = str(account or "").strip().lower()
+        fill_field = (getattr(self, "_prop_fill_day_field", {}) or {}).get(key)
+        if not fill_field or fill_field in manual:
+            return
+        phase = None
+        for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
+            if fill_field in field_list:
+                phase = phase_name
+                break
+        if not phase:
+            return
+        cur = self._cell(ev.get(fill_field))
+        tok = self._parse_day_token(cur)
+        settled = False
+        if tok is not None:
+            if self._classify_day_placeholder(tok, today_wd) == "today":
+                ev[fill_field] = "$0.00"
+                changed.append(fill_field)
+                settled = True
+        elif not cur or cur in ("-", "—", "–"):
+            ev[fill_field] = "$0.00"
+            changed.append(fill_field)
+            settled = True
+        outcome = resolved_outcome if resolved_outcome in ("win", "loss") else "win"
+        queued = self._try_queue_next_weekday_after_trade(
+            ev, phase, fill_field, outcome=outcome, changed=changed,
+        )
+        if settled or queued:
+            self.log(
+                f"🩹 {account}: prop fill {today_iso} on {fill_field}"
+                + (" → $0.00" if settled else "")
+                + (f", next → {queued}" if queued else ""))
+
     def _reconcile_traded_day_placeholders(self, evaluations):
         """Heal resolved trade cells (weekday → $0.00) and queue next session once.
 
@@ -7262,31 +7349,10 @@ class TradeOpssAIApp:
                             f"🩹 {account}: {status_field} shows {status} with empty "
                             f"{traded_field} — queued next session → {queued}")
 
-            if traded_today:
-                for phase in ("Challenge", "Funded", "Farming"):
-                    fields = self._get_phase_fields(phase) or []
-                    today_fields = []
-                    for field in fields:
-                        if field in manual:
-                            continue
-                        tok = self._parse_day_token(self._cell(ev.get(field)))
-                        if tok is None:
-                            continue
-                        if self._classify_day_placeholder(tok, today_wd) != "today":
-                            continue
-                        today_fields.append(field)
-                    if not today_fields:
-                        continue
-                    for field in today_fields:
-                        ev[field] = "$0.00"
-                        changed.append(field)
-                    traded_field = today_fields[-1]
-                    queued = self._try_queue_next_weekday_after_trade(
-                        ev, phase, traded_field, outcome=resolved_outcome, changed=changed,
-                    )
-                    self.log(f"🩹 {account}: traded {today_iso} — "
-                             f"{', '.join(today_fields)} → $0.00"
-                             + (f", next session queued" if queued else ""))
+            if traded_today and self._valid_prop_account_key(account):
+                self._reconcile_single_prop_fill_day_cell(
+                    ev, account, manual, today_wd, today_iso,
+                    resolved_outcome, changed)
             changed.extend(self._enforce_eval_day_placeholder_order(ev))
         return changed
 
@@ -8020,25 +8086,29 @@ class TradeOpssAIApp:
     def _prop_fill_recorded_today(self, account_number) -> bool:
         """True when this account already had a prop broker fill today (Kenya EAT)."""
         key = str(account_number or "").strip().lower()
-        if not key:
+        if not self._valid_prop_account_key(key):
             return False
         today_iso = kenya_today().strftime("%Y-%m-%d")
         recorded = (getattr(self, "_prop_fills_kenya_day", {}) or {}).get(key)
         return recorded == today_iso
 
-    def _record_prop_broker_fill_today(self, account_number):
+    def _record_prop_broker_fill_today(self, account_number, day_field=None):
         """Remember a Tradovate/TopStepX/Alpha fill so same-day re-scans cannot re-fire."""
         key = str(account_number or "").strip().lower()
-        if not key:
+        if not self._valid_prop_account_key(key):
             return
         today_iso = kenya_today().strftime("%Y-%m-%d")
         store = getattr(self, "_prop_fills_kenya_day", None)
         if store is None:
             store = {}
             self._prop_fills_kenya_day = store
-        if store.get(key) == today_iso:
-            return
         store[key] = today_iso
+        if day_field:
+            field_store = getattr(self, "_prop_fill_day_field", None)
+            if field_store is None:
+                field_store = {}
+                self._prop_fill_day_field = field_store
+            field_store[key] = str(day_field)
         self._save_breach_state()
 
     def _account_resolved_trade_today(self, account_number):
@@ -9547,23 +9617,27 @@ class TradeOpssAIApp:
                     continue
                 matched_ev = ev
                 force_fields.extend(self._mark_trade_in_progress(ev))
+                manual = set(ev.get("_manual_push_fields") or [])
                 cur = self._cell(ev.get(field_name))
                 traded_day_num = self._parse_day_token(cur)
-                if traded_day_num is not None:
-                    ev[field_name] = "$0.00"
-                    force_fields.append(field_name)
-                    # Stale duplicate weekday (e.g. FRIDAY in HR1 and HR1.1).
-                    for _ph, _flist in self._ALL_PHASE_FIELD_SETS:
-                        for _f in _flist:
+                phase = current_phase
+                if not phase:
+                    phase, _ = self._detect_eval_phase(ev)
+                if field_name not in manual:
+                    if traded_day_num is not None:
+                        ev[field_name] = "$0.00"
+                        force_fields.append(field_name)
+                        # Duplicate weekday in the same phase track only.
+                        same_track = self._get_phase_fields(phase) or []
+                        for _f in same_track:
                             if _f == field_name:
                                 continue
                             if self._parse_day_token(self._cell(ev.get(_f))) == traded_day_num:
                                 ev[_f] = ""
                                 force_fields.append(_f)
-
-                phase = current_phase
-                if not phase:
-                    phase, _ = self._detect_eval_phase(ev)
+                    elif not cur or cur in ("-", "—", "–"):
+                        ev[field_name] = "$0.00"
+                        force_fields.append(field_name)
                 self._try_queue_next_weekday_after_trade(
                     ev, phase, field_name, changed=force_fields,
                 )
@@ -9572,7 +9646,7 @@ class TradeOpssAIApp:
             if not matched_ev:
                 return False
             if not force_fields:
-                return True  # earlier attempt already landed — nothing left to write
+                return True
 
             payload = {
                 "email": email,
@@ -9860,17 +9934,10 @@ class TradeOpssAIApp:
 
         def _do_load():
             try:
-                r = None
-                for attempt in range(3):
-                    r = requests.post(
-                        f"{dashboard_url}/api/client/data",
-                        json={"email": email},
-                        headers=_companion_request_headers(),
-                        timeout=15
-                    )
-                    if r.status_code != 429:
-                        break
-                    time.sleep(3 if attempt == 0 else 5)
+                r = _companion_dashboard_post(
+                    f"{dashboard_url}/api/client/data",
+                    {"email": email},
+                )
                 if r.status_code != 200:
                     msg = "Unknown error"
                     try:
@@ -10841,7 +10908,7 @@ class TradeOpssAIApp:
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
                 if platform in ("Tradovate", "TopStepX", "AlphaTrader"):
-                    self._record_prop_broker_fill_today(acct_num)
+                    self._record_prop_broker_fill_today(acct_num, day_field)
 
                 # Mark the day-name cell as traded ($0.00) on the dashboard now
                 # that the broker leg has filled. Triggered by Tradovate/TopStepX
@@ -13314,6 +13381,16 @@ class TradeOpssAIApp:
                 # we can clear it after the broker leg fills.
                 day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
 
+                if self._account_has_open_position(auto_ev):
+                    _an = acct_num
+                    self.root.after(0, lambda an=_an: self.log(
+                        f"⛔ {an}: auto-trade skipped — broker position still open",
+                        "WARN"))
+                    with total_success:
+                        counters["skipped"] += 1
+                    self._record_trade_skipped()
+                    continue
+
                 _block, _block_reason = self._should_block_repeat_prop_trade(
                     acct_num, auto_ev, phase_key=phase_key)
                 if _block:
@@ -13586,7 +13663,7 @@ class TradeOpssAIApp:
                     self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
                         self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))
                     if platform in ("Tradovate", "TopStepX", "AlphaTrader"):
-                        self._record_prop_broker_fill_today(acct_num)
+                        self._record_prop_broker_fill_today(acct_num, day_field)
 
                     # Mark the day-name cell as traded ($0.00) on the dashboard
                     # now that the broker leg has filled. Triggered by
