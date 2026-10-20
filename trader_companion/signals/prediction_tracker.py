@@ -44,8 +44,12 @@ MAX_EVAL_WINDOW_MIN = 240        # stop looking for TP/SL after 4 hours
 MAX_RECORDS = 2000               # journal cap (memory + disk)
 STATS_WINDOW = 40                # adaptive gate looks at the last N verified
 MIN_LIVE_GATE_SAMPLES = 15        # do not alter live signals before this evidence
+TRADE_ENTRY_KEEP_DAYS = 21        # how long a trade entry waits for its outcome
+DECISION_BUCKET_SEC = 1800        # trades of one plan inside this window = one decision
 
 _records: Dict[str, List[Dict[str, Any]]] = {}
+_entries: Dict[str, Dict[str, Dict[str, Any]]] = {}
+_entries_loaded: set = set()
 _lock = threading.Lock()
 _loaded: set = set()
 
@@ -293,13 +297,186 @@ def ingest_simulation(symbol: str, *, entry_ts: int, price: float, lean: str,
         _save(symbol)
 
 
+def trade_edge_score(won: bool, tp_points: float, sl_points: float) -> float:
+    """Direction-skill credit in [0, 1] for one real trade; 0.5 = coin flip.
+
+    A raw win rate is not directional accuracy: a 3:1 setup loses 75% of the
+    time on a coin flip, a 0.5:1 setup wins 67%. Each result is compared with
+    its own random-walk baseline p = sl / (tp + sl) and scaled so a coin flip
+    scores 0.5 on average whatever the TP/SL geometry.
+    """
+    total = float(tp_points) + float(sl_points)
+    p = float(sl_points) / total if total > 0 else 0.5
+    m = max(p, 1.0 - p)
+    score = 0.5 + 0.5 * ((1.0 if won else 0.0) - p) / m
+    return round(min(1.0, max(0.0, score)), 4)
+
+
+def _entries_path(symbol: str) -> str:
+    return os.path.join(os.path.dirname(_journal_path(symbol)),
+                        f"ml_trade_entries_{symbol.lower()}.json")
+
+
+def _load_entries(symbol: str) -> Dict[str, Dict[str, Any]]:
+    key = symbol.lower()
+    if key in _entries_loaded:
+        return _entries.setdefault(key, {})
+    _entries_loaded.add(key)
+    data: Dict[str, Dict[str, Any]] = {}
+    try:
+        with open(_entries_path(symbol), "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        pass
+    _entries[key] = data
+    return data
+
+
+def _save_entries(symbol: str) -> None:
+    key = symbol.lower()
+    entries = _entries.get(key, {})
+    cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - TRADE_ENTRY_KEEP_DAYS * 86400))
+    for k in [k for k, e in entries.items() if str(e.get("entry_date") or "") < cutoff]:
+        del entries[k]
+    path = _entries_path(symbol)
+    temp_path = path + ".tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(entries, f)
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _trade_key(account: Any, entry_date: Any) -> str:
+    return f"{str(account or '').strip().lower()}|{str(entry_date or '').strip()}"
+
+
+def record_trade_entry(symbol: str, *, account: str, entry_date: str, side: str,
+                       entry_ts: float, confidence: Optional[float],
+                       p_up: Optional[float], tp_points: float, sl_points: float,
+                       trend_direction: Optional[str] = None,
+                       signal_direction: Optional[str] = None,
+                       signal_source: Optional[str] = None) -> bool:
+    """Remember a real trade's decision so its dashboard outcome can teach the model.
+
+    Only trades that actually followed the local ML signal are kept: a side
+    forced by a lock or a random fallback says nothing about the model.
+    """
+    side = str(side or "").lower()
+    if side not in ("buy", "sell"):
+        return False
+    if str(signal_source or "") != "local_ml" or str(signal_direction or "").lower() != side:
+        return False
+    try:
+        tp_points, sl_points = float(tp_points), float(sl_points)
+    except (TypeError, ValueError):
+        return False
+    if tp_points <= 0 or sl_points <= 0 or not account or not entry_date:
+        return False
+    key = _trade_key(account, entry_date)
+    with _lock:
+        entries = _load_entries(symbol)
+        existing = entries.get(key)
+        if existing and int(existing.get("entry_ts") or 0) == int(entry_ts):
+            return False  # a retried ledger push re-sends the same entry
+        entries[key] = {
+            "entry_date": str(entry_date), "entry_ts": float(entry_ts), "side": side,
+            "confidence": float(confidence) if confidence is not None else 0.6,
+            "p_up": float(p_up) if p_up is not None else (0.6 if side == "buy" else 0.4),
+            "tp_points": tp_points, "sl_points": sl_points,
+            "trend_direction": (trend_direction or "").strip().lower() or None,
+        }
+        _save_entries(symbol)
+    return True
+
+
+def ingest_trade_outcome(symbol: str, *, account: str, entry_date: str, outcome: str,
+                         net_pnl: Optional[float] = None) -> bool:
+    """Learn from a real trade result reported by the dashboard (tp / sl / breach).
+
+    Becomes a verified live sample, so the trend-vs-reversal blend weights adapt
+    to what the real accounts actually earned. Returns True when a new sample
+    was added.
+    """
+    outcome = str(outcome or "").strip().lower()
+    if outcome not in ("tp", "sl", "breach"):
+        return False
+    key = _trade_key(account, entry_date)
+    won = outcome == "tp"
+    with _lock:
+        entry = _load_entries(symbol).get(key)
+        if not entry or entry.get("learned"):
+            return False
+        side = entry["side"]
+        tp, sl = float(entry["tp_points"]), float(entry["sl_points"])
+        # Accounts on one plan trade the same signal at nearly the same time:
+        # count one decision, not one per account.
+        decision_key = (f"{entry['entry_date']}|{side}|{round(tp, 2)}|{round(sl, 2)}|"
+                        f"{int(entry['entry_ts']) // DECISION_BUCKET_SEC}")
+        _load(symbol)
+        recs = _records.setdefault(symbol.lower(), [])
+        entry["learned"] = True
+        if any(r.get("decision_key") == decision_key for r in recs[-500:]):
+            _save_entries(symbol)
+            return False
+        sign = 1.0 if side == "buy" else -1.0
+        signed = tp if won else -sl
+        recs.append({
+            "ts": time.time(), "bar_time": int(entry["entry_ts"]), "symbol": symbol.lower(),
+            "price": 0.0, "p_up": entry["p_up"], "confidence": entry["confidence"],
+            "lean": side, "direction": side, "tp_points": tp, "sl_points": sl,
+            "horizon_min": DEFAULT_HORIZON_MIN, "verified": True, "verified_at": time.time(),
+            "simulated": False, "source": "trade", "decision_key": decision_key,
+            "trend_direction": entry.get("trend_direction"),
+            "outcome": "tp" if won else "sl", "breach": outcome == "breach",
+            "correct": won, "edge_score": trade_edge_score(won, tp, sl),
+            "signed_move": signed, "move_points": signed * sign, "net_pnl": net_pnl,
+            # Lower bounds only: the real excursions are not reported.
+            "mfe_points": tp if won else 0.0, "mae_points": 0.0 if won else sl,
+        })
+        del recs[:-MAX_RECORDS]
+        _save(symbol)
+        _save_entries(symbol)
+    return True
+
+
+def get_trade_stats(symbol: str = "ustech", window: int = 100) -> Dict[str, Any]:
+    """Real-trade scorecard: win rate vs the random-walk expectation (the edge)."""
+    with _lock:
+        _load(symbol)
+        trades = [r for r in _records.get(symbol.lower(), [])
+                  if r.get("source") == "trade" and r.get("verified")][-window:]
+    n = len(trades)
+    if not n:
+        return {"n": 0}
+    wins = sum(1 for r in trades if r.get("correct"))
+    expected = sum(r["sl_points"] / (r["sl_points"] + r["tp_points"]) for r in trades) / n
+    return {
+        "n": n, "wins": wins, "losses": n - wins,
+        "breaches": sum(1 for r in trades if r.get("breach")),
+        "win_rate": round(wins / n, 3), "expected_win_rate": round(expected, 3),
+        "edge": round(wins / n - expected, 3),
+        "avg_score": round(sum(r.get("edge_score", 0.5) for r in trades) / n, 3),
+    }
+
+
 def get_stats(symbol: str = "ustech", window: int = STATS_WINDOW,
               live_only: bool = False) -> Dict[str, Any]:
     """Rolling stats over the most recent verified predictions."""
     key = symbol.lower()
     with _lock:
         _load(symbol)
-        verified = [r for r in _records.get(key, []) if r.get("verified")]
+        # Real trade results are edge-scored in get_trade_stats; their raw win
+        # rate depends on TP/SL geometry, so it must not skew direction accuracy.
+        verified = [r for r in _records.get(key, [])
+                    if r.get("verified") and r.get("source") != "trade"]
     live = [r for r in verified if not r.get("simulated")]
     sim = [r for r in verified if r.get("simulated")]
     # Simulations can help reports, but must not control live trading behavior.
@@ -369,8 +546,8 @@ def get_regime_blend_weights(symbol: str = "ustech",
                 and r["lean"] != r["trend_direction"]]
 
     n_a, n_r = len(aligned), len(reversal)
-    correct_a = sum(1 for r in aligned if r.get("correct"))
-    correct_r = sum(1 for r in reversal if r.get("correct"))
+    correct_a = sum(_accuracy_credit(r) for r in aligned)
+    correct_r = sum(_accuracy_credit(r) for r in reversal)
 
     # Beta(2,2) Laplace smoothing — stable with small samples
     trend_acc = (correct_a + 2) / (n_a + 4) if n_a else 0.5
@@ -393,8 +570,16 @@ def get_regime_blend_weights(symbol: str = "ustech",
         "reversal_acc": round(reversal_acc, 3),
         "n_trend": n_a,
         "n_reversal": n_r,
+        "n_trade_outcomes": sum(1 for r in recent if r.get("source") == "trade"),
         "source": source,
     }
+
+
+def _accuracy_credit(rec: Dict[str, Any]) -> float:
+    """1/0 for a verified prediction; the edge score for a real trade result."""
+    if rec.get("source") == "trade" and rec.get("edge_score") is not None:
+        return float(rec["edge_score"])
+    return 1.0 if rec.get("correct") else 0.0
 
 
 def effective_confidence_threshold(base: float, symbol: str = "ustech") -> float:

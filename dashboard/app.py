@@ -1059,9 +1059,15 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
-app.config['REQUIRED_COMPANION_VERSION'] = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.8') or '1.12.8'
-app.config['MIN_COMPANION_VERSION'] = os.getenv('MIN_COMPANION_VERSION', '1.12.6') or '1.12.6'
-app.config['COMPANION_VERSION_EXACT'] = os.getenv('COMPANION_VERSION_EXACT', '0').strip().lower() in (
+# Only the latest companion may connect: bump LATEST_COMPANION_VERSION with every
+# release (it must equal trader_app.APP_VERSION). Older builds are refused on every
+# call. The env vars can still loosen this deliberately (e.g. COMPANION_VERSION_EXACT=0).
+LATEST_COMPANION_VERSION = '1.12.9'
+app.config['REQUIRED_COMPANION_VERSION'] = (
+    os.getenv('REQUIRED_COMPANION_VERSION', LATEST_COMPANION_VERSION) or LATEST_COMPANION_VERSION)
+app.config['MIN_COMPANION_VERSION'] = (
+    os.getenv('MIN_COMPANION_VERSION', LATEST_COMPANION_VERSION) or LATEST_COMPANION_VERSION)
+app.config['COMPANION_VERSION_EXACT'] = os.getenv('COMPANION_VERSION_EXACT', '1').strip().lower() in (
     '1', 'true', 'yes',
 )
 
@@ -8110,7 +8116,7 @@ def _required_companion_version():
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return (os.getenv('REQUIRED_COMPANION_VERSION') or '1.12.8').strip() or '1.12.8'
+    return (os.getenv('REQUIRED_COMPANION_VERSION') or LATEST_COMPANION_VERSION).strip() or LATEST_COMPANION_VERSION
 
 
 def _min_companion_version():
@@ -8121,11 +8127,11 @@ def _min_companion_version():
             return str(cfg).strip()
     except RuntimeError:
         pass
-    return (os.getenv('MIN_COMPANION_VERSION') or '1.12.6').strip() or '1.12.6'
+    return (os.getenv('MIN_COMPANION_VERSION') or LATEST_COMPANION_VERSION).strip() or LATEST_COMPANION_VERSION
 
 
 def _companion_version_exact_required():
-    """True only when COMPANION_VERSION_EXACT is explicitly enabled."""
+    """True unless COMPANION_VERSION_EXACT is explicitly disabled (default: on)."""
     try:
         cfg = current_app.config.get('COMPANION_VERSION_EXACT')
         if cfg is not None:
@@ -8134,7 +8140,7 @@ def _companion_version_exact_required():
             return bool(cfg)
     except RuntimeError:
         pass
-    raw = (os.getenv('COMPANION_VERSION_EXACT') or '0').strip().lower()
+    raw = (os.getenv('COMPANION_VERSION_EXACT') or '1').strip().lower()
     return raw in ('1', 'true', 'yes')
 
 

@@ -90,6 +90,24 @@ def kenya_today():
     return kenya_now().date()
 
 
+LEARNING_SYMBOL = "ustech"
+NQ_TICK_POINTS = 0.25  # ledger TP/SL are in Tradovate NQ ticks; the model works in points
+
+
+def _load_prediction_tracker():
+    """The self-learning prediction journal (None in the no-ML Trader build)."""
+    if RELEASE_DISABLE_ML:
+        return None
+    try:
+        from trader_companion.signals import prediction_tracker as tracker
+    except ImportError:
+        try:
+            from signals import prediction_tracker as tracker
+        except ImportError:
+            return None
+    return tracker
+
+
 TRADING_SESSION_START_HOUR = 1
 TRADING_SESSION_END_HOUR = 20
 
@@ -2808,6 +2826,7 @@ class TradeOpssAIApp:
                             self.log(f"❌ Lookup failed: {msg}", "ERROR")
                         self.root.after(0, _on_not_found)
                 else:
+                    self._note_version_refusal(response)
                     error_msg = f"API Error: {response.status_code}"
                     try:
                         error_data = response.json()
@@ -4002,6 +4021,7 @@ class TradeOpssAIApp:
                     if data.get("status") in ("inactive", "blocked"):
                         self.root.after(0, lambda m=data.get("message", "Sync disabled"): self.stop_auto_push(m))
             else:
+                self._note_version_refusal(response)
                 error_msg = f"HTTP {response.status_code}"
                 try:
                     body = response.json()
@@ -5843,6 +5863,7 @@ class TradeOpssAIApp:
                 "poll", f"⚠ Dashboard scan poll failed: {exc}")
             return
         if resp.status_code != 200:
+            self._note_version_refusal(resp)
             self._log_dashboard_scan_throttled(
                 f"http-{resp.status_code}",
                 f"⚠ Dashboard scan poll HTTP {resp.status_code}: {resp.text[:180]}")
@@ -9941,6 +9962,7 @@ class TradeOpssAIApp:
                     {"email": email},
                 )
                 if r.status_code != 200:
+                    self._note_version_refusal(r)
                     msg = "Unknown error"
                     try:
                         msg = r.json().get("message", msg)
@@ -10557,6 +10579,8 @@ class TradeOpssAIApp:
 
     def _execute_row_trade(self, side, row_data):
         """Execute a trade for a specific row, then remove the row."""
+        if self._update_blocks_trading("Trade"):
+            return
         # Perps / DXtrade trade 24/7 — the weekday session window only gates futures.
         _row_firm = (row_data.get("eval") or {}).get("Prop Firm")
         _is_perps_row = (self._is_api_only_firm(row_data.get("firm_code"))
@@ -12055,6 +12079,9 @@ class TradeOpssAIApp:
         """Activate auto-trade, either immediately or after a randomized delay."""
         from datetime import datetime, timedelta, timezone
 
+        if self._update_blocks_trading("Auto-trade"):
+            return False
+
         # Validation: need trades loaded
         if not self._active_trade_rows:
             self.log("⚠ Load trades first before enabling auto-trade", "WARN")
@@ -12288,6 +12315,66 @@ class TradeOpssAIApp:
                                 width=160, fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
                   if CTK_AVAILABLE else tk.Button(outer, text="Refresh planned values", command=refresh_plan))
         button.pack(anchor="e", pady=(10, 0))
+
+    # ── Update gate: only the latest companion may work ──
+    def _note_version_refusal(self, response):
+        """True (and the app locks) when the server refused this build as outdated.
+
+        Version refusals are 403s that carry ``required_version``; inactive or
+        blocked-client 403s do not, so they never trigger the lock.
+        """
+        try:
+            if response is None or response.status_code != 403:
+                return False
+            body = response.json()
+        except Exception:
+            return False
+        if not isinstance(body, dict) or not body.get("required_version"):
+            return False
+        self._lock_for_update(body.get("required_version"), body.get("message"))
+        return True
+
+    def _lock_for_update(self, required, message=None):
+        """Stop syncing and trading until the user installs the latest companion."""
+        if getattr(self, "_update_required", None):
+            return
+        required = str(required or "").strip()
+        text = (str(message or "").strip()
+                or f"Update the companion to v{required} (you have v{APP_VERSION}).")
+        self._update_required = {"required": required, "message": text}
+
+        def _apply():
+            self.log(f"⛔ {text} Trading and sync are locked until you update.", "ERROR")
+            for action in (
+                    lambda: self.status_var.set(f"Update required — v{required}"),
+                    lambda: self.stop_auto_push("update required"),
+                    lambda: self.auto_trade_enabled and self._stop_auto_trade(),
+                    lambda: self.auto_trade_btn.configure(state="disabled"),
+                    lambda: self.load_trades_btn.configure(state="disabled")):
+                try:
+                    action()
+                except Exception:
+                    pass
+            try:
+                messagebox.showerror(
+                    "Update required",
+                    f"{text}\n\nInstall the latest TradeOpssAI, then sign in again. "
+                    "Trading and sync are disabled in this version.")
+            except Exception:
+                pass
+
+        try:
+            self.root.after(0, _apply)
+        except Exception:
+            _apply()
+
+    def _update_blocks_trading(self, action="Trading"):
+        """True (after logging) while this build is locked out for being outdated."""
+        locked = getattr(self, "_update_required", None)
+        if not locked:
+            return False
+        self.log(f"⛔ {action} blocked — update to v{locked['required']} first", "WARN")
+        return True
 
     def _stop_auto_trade(self):
         """Cancel auto-trade scheduler."""
@@ -13062,6 +13149,9 @@ class TradeOpssAIApp:
         When stop_when_done is False the outer auto-trade loop keeps running
         until every row is taken (or the user clicks Stop).
         """
+        if self._update_blocks_trading("Auto-trade batch"):
+            self._finish_auto_trade_batch(stop_when_done=False)
+            return
         allowed, window = self._trading_window_open()
         if not allowed:
             # Perps / DXtrade trade 24/7: outside the futures window keep only those rows.
@@ -14595,11 +14685,16 @@ class TradeOpssAIApp:
         ("taken", "Trades today"), ("queue", "Queue"), ("firms", "By prop firm"),
         ("last", "Last trade"), ("issues", "Last problem"), ("brokers", "Brokers"),
         ("client", "Client (KYC)"), ("session", "Futures session"), ("mode", "Mode / Direction"),
+        ("learning", "Self-learning"),
     )
 
     @staticmethod
     def _today_path():
-        return os.path.join(os.path.dirname(__file__), "trades_today.json")
+        # A packaged exe unpacks to a temp folder that is wiped on exit; keep the
+        # tally next to the executable so a restart does not lose it.
+        base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+                else os.path.dirname(__file__))
+        return os.path.join(base, "trades_today.json")
 
     def _today_state(self, now=None):
         """Today's tally (EAT). Loads the saved file once and starts over each new day."""
@@ -14683,6 +14778,34 @@ class TradeOpssAIApp:
             return f"{hours}h {minutes:02d}m"
         return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
 
+    def _learning_summary(self):
+        """(text, colour) for the Learning line; cached so the 1s refresh stays cheap."""
+        cached = getattr(self, "_learning_cache", None)
+        if cached and time.time() - cached[0] < 30:
+            return cached[1]
+        tracker = _load_prediction_tracker()
+        if tracker is None:
+            result = ("Off in this build", "#64748B")
+        else:
+            try:
+                stats = tracker.get_trade_stats(LEARNING_SYMBOL)
+                weights = tracker.get_regime_blend_weights(LEARNING_SYMBOL)
+                blend = (f"trend {weights['w_trend']:.0%} / reversal {weights['w_reversal']:.0%}"
+                         + ("" if weights.get("source") == "learned" else " (default)"))
+                if stats.get("n"):
+                    edge = stats["edge"]
+                    color = "#64748B" if stats["n"] < 10 else (
+                        "#22C55E" if edge > 0 else "#F87171" if edge < 0 else "#94A3B8")
+                    result = (f"{stats['n']} real trades learned · {stats['win_rate']:.0%} won vs "
+                              f"{stats['expected_win_rate']:.0%} by chance ({edge * 100:+.0f}% edge) · {blend}",
+                              color)
+                else:
+                    result = (f"No real trades learned yet · {blend}", "#94A3B8")
+            except Exception:
+                result = ("Unavailable", "#64748B")
+        self._learning_cache = (time.time(), result)
+        return result
+
     def _today_summary(self, now=None):
         """Display strings for the Today's Trading section."""
         now = now or kenya_now()
@@ -14698,7 +14821,10 @@ class TradeOpssAIApp:
         scheduled = getattr(self, "_auto_trade_scheduled_dt", None)
         total = int(getattr(self, "_auto_trade_total", 0) or 0)
 
-        if enabled and scheduled and now < scheduled:
+        update_lock = getattr(self, "_update_required", None)
+        if update_lock:
+            auto_state = f"⛔ Update required — install v{update_lock['required']}"
+        elif enabled and scheduled and now < scheduled:
             auto_state = f"⏳ Armed — starts in {self._countdown_text((scheduled - now).total_seconds())}"
         elif enabled and queued:
             auto_state = f"⚡ Executing — {queued} remaining"
@@ -14783,7 +14909,9 @@ class TradeOpssAIApp:
 
         queue = (f"{queued} remaining of {total} in this batch"
                  if enabled and total else f"{queued} queued")
-        if enabled and queued:
+        if update_lock:
+            state_color = "#F87171"
+        elif enabled and queued:
             state_color = "#38BDF8" if not (scheduled and now < scheduled) else "#FBBF24"
         elif taken and not queued:
             state_color = "#22C55E"
@@ -14803,6 +14931,7 @@ class TradeOpssAIApp:
             brokers_color = "#FBBF24"
         else:
             brokers_color = "#F87171"
+        learning, learning_color = self._learning_summary()
         summary = {
             "state": auto_state, "start": start, "wake": wake,
             "taken": f"{len(taken)} taken   ·   {len(failed)} failed   ·   {skipped} skipped",
@@ -14816,6 +14945,7 @@ class TradeOpssAIApp:
             "state_color": state_color, "brokers_color": brokers_color,
             "session_color": "#22C55E" if allowed else "#F59E0B",
             "has_issue": bool(failed),
+            "learning": learning, "learning_color": learning_color,
             "recent_rows": [
                 (self._clock_text(datetime.fromisoformat(e["time"])) if e.get("time") else "?",
                  e.get("firm") or "", str(e.get("account") or "")[-12:], e.get("side") or "")
@@ -14897,19 +15027,21 @@ class TradeOpssAIApp:
         w["chips"] = {}
         layout = (("wake", "AUTO-WAKE"), ("brokers", "BROKERS"),
                   ("session", "FUTURES SESSION"), ("mode", "MODE / DIRECTION"),
-                  ("client", "CLIENT (KYC)"), ("firms", "BY PROP FIRM"))
+                  ("client", "CLIENT (KYC)"), ("firms", "BY PROP FIRM"),
+                  ("learning", "SELF-LEARNING (REAL TRADE RESULTS)"))
         for index, (key, title) in enumerate(layout):
             row, col = divmod(index, 2)
+            span = 2 if key == "learning" else 1
             chips.grid_columnconfigure(col, weight=1, uniform="today_chips")
             chip = ctk.CTkFrame(chips, fg_color=tile_bg, corner_radius=8,
                                 border_width=1, border_color=tile_border)
-            chip.grid(row=row, column=col, sticky="ew", pady=(0, 4),
+            chip.grid(row=row, column=col, columnspan=span, sticky="ew", pady=(0, 4),
                       padx=(0 if col == 0 else 4, 0))
             ctk.CTkLabel(chip, text=title, anchor="w", font=("Consolas", 8, "bold"),
                          text_color=dim).pack(fill="x", padx=10, pady=(6, 0))
             w["chips"][key] = ctk.CTkLabel(chip, text="—", anchor="w", justify="left",
                                            font=("Segoe UI", 11), text_color=self.C_TEXT,
-                                           wraplength=330)
+                                           wraplength=330 * span + 20 * (span - 1))
             w["chips"][key].pack(fill="x", padx=10, pady=(0, 6))
 
         # Recent trades and the latest problem
@@ -14998,7 +15130,8 @@ class TradeOpssAIApp:
             _set("tiles", key, str(summary[key]))
         for key, color in (("wake", self.C_TEXT), ("brokers", summary["brokers_color"]),
                            ("session", summary["session_color"]), ("mode", self.C_TEXT),
-                           ("client", self.C_TEXT), ("firms", self.C_TEXT)):
+                           ("client", self.C_TEXT), ("firms", self.C_TEXT),
+                           ("learning", summary["learning_color"])):
             _set("chips", key, summary[key], text_color=color)
         if cache.get("recent_rows") != summary["recent_rows"]:
             cache["recent_rows"] = list(summary["recent_rows"])
@@ -20858,6 +20991,7 @@ class TradeOpssAIApp:
                 "confidence": result.get("confidence"),
                 "probability": result.get("probability") or result.get("p_up"),
                 "model": result.get("model") or "mt5_ensemble",
+                "trend_direction": result.get("trend_direction"),
                 "published_at": kenya_now().isoformat(),
             })
         else:
@@ -20880,6 +21014,44 @@ class TradeOpssAIApp:
             self._pending_ledger_events = []
         with self._ledger_events_lock:
             self._pending_ledger_events.append(event)
+        self._learn_from_ledger_event(event)
+
+    def _learn_from_ledger_event(self, event):
+        """Close the learning loop: real trade results teach the local model.
+
+        Entries are remembered; when the dashboard resolves the trade (TP, SL
+        or breach) the result becomes a verified live sample that moves the
+        trend-vs-reversal blend weights. Safe to call twice for one event (a
+        failed ledger push re-queues its events).
+        """
+        try:
+            tracker = _load_prediction_tracker()
+            if tracker is None:
+                return
+            kind = event.get("event")
+            if kind == "entry":
+                signal = event.get("signal") or {}
+                tp, sl = event.get("tp_ticks"), event.get("sl_ticks")
+                tracker.record_trade_entry(
+                    LEARNING_SYMBOL,
+                    account=event.get("account"), entry_date=event.get("entry_date"),
+                    side=event.get("side"),
+                    entry_ts=datetime.fromisoformat(event["entry_time"]).timestamp(),
+                    confidence=signal.get("confidence"), p_up=signal.get("probability"),
+                    tp_points=float(tp) * NQ_TICK_POINTS, sl_points=float(sl) * NQ_TICK_POINTS,
+                    trend_direction=signal.get("trend_direction"),
+                    signal_direction=signal.get("direction"),
+                    signal_source=event.get("signal_source"))
+            elif kind == "outcome":
+                if tracker.ingest_trade_outcome(
+                        LEARNING_SYMBOL, account=event.get("account"),
+                        entry_date=event.get("entry_date"),
+                        outcome=event.get("outcome"), net_pnl=event.get("net_pnl")):
+                    self.root.after(0, lambda e=event: self.log(
+                        f"🧠 Learned from {str(e.get('outcome')).upper()} on "
+                        f"{str(e.get('account'))[-8:]} — blend weights updated"))
+        except Exception as exc:
+            logging.getLogger("TradeOpssAI.learning").debug("ledger learning skipped: %s", exc)
 
     def _drain_ledger_events(self):
         if not hasattr(self, "_ledger_events_lock"):
@@ -20915,6 +21087,7 @@ class TradeOpssAIApp:
                 "probability": ctx.get("probability"),
                 "model": ctx.get("model"),
                 "published_at": ctx.get("published_at"),
+                "trend_direction": ctx.get("trend_direction"),
             },
             "signal_source": signal_source,
         }

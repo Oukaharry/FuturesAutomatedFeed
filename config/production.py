@@ -21,10 +21,11 @@ class Config:
     APP_NAME = 'MT5 Hedging Dashboard'
     APP_VERSION = '1.0.1'
     # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
+    # Only the latest companion may connect: exact-match is on and the floor equals
+    # the required release. Override with the env vars to loosen it deliberately.
     REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.9') or '1.12.9'
-    MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.6') or '1.12.6'
-    # Exact pin blocks older builds only; newer (e.g. 1.12.7 vs required 1.12.6) is allowed.
-    COMPANION_VERSION_EXACT = os.getenv('COMPANION_VERSION_EXACT', '0').strip().lower() in (
+    MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.9') or '1.12.9'
+    COMPANION_VERSION_EXACT = os.getenv('COMPANION_VERSION_EXACT', '1').strip().lower() in (
         '1', 'true', 'yes',
     )
     

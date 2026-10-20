@@ -144,6 +144,13 @@ def test_session_line(app):
     assert app._today_summary(early)["session"].startswith("Closed")
 
 
+def test_today_tally_is_stored_next_to_a_packaged_exe(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "Tradeopss.exe"))
+    assert TradeOpssAIApp._today_path() == str(tmp_path / "trades_today.json")
+
+
 def test_dxtrade_fill_hook_counts_the_trade(app):
     app._mark_dxtrade_attempt = lambda code: None
     app._mark_trade_in_progress = lambda ev: []

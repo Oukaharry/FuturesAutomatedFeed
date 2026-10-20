@@ -168,7 +168,7 @@ def _prediction_at_time(preds: List[Dict], entry_ts: int, window_sec: int = 900)
     best = None
     best_dt = window_sec + 1
     for p in preds:
-        if p.get("simulated"):
+        if p.get("simulated") or p.get("source") == "trade":
             continue
         pts = int(p.get("ts") or p.get("bar_time") or 0)
         if pts > entry_ts:

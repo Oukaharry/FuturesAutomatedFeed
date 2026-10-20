@@ -54,6 +54,7 @@ trader_companion/trader_bias.json
 # Local companion ML tuning / journals (machine-specific; do not commit)
 trader_companion/signals/indicator_params_ustech_m5.json
 trader_companion/signals/*.jsonl
+trader_companion/signals/ml_trade_entries_*.json
 scripts/_compare_matt_csv.py
 scripts/_tmp_*.py
 
