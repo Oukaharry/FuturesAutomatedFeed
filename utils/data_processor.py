@@ -315,8 +315,6 @@ def cell_is_settled_day_value(value):
         return False
     if s.upper() == 'PAYOUT':
         return True
-    if str(s).strip().lower() == 'fail':
-        return False
     try:
         float(s.replace('$', '').replace(',', '').strip())
         return True
@@ -325,34 +323,22 @@ def cell_is_settled_day_value(value):
     return True
 
 
-FAILED_DAY_PLACEHOLDER = 'Fail'
-
-
 def cell_is_failed_day_marker(value) -> bool:
-    return str(value or '').strip().lower() == FAILED_DAY_PLACEHOLDER.lower()
+    """True for the leftover 'Fail' stamp that used to replace weekday labels."""
+    return str(value or '').strip().lower() == 'fail'
 
 
-def _day_slot_should_mark_fail(value) -> bool:
-    """True when an open queue slot should become Fail (not settled P&L)."""
+def _day_slot_should_clear_on_fail(value) -> bool:
+    """Weekday queue labels and leftover Fail stamps — never real P&L."""
     if cell_is_failed_day_marker(value):
-        return False
-    if cell_is_settled_day_value(value):
-        return False
+        return True
     if cell_is_pure_weekday_placeholder(value):
         return True
-    s = str(value or '').strip()
-    if not s or s in ('-', '—', '–'):
-        return True
-    try:
-        if abs(float(s.replace('$', '').replace(',', '').strip())) < 1e-9:
-            return True
-    except (TypeError, ValueError):
-        pass
     return False
 
 
 def failed_day_placeholder_field_lists(ev):
-    """Hedge/prop day columns to stamp Fail for this row's terminal phase(s)."""
+    """Hedge/prop day columns whose weekday queue should be deleted on Fail."""
     if not isinstance(ev, dict):
         return []
     p1_fail = is_eval_phase_failed(ev.get('Status P1'))
@@ -373,26 +359,38 @@ def failed_day_placeholder_field_lists(ev):
     return lists
 
 
-def mark_failed_row_day_placeholders(ev):
-    """Replace weekday / empty queue slots with Fail on terminal rows."""
+def clear_failed_row_day_placeholders(ev):
+    """Delete weekday placeholders on terminal rows. Keep settled P&L.
+
+    Also strips leftover 'Fail' text previously written into those cells.
+    Empty cells are left empty — nothing is written back.
+    """
     field_lists = failed_day_placeholder_field_lists(ev)
     if not field_lists:
         return []
     changed = []
+    manual = set(ev.get('_manual_push_fields') or [])
+    cleared_lock = set(ev.get('_cleared_fields') or [])
     for fields in field_lists:
         for key in fields:
-            if not _day_slot_should_mark_fail(ev.get(key)):
+            if not _day_slot_should_clear_on_fail(ev.get(key)):
                 continue
-            ev[key] = FAILED_DAY_PLACEHOLDER
+            ev[key] = ''
             changed.append(key)
-            manual = set(ev.get('_manual_push_fields') or [])
-            if key in manual:
-                manual.discard(key)
-                if manual:
-                    ev['_manual_push_fields'] = sorted(manual)
-                else:
-                    ev.pop('_manual_push_fields', None)
+            manual.discard(key)
+            cleared_lock.add(key)
+    if changed:
+        if manual:
+            ev['_manual_push_fields'] = sorted(manual)
+        else:
+            ev.pop('_manual_push_fields', None)
+        ev['_cleared_fields'] = sorted(cleared_lock)
     return changed
+
+
+def mark_failed_row_day_placeholders(ev):
+    """Back-compat alias: Fail means delete the day placeholder, not fill Fail."""
+    return clear_failed_row_day_placeholders(ev)
 
 
 def row_has_failed_day_placeholder_mark(ev) -> bool:
