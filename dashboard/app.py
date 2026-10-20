@@ -3,6 +3,7 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, g
 from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 import threading
 import json
 import os
@@ -1055,6 +1056,9 @@ for _h in logging.getLogger().handlers:
 _start_recent_log_purger()
 
 app = Flask(__name__)
+# PythonAnywhere terminates TLS on one proxy. Without this, request.remote_addr
+# is the shared 10.x address and every trader shares one rate-limit bucket.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
@@ -1145,11 +1149,49 @@ def _log_request_end(response):
     return response
 
 # ============ Rate Limiting ============
-# Note: For local development, use higher limits. 
+def _is_shared_proxy_ip(ip: str) -> bool:
+    """True for the PythonAnywhere router address, which is not a visitor."""
+    ip = (ip or "").strip()
+    return (not ip) or ip.startswith("10.") or ip.startswith("127.") or ip == "0.0.0.0"
+
+
+def _rate_limit_key() -> str:
+    """One bucket per visitor.
+
+    On PythonAnywhere every request arrives from 10.0.4.129. Keying the
+    limiter on that address makes the 120/minute companion cap, and the
+    hourly default, apply to the whole site at once.
+    """
+    try:
+        ip = (get_remote_address() or "").strip()
+    except Exception:
+        ip = ""
+    if not _is_shared_proxy_ip(ip):
+        return ip
+    forwarded = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    if forwarded and not _is_shared_proxy_ip(forwarded):
+        return forwarded
+    real = (request.headers.get("X-Real-IP") or "").strip()
+    if real and not _is_shared_proxy_ip(real):
+        return real
+    token = (request.cookies.get("session_token") or "").strip()
+    if token:
+        return "session:" + token[:24]
+    try:
+        body = request.get_json(silent=True) or {}
+        email = str(body.get("email") or "").strip().lower()
+    except Exception:
+        email = ""
+    if email:
+        return "email:" + email
+    return "anon:" + (request.path or "/")
+
+
+# Note: For local development, use higher limits.
 # For production, consider: ["200 per day", "50 per hour"]
 limiter = Limiter(
     app=app,
-    key_func=get_remote_address,
+    key_func=_rate_limit_key,
     default_limits=["10000 per day", "2000 per hour"],
     storage_uri="memory://"
 )
@@ -3271,8 +3313,8 @@ def merge_dashboard_update_evaluations(
             merged.pop('_manual_push_fields', None)
 
         if _row_should_clear_day_placeholders(merged):
-            from utils.data_processor import mark_failed_row_day_placeholders
-            mark_failed_row_day_placeholders(merged)
+            from utils.data_processor import clear_failed_row_day_placeholders
+            clear_failed_row_day_placeholders(merged)
         _clear_stale_zero_trade_markers(merged)
         from utils.data_processor import (
             enforce_eval_day_placeholder_order,
@@ -3644,8 +3686,8 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
             _merge_eval_row_metadata(merged, base_snapshot, ev_in)
             if _row_should_clear_day_placeholders(merged):
-                from utils.data_processor import mark_failed_row_day_placeholders
-                mark_failed_row_day_placeholders(merged)
+                from utils.data_processor import clear_failed_row_day_placeholders
+                clear_failed_row_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
             out[idx] = merged
         else:
@@ -3653,8 +3695,8 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
             _merge_eval_row_metadata(merged, {}, ev_in)
             if _row_should_clear_day_placeholders(merged):
-                from utils.data_processor import mark_failed_row_day_placeholders
-                mark_failed_row_day_placeholders(merged)
+                from utils.data_processor import clear_failed_row_day_placeholders
+                clear_failed_row_day_placeholders(merged)
             _clear_stale_zero_trade_markers(merged)
             appended.append(merged)
 
@@ -4275,10 +4317,10 @@ def _apply_server_eval_guards(evaluations):
             FARMING_HEDGE_DAY_FIELDS,
             FARMING_PROP_DAY_FIELDS,
             enforce_single_ordered_weekday_placeholder,
-            mark_failed_row_day_placeholders,
+            clear_failed_row_day_placeholders,
             row_has_failed_day_placeholder_mark,
         )
-        mark_failed_row_day_placeholders(ev)
+        clear_failed_row_day_placeholders(ev)
         if row_has_failed_day_placeholder_mark(ev):
             _heal_stored_lucid_farming_fail(ev)
             _heal_failed_funded_with_payout_to_completed(ev)
@@ -8172,28 +8214,24 @@ def _extract_companion_version(data=None):
 
 
 def _companion_version_denied(data=None):
-    """403 when companion version is missing or below the allowed floor."""
+    """403 when companion version is missing or not the pinned release."""
     version = _extract_companion_version(data)
     required = _required_companion_version()
     minimum = _min_companion_version()
     exact = _companion_version_exact_required()
     if not version:
-        hint = required if exact else minimum
         return jsonify({
             "status": "error",
-            "message": f"TradeOpssAI client required. Update to v{hint} or newer and sign in again.",
+            "message": f"TradeOpssAI v{required} required. Update and sign in again.",
             "required_version": required,
             "min_version": minimum,
             "exact_match": exact,
         }), 403
     have = _companion_version_tuple(version)
     need = _companion_version_tuple(required)
-    floor = _companion_version_tuple(minimum)
-    # Newer than the pinned release is always valid. Exact match only blocks
-    # *older* builds (otherwise 1.12.7 is told to "update" to 1.12.6).
-    if have >= need:
-        return None
     if exact:
+        if have == need:
+            return None
         return jsonify({
             "status": "error",
             "message": f"Update TradeOpssAI to v{required} (you have v{version}).",
@@ -8201,6 +8239,9 @@ def _companion_version_denied(data=None):
             "min_version": minimum,
             "exact_match": True,
         }), 403
+    floor = _companion_version_tuple(minimum)
+    if have >= need:
+        return None
     if have < floor:
         return jsonify({
             "status": "error",
@@ -8321,9 +8362,8 @@ def api_client_auth():
 def api_companion_auth():
     """
     TradeOpssAI companion — authenticate client by registered email.
-    Version is checked first: client must be >= REQUIRED_COMPANION_VERSION
-    (newer builds always pass). COMPANION_VERSION_EXACT only tightens the
-    floor to that required release instead of MIN_COMPANION_VERSION.
+    Version is checked first: with COMPANION_VERSION_EXACT (production default),
+    only REQUIRED_COMPANION_VERSION is accepted on auth and every later call.
     """
     try:
         denied = _companion_version_denied()
@@ -12164,11 +12204,11 @@ def get_data():
             try:
                 from utils.data_processor import (
                     compute_evaluations_total_fees,
-                    mark_failed_row_day_placeholders,
+                    clear_failed_row_day_placeholders,
                 )
                 for _ev in data.get('evaluations') or []:
                     if isinstance(_ev, dict):
-                        mark_failed_row_day_placeholders(_ev)
+                        clear_failed_row_day_placeholders(_ev)
                 stats = data.setdefault('statistics', {})
                 fee_total = compute_evaluations_total_fees(data.get('evaluations'))
                 stats['evaluations_total_fees'] = fee_total
@@ -12654,12 +12694,16 @@ def _is_zero_trade_marker(raw):
 
 
 def _hedge_cell_shows_progression(raw):
-    """Weekday queued, payout pending, or settled non-zero P/L."""
+    """Later-slot evidence that a $0.00 fill marker is stale.
+
+    A weekday queue label in a later cell is the next session, not proof the
+    taken day has been replaced by real P&L. Treating WEDNESDAY as later
+    progress used to wipe $0.00, so SCAN still saw an empty/TUESDAY cell and
+    could re-arm the same accounts.
+    """
     if not raw or str(raw).strip() in ('', '-', '—', '–'):
         return False
     if _cell_is_payout_marker(raw):
-        return True
-    if _weekday_abbrs_in_text(raw):
         return True
     if _hedge_cell_currency_only(raw) and not _is_zero_trade_marker(raw):
         return True

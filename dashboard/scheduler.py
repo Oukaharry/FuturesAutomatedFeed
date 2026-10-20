@@ -691,7 +691,10 @@ def flush_queued_purchase_alerts(reason='session-end'):
     logging.info("%s purchase alert flush: %s client queue(s)", reason, len(clients))
     for client_id in clients:
         try:
-            data = get_client_data(client_id) or {}
+            # Evaluations only. The default load includes full deal history,
+            # and doing that for every queued client each minute pins the
+            # worker's two Postgres connections while companions are polling.
+            data = get_client_data(client_id, include_deals=False) or {}
             _flush_batched_breach_alerts(client_id, data.get('evaluations') or [])
         except Exception as exc:
             logging.error("Purchase alert flush failed for %s: %s", client_id, exc)
