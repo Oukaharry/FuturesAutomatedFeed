@@ -6602,19 +6602,19 @@ class TradeOpssAIApp:
         return p1_dead and not has_funded_acct
 
     def _scrub_failed_row_day_placeholders(self, evaluations):
-        """Stamp Fail on open weekday queue slots for dead rows."""
-        from utils.data_processor import mark_failed_row_day_placeholders
+        """Delete queued weekday cells on dead rows. Keep settled P&L."""
+        from utils.data_processor import clear_failed_row_day_placeholders
         cleared = []
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 continue
             if not self._row_trading_is_over(ev):
                 continue
-            fields = mark_failed_row_day_placeholders(ev)
+            fields = clear_failed_row_day_placeholders(ev)
             if fields:
                 cleared.extend(fields)
                 self.log(f"🧹 {self._primary_trade_account(ev)}: account failed — "
-                         f"marked {len(fields)} day slot(s) as Fail")
+                         f"cleared {len(fields)} day placeholder(s)")
         return cleared
 
     # ── Funded-phase starting balance map ─────────────────────────────
@@ -7230,8 +7230,25 @@ class TradeOpssAIApp:
         except Exception:
             return []
 
-    def _try_queue_next_weekday_after_trade(self, ev, phase, traded_field, outcome=None, changed=None):
-        """Queue the next session weekday once (Fri → MON), without retry spam."""
+    def _hit_marker_may_settle_day_token(self, tok, traded_today, today_wd):
+        """Hit TP/SL may consume a weekday only if that session actually traded.
+
+        Leftover Hit TP1 from an earlier session must not overwrite today's
+        placeholder (Tue → $0.00, queue Wed) as if this morning already filled.
+        """
+        if tok is None:
+            return False
+        if traded_today:
+            return True
+        return self._classify_day_placeholder(tok, today_wd) == "past"
+
+    def _try_queue_next_weekday_after_trade(self, ev, phase, traded_field, outcome=None,
+                                            changed=None, settled_weekday=None):
+        """Queue the next session weekday once (Fri → MON), without retry spam.
+
+        ``settled_weekday`` is the session that just closed. Healing Monday's
+        missed $0.00 on Tuesday must queue TUESDAY, not jump to WEDNESDAY.
+        """
         from utils.data_processor import (
             may_autofill_next_weekday_placeholder,
             weekday_track_fields_for_phase,
@@ -7258,7 +7275,10 @@ class TradeOpssAIApp:
             return None
         if not may_autofill_next_weekday_placeholder(ev, track, next_field):
             return None
-        label = self._WEEKDAY_LABELS[self._next_trading_weekday()]
+        nxt = (self._next_trading_weekday(from_weekday=settled_weekday)
+               if settled_weekday is not None
+               else self._next_trading_weekday())
+        label = self._WEEKDAY_LABELS[nxt]
         ev[next_field] = label
         if changed is not None:
             changed.append(next_field)
@@ -7305,6 +7325,11 @@ class TradeOpssAIApp:
 
         Backfills a missed fill-time queue write, but only when this track has
         no weekday placeholder yet — periodic reconcile must not stack duplicates.
+
+        Hit TP/SL is a sticky status from the last closed trade. It is not
+        proof that today's weekday placeholder already filled. Only a today
+        fill, or a leftover past-day token (Mon still sitting on Tue), may
+        settle a cell.
         """
         changed = []
         today_iso = kenya_today().strftime("%Y-%m-%d")
@@ -7342,28 +7367,37 @@ class TradeOpssAIApp:
                 if n <= 0 or not fields:
                     continue
                 row_changed = False
+                settled_wd = None
+                settled_field = None
                 for idx in range(min(n, len(fields))):
                     field = fields[idx]
                     if field in manual:
                         continue
                     cur = self._cell(ev.get(field))
-                    if self._parse_day_token(cur) is None:
+                    tok = self._parse_day_token(cur)
+                    if tok is None:
+                        continue
+                    if not self._hit_marker_may_settle_day_token(
+                            tok, traded_today, today_wd):
                         continue
                     ev[field] = "$0.00"
                     changed.append(field)
                     row_changed = True
-                traded_field = fields[min(n, len(fields)) - 1]
+                    settled_wd = tok
+                    settled_field = field
+                traded_field = settled_field or fields[min(n, len(fields)) - 1]
                 if row_changed:
                     queued = self._try_queue_next_weekday_after_trade(
                         ev, phase, traded_field, outcome=outcome, changed=changed,
+                        settled_weekday=settled_wd,
                     )
                     self.log(f"🩹 {self._primary_trade_account(ev)}: reconciled weekday → $0.00 — "
                              f"{status_field} shows {status}"
                              + (f", next → {queued}" if queued else ""))
-                elif outcome in ("win", "loss"):
-                    # Hit TP/SL but the hedge cell is already blank (often after
-                    # server placeholder dedupe or a manual clear). Still queue the
-                    # next session label in the next column when allowed.
+                elif traded_today and outcome in ("win", "loss"):
+                    # Fill landed today but the hedge cell is already blank
+                    # (server placeholder dedupe or a manual clear). Queue the
+                    # next session only when today's trade is real.
                     queued = self._try_queue_next_weekday_after_trade(
                         ev, phase, traded_field, outcome=outcome, changed=changed,
                     )
@@ -8147,6 +8181,17 @@ class TradeOpssAIApp:
             return True, f"broker P&L resolved ({outcome_today})"
         return False, None
 
+    def _account_in_today_taken(self, account_number) -> bool:
+        """True when today's local trade log already counted this account."""
+        key = str(account_number or "").strip().lower()
+        if not self._valid_prop_account_key(key):
+            return False
+        try:
+            taken = self._today_state().get("taken") or []
+        except Exception:
+            taken = []
+        return any(str(item.get("account") or "").strip().lower() == key for item in taken)
+
     def _should_block_repeat_prop_trade(self, account_number, ev=None, phase_key=None):
         """Block a second prop entry the same Kenya calendar day."""
         if isinstance(ev, dict) and self._account_has_open_position(ev):
@@ -8154,6 +8199,8 @@ class TradeOpssAIApp:
         blocked, reason = self._account_resolved_trade_today(account_number)
         if blocked:
             return True, reason
+        if self._account_in_today_taken(account_number):
+            return True, "already counted in today's trades"
         if not isinstance(ev, dict) or not phase_key:
             return False, None
         today_iso = kenya_today().strftime("%Y-%m-%d")
@@ -9617,11 +9664,9 @@ class TradeOpssAIApp:
             if not email or not dashboard_url:
                 return False
 
-            r = requests.post(
+            r = _companion_dashboard_post(
                 f"{dashboard_url}/api/client/data",
-                json={"email": email},
-                headers=_companion_request_headers(),
-                timeout=10,
+                {"email": email},
             )
             if r.status_code != 200:
                 return False
@@ -9663,11 +9708,13 @@ class TradeOpssAIApp:
                         force_fields.append(field_name)
                 self._try_queue_next_weekday_after_trade(
                     ev, phase, field_name, changed=force_fields,
+                    settled_weekday=traded_day_num,
                 )
                 break
 
             if not matched_ev:
                 return False
+            self._last_dashboard_evaluations = list(evaluations)
             if not force_fields:
                 return True
 
@@ -9678,11 +9725,11 @@ class TradeOpssAIApp:
                 "dropdown_options": {},
                 "force_fields": force_fields,
             }
-            resp = requests.post(
+            resp = _gzip_post(
                 f"{dashboard_url}/api/client/push",
-                json=payload,
-                headers=_companion_request_headers(),
+                payload,
                 timeout=30,
+                headers=_companion_request_headers(),
             )
             ok = resp.status_code == 200
             try:
@@ -9890,7 +9937,7 @@ class TradeOpssAIApp:
         active_evals = []
         connect_evals = []
         skipped = {"inactive": 0, "no_day": 0, "superseded": 0,
-                   "dual": 0, "funded_done": 0, "lifecycle": 0}
+                   "dual": 0, "funded_done": 0, "lifecycle": 0, "taken_today": 0}
         for ev in evaluations or []:
             if not isinstance(ev, dict) or ev.get("_deleted"):
                 skipped["inactive"] += 1
@@ -9920,6 +9967,14 @@ class TradeOpssAIApp:
             connect_evals.append(ev)
 
             if self._eval_has_payout(ev):
+                continue
+
+            # Already filled / still open today must not re-enter the armed queue
+            # even if the dashboard still shows TUESDAY (failed $0.00 write).
+            account = self._primary_trade_account(ev)
+            blocked, _reason = self._should_block_repeat_prop_trade(account, ev)
+            if blocked:
+                skipped["taken_today"] += 1
                 continue
 
             # Dashboard _is_active ignores weekday + funded completion nuance
@@ -9957,6 +10012,12 @@ class TradeOpssAIApp:
 
         def _do_load():
             try:
+                # Deliver any fill-time $0.00 / next-day writes that timed out,
+                # so this SCAN sees Wednesday instead of re-arming Tuesday.
+                try:
+                    self._retry_pending_day_cell_marks()
+                except Exception:
+                    pass
                 r = _companion_dashboard_post(
                     f"{dashboard_url}/api/client/data",
                     {"email": email},
@@ -9989,12 +10050,14 @@ class TradeOpssAIApp:
                 skipped_dual = skipped["dual"]
                 skipped_funded_done = skipped["funded_done"]
                 skipped_lifecycle = skipped["lifecycle"]
+                skipped_taken = skipped.get("taken_today", 0)
 
                 active_evals = self._dedupe_active_by_primary_account(active_evals)
 
                 self.root.after(0, lambda t=len(evaluations), a=len(active_evals),
                                 s=skipped_count, d=skipped_day, g=skipped_super,
                                 u=skipped_dual, fd=skipped_funded_done, lc=skipped_lifecycle,
+                                tk=skipped_taken,
                                 c=len(connect_evals),
                                 w=wd_names[today_wd]:
                     self.log(
@@ -10005,6 +10068,7 @@ class TradeOpssAIApp:
                         + (f", {u} skipped (dual row missing funded acct)" if u else "")
                         + (f", {fd} skipped (funded leg done / no {w} in funded cols)" if fd else "")
                         + (f", {lc} skipped (lifecycle duplicate / funded complete)" if lc else "")
+                        + (f", {tk} skipped (already traded today)" if tk else "")
                         + (f" | {c - a} account(s) connect for data only" if c > a else "")))
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
@@ -12599,9 +12663,19 @@ class TradeOpssAIApp:
     def _armed_auto_trade_rows(self):
         """Rows queued for the current auto-trade session (survives UI reloads)."""
         active = list(getattr(self, "_active_trade_rows", []) or [])
-        if active:
-            return active
-        return list(getattr(self, "_auto_trade_armed_snapshot", None) or [])
+        rows = active or list(getattr(self, "_auto_trade_armed_snapshot", None) or [])
+        kept = []
+        for row in rows:
+            ev = (row or {}).get("eval") if isinstance(row, dict) else None
+            acct = ""
+            if isinstance(row, dict):
+                acct = str(row.get("acct_num") or "")
+            if not acct and isinstance(ev, dict):
+                acct = self._primary_trade_account(ev)
+            if self._prop_fill_recorded_today(acct) or self._account_in_today_taken(acct):
+                continue
+            kept.append(row)
+        return kept
 
     def _messagebox_on_ui(self, kind, title, message):
         """Show a Tk dialog on the main thread (safe from auto-trade workers)."""
