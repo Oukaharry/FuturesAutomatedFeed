@@ -1930,6 +1930,7 @@ class TradeOpssAIApp:
         self._day_watch_scan_active = False
         self._day_watch_primed = False
         self._day_watch_join_known = None
+        self._day_watch_blocked_since = None
         # {(client email, date): shared start time} — one bunch per KYC per day.
         self._kyc_batch_starts = {}
 
@@ -3067,6 +3068,7 @@ class TradeOpssAIApp:
                 self._log_market_feed_status()
                 self._ensure_ml_direction_publisher_running()
                 self._run_direction_publish_if_due()
+                self._nudge_day_watch_readiness()
 
         self.root.after(0, _connect_on_ui)
 
@@ -11732,6 +11734,8 @@ class TradeOpssAIApp:
     # any newly tradeable account (e.g. a replacement purchase after a Fail)
     # and arm a fresh, randomly-staggered batch for it — fully autonomous.
     _DAY_WATCH_POLL_SEC = 60  # notice new tradeable accounts within about a minute
+    # While blocked on broker/MT5 readiness, do not hammer the dashboard every tick.
+    _DAY_WATCH_BLOCKED_RESYNC_SEC = 600
 
     def _start_day_watch(self):
         if getattr(self, "_day_watch_started", False):
@@ -11759,6 +11763,27 @@ class TradeOpssAIApp:
                     and getattr(self, "_auto_trade_waiting_gate", False)
                     and (now or kenya_now()) < scheduled)
 
+    def _day_watch_pending_readiness(self):
+        """True when the loaded queue is valid but local broker/MT5 gates are open."""
+        if not getattr(self, "_last_trade_scan_succeeded", False):
+            return False
+        if not (getattr(self, "_active_trade_rows", None) or []):
+            return False
+        if self._missing_trade_brokers():
+            return True
+        if (self.hedge_mode_var.get() == "Hedging"
+                and not self._get_mt5_trading_api()):
+            return True
+        return False
+
+    def _nudge_day_watch_readiness(self):
+        """Re-evaluate readiness after a broker or MT5 connection changes."""
+        if self.auto_trade_enabled or getattr(self, "_auto_wake_pending_date", None):
+            return
+        if not self._day_watch_pending_readiness():
+            return
+        self.root.after(0, self._day_watch_after_scan)
+
     def _day_watch_tick(self):
         """Rescan for newly tradeable accounts and arm them when the day permits."""
         now = kenya_now()
@@ -11781,6 +11806,17 @@ class TradeOpssAIApp:
             return
         if not self._dashboard_credentials_ready() or not self.client_info:
             return
+        if self._day_watch_pending_readiness():
+            blocked_since = getattr(self, "_day_watch_blocked_since", None)
+            if blocked_since is None:
+                self._day_watch_blocked_since = time.monotonic()
+                self.root.after(0, self._day_watch_after_scan)
+                return
+            if time.monotonic() - blocked_since < self._DAY_WATCH_BLOCKED_RESYNC_SEC:
+                self.root.after(0, self._day_watch_after_scan)
+                return
+        else:
+            self._day_watch_blocked_since = None
         self._day_watch_primed = True
         self._day_watch_scan_active = True
         self._day_watch_join_known = None
@@ -11837,11 +11873,15 @@ class TradeOpssAIApp:
                          + ", ".join(missing))
                 self._day_watch_last_notice = notice
             return
-        self._day_watch_last_notice = None
         if (self.hedge_mode_var.get() == "Hedging"
                 and not self._get_mt5_trading_api()):
-            self.log("⏳ Day-watch waiting for the configured MT5 hedge connection")
+            notice = ("mt5",)
+            if getattr(self, "_day_watch_last_notice", None) != notice:
+                self.log("⏳ Day-watch waiting for the configured MT5 hedge connection")
+                self._day_watch_last_notice = notice
             return
+        self._day_watch_last_notice = None
+        self._day_watch_blocked_since = None
         self.log(f"🔎 Day-watch: {len(self._active_trade_rows)} newly tradeable "
                  "account(s) found — arming Auto-Trade")
         self._start_auto_trade(automatic=True)
@@ -14646,6 +14686,7 @@ class TradeOpssAIApp:
                     # AI warm-up (ML training + indicator vote) starts only
                     # when ALL populated brokers are connected & ready.
                     self._check_all_brokers_ready()
+                    self._nudge_day_watch_readiness()
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
                 if platform == "Tradovate":

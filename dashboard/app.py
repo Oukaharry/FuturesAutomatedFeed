@@ -4349,17 +4349,20 @@ def _eval_field_is_payout_pause_column(key):
 
 
 def _cell_implies_payout_pause(raw):
-    """True when a day cell says payout (marker or text)."""
+    """True when a day cell says payout or pause (marker or text)."""
     text = str(raw or '').strip()
     if not text:
         return False
     if _cell_is_payout_marker(text):
         return True
-    return 'payout' in text.lower()
+    low = text.lower()
+    if 'payout' in low:
+        return True
+    return bool(re.search(r'\bpause\b', low))
 
 
 def _evaluation_has_payout_pending(evaluation):
-    """True when any hedge/prop day cell on the row holds PAYOUT."""
+    """True when any hedge/prop day cell on the row holds PAYOUT or PAUSE."""
     if not isinstance(evaluation, dict):
         return False
     for key, val in evaluation.items():
@@ -4368,6 +4371,94 @@ def _evaluation_has_payout_pending(evaluation):
         if _cell_implies_payout_pause(val):
             return True
     return False
+
+
+def _evaluation_has_pause_anywhere(evaluation):
+    """True when any visible eval cell contains PAUSE (any case)."""
+    if not isinstance(evaluation, dict):
+        return False
+    for key, val in evaluation.items():
+        if not isinstance(key, str) or key.startswith('_'):
+            continue
+        if val is None:
+            continue
+        text = str(val).strip()
+        if text and re.search(r'\bpause\b', text.lower()):
+            return True
+    return False
+
+
+def _evaluation_trading_paused(evaluation):
+    """Payout or pause — do not queue trades (same rules as companion SCAN)."""
+    return (
+        _evaluation_has_payout_pending(evaluation)
+        or _evaluation_has_pause_anywhere(evaluation)
+    )
+
+
+def _prop_account_status(pa) -> str:
+    return str((pa or {}).get('status') or 'active').strip().lower() or 'active'
+
+
+def _prop_account_launchable(pa) -> bool:
+    return _prop_account_status(pa) in ('active', 'live')
+
+
+def _companion_inactive_prop_families(prop_accounts):
+    """Prop Firm Accounts marked Inactive/Banned — no Tradovate scan for that family."""
+    families = set()
+    for pa in prop_accounts or []:
+        if not isinstance(pa, dict):
+            continue
+        if _prop_account_launchable(pa):
+            continue
+        pf = str(pa.get('prop_firm') or '').strip()
+        if pf:
+            families.add(_breach_firm_family(pf))
+    return families
+
+
+def _evaluation_on_inactive_prop_firm(ev, inactive_families):
+    if not inactive_families or not isinstance(ev, dict):
+        return False
+    return _breach_firm_family(ev.get('Prop Firm')) in inactive_families
+
+
+def _companion_eval_snapshot(evaluation):
+    """API-only view: legacy companions treat PAUSE like PAYOUT in hedge/prop cells."""
+    if not isinstance(evaluation, dict):
+        return evaluation
+    out = dict(evaluation)
+    if not _evaluation_trading_paused(out):
+        return out
+    out['_payout_pending'] = True
+    if _evaluation_has_payout_pending(out):
+        return out
+    for key, val in list(out.items()):
+        if not _eval_field_is_payout_pause_column(key):
+            continue
+        if _cell_implies_payout_pause(val) or (
+                isinstance(val, str) and re.search(r'\bpause\b', val.lower())):
+            out[key] = 'PAYOUT'
+            return out
+    for slot in range(1, 61):
+        for field in (f'Hedge Day {slot}', f'Prop Day {slot}'):
+            text = str(out.get(field) or '').strip()
+            if text and re.search(r'\bpause\b', text.lower()):
+                out[field] = 'PAYOUT'
+                return out
+    for field in _FUNDED_HEDGE_FIELDS:
+        text = str(out.get(field) or '').strip()
+        if text and re.search(r'\bpause\b', text.lower()):
+            out[field] = 'PAYOUT'
+            return out
+    for slot in range(1, 61):
+        field = f'Hedge Day {slot}'
+        if not str(out.get(field) or '').strip():
+            out[field] = 'PAYOUT'
+            out['_pause_companion_marker'] = field
+            return out
+    return out
 
 
 def _heal_fail_during_payout_pending(ev):
@@ -4771,9 +4862,9 @@ def _reconcile_tradovate_farming_days(evaluations, tradovate_farming_days, match
             or is_funded_phase_ended(funded_status)
         ):
             continue
-        if _evaluation_has_payout_pending(evaluation):
+        if _evaluation_trading_paused(evaluation):
             match_log.append(
-                f"⏸ Row {row_index + 2} | PAYOUT pending in hedge cells — "
+                f"⏸ Row {row_index + 2} | PAYOUT/PAUSE pending — "
                 f"farming reconciliation skipped"
             )
             continue
@@ -8491,24 +8582,46 @@ def _invalidate_client_data_cache(client_id: str | None) -> None:
 def _build_client_data_payload(client_info: dict, client_data: dict) -> dict:
     client_id = client_info['client']
     all_evaluations = client_data.get("evaluations", []) or []
+    prop_accounts_raw = client_data.get("prop_accounts", []) or []
+    inactive_prop_families = _companion_inactive_prop_families(prop_accounts_raw)
+    prop_accounts = [
+        pa for pa in prop_accounts_raw
+        if isinstance(pa, dict) and _prop_account_launchable(pa)
+    ]
+    if len(prop_accounts) < len(prop_accounts_raw):
+        app.logger.info(
+            "%s: companion /client/data omitting %s inactive/banned prop firm login(s)",
+            client_id,
+            len(prop_accounts_raw) - len(prop_accounts),
+        )
+
     evaluations = []
+    hidden_inactive = 0
+    hidden_prop_firm = 0
     for ev in all_evaluations:
         if not isinstance(ev, dict):
             continue
-        payout_pending = _evaluation_has_payout_pending(ev)
+        if _evaluation_on_inactive_prop_firm(ev, inactive_prop_families):
+            hidden_prop_firm += 1
+            continue
+        trading_paused = _evaluation_trading_paused(ev)
         active = is_evaluation_active_only_row(ev)
-        ev["_is_active"] = active
-        if payout_pending:
-            ev["_payout_pending"] = True
+        api_ev = _companion_eval_snapshot(ev)
+        api_ev["_is_active"] = active
+        if trading_paused:
+            api_ev["_payout_pending"] = True
         if active:
-            evaluations.append(ev)
-    if len(evaluations) < len(all_evaluations):
+            evaluations.append(api_ev)
+        else:
+            hidden_inactive += 1
+    if hidden_inactive or hidden_prop_firm:
         app.logger.info(
-            "%s: companion /client/data serving %s active evaluation(s) "
-            "(%s inactive hidden from SCAN)",
+            "%s: companion /client/data serving %s evaluation(s) "
+            "(%s terminal rows hidden, %s on inactive prop firms)",
             client_id,
             len(evaluations),
-            len(all_evaluations) - len(evaluations),
+            hidden_inactive,
+            hidden_prop_firm,
         )
 
     mt5_credentials = client_data.get("mt5_credentials", {})
@@ -8522,12 +8635,12 @@ def _build_client_data_payload(client_info: dict, client_data: dict) -> dict:
     return {
         "status": "success",
         "evaluations": evaluations,
-        "prop_accounts": client_data.get("prop_accounts", []),
+        "prop_accounts": prop_accounts,
         "hedge_accounts": client_data.get("hedge_accounts", []),
         "mt5_credentials": mt5_credentials,
         "mfp_api_key": next(
             (str(a.get("api_key") or "").strip()
-             for a in client_data.get("prop_accounts", [])
+             for a in prop_accounts
              if a.get("prop_firm") == "MyFundedPerps" and str(a.get("api_key") or "").strip()),
             client_data.get("mfp_api_key", "")),
         "identity": {
