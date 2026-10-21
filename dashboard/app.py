@@ -8566,17 +8566,11 @@ def _fallback_mt5_credentials():
     return {}
 
 
-# Brief cache: load-trades + minute scan + outcome correction often hit /client/data together.
-_CLIENT_DATA_CACHE: dict[str, tuple[float, dict]] = {}
-_CLIENT_DATA_CACHE_SEC = 5.0
-_client_data_cache_lock = threading.Lock()
-
-
-def _invalidate_client_data_cache(client_id: str | None) -> None:
-    if not client_id:
-        return
-    with _client_data_cache_lock:
-        _CLIENT_DATA_CACHE.pop(client_id, None)
+from dashboard.client_data_cache import (
+    get_cached_client_data_payload,
+    invalidate_client_data_cache as _invalidate_client_data_cache,
+    store_client_data_payload,
+)
 
 
 def _build_client_data_payload(client_info: dict, client_data: dict) -> dict:
@@ -8678,11 +8672,9 @@ def api_client_data():
             return jsonify({"status": "error", "message": "Email not registered"}), 404
 
         client_id = client_info['client']
-        now = time.monotonic()
-        with _client_data_cache_lock:
-            cached = _CLIENT_DATA_CACHE.get(client_id)
-            if cached and (now - cached[0]) < _CLIENT_DATA_CACHE_SEC:
-                return jsonify(cached[1])
+        cached_payload = get_cached_client_data_payload(client_id)
+        if cached_payload is not None:
+            return jsonify(cached_payload)
 
         client_data = get_client_data(client_id, include_deals=False)
         if not client_data:
@@ -8693,8 +8685,7 @@ def api_client_data():
             return denied
 
         payload = _build_client_data_payload(client_info, client_data)
-        with _client_data_cache_lock:
-            _CLIENT_DATA_CACHE[client_id] = (now, payload)
+        store_client_data_payload(client_id, payload)
         return jsonify(payload)
 
     except Exception as e:
