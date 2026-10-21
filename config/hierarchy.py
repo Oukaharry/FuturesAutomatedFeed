@@ -9,50 +9,77 @@ LEGACY_FILE = os.path.join(BASE_DIR, "hierarchy.json")
 # Use the restructured file when present, otherwise fall back to the legacy file
 HIERARCHY_FILE = RESTRUCTURED_FILE if os.path.exists(RESTRUCTURED_FILE) else LEGACY_FILE
 
+
+def _norm_person_name_early(value):
+    s = str(value or "").replace("\u00a0", " ").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
+    return " ".join(s.split()).strip()
+
+
+def _materialize_admin_traders_tree(data):
+    """Ensure nested admin.traders includes every row from admin.clients (disk can have both)."""
+    if not isinstance(data, dict) or "admins" not in data:
+        return data
+    trader_registry = data.get("traders", {}) if isinstance(data.get("traders", {}), dict) else {}
+    new_admins = {}
+    for admin_name, admin_data in (data.get("admins") or {}).items():
+        if not isinstance(admin_data, dict):
+            new_admins[admin_name] = admin_data
+            continue
+        flat_clients = admin_data.get("clients")
+        has_flat = isinstance(flat_clients, list) and len(flat_clients) > 0
+        traders_map = {}
+        for tname, tdata in (admin_data.get("traders") or {}).items():
+            traders_map[tname] = {
+                "email": (tdata or {}).get("email", ""),
+                "clients": [dict(c) for c in ((tdata or {}).get("clients") or []) if isinstance(c, dict)],
+                "active_status": (tdata or {}).get("active_status", "active"),
+            }
+        if has_flat:
+            for client in flat_clients:
+                if not isinstance(client, dict):
+                    continue
+                assigned = (client.get("assigned_trader") or "").strip()
+                key = assigned
+                if key not in traders_map:
+                    tr_email = trader_registry.get(key, {}).get("email", "") if key else ""
+                    tr_active = trader_registry.get(key, {}).get("active_status", "active") if key else "active"
+                    traders_map[key] = {"email": tr_email, "clients": [], "active_status": tr_active}
+                nm = _norm_person_name_early(client.get("name")).lower()
+                seen = {
+                    _norm_person_name_early(c.get("name")).lower()
+                    for c in traders_map[key]["clients"]
+                    if isinstance(c, dict)
+                }
+                if nm and nm not in seen:
+                    traders_map[key]["clients"].append(dict(client))
+            for trader_name in admin_data.get("assigned_traders", []) or []:
+                key = (trader_name or "").strip()
+                if key and key not in traders_map:
+                    tr_email = trader_registry.get(key, {}).get("email", "")
+                    tr_active = trader_registry.get(key, {}).get("active_status", "active")
+                    traders_map[key] = {"email": tr_email, "clients": [], "active_status": tr_active}
+        if not traders_map and not has_flat:
+            new_admins[admin_name] = admin_data
+            continue
+        preserved = {
+            k: v for k, v in admin_data.items()
+            if k not in ("clients", "assigned_traders", "traders")
+        }
+        preserved["traders"] = traders_map
+        new_admins[admin_name] = preserved
+    data = dict(data)
+    data["admins"] = new_admins
+    return data
+
+
 def load_hierarchy():
     if os.path.exists(HIERARCHY_FILE):
         with open(HIERARCHY_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Compatibility: if the file is the "restructured" shape (admins -> clients + top-level traders)
-        # convert it in-memory to the legacy nested shape {admins: {admin: {traders: {trader: {clients: []}}}}}
         try:
-            if isinstance(data, dict) and 'admins' in data:
-                sample_admin = next(iter(data['admins'].values())) if data['admins'] else None
-                # Restructured format: admin entries contain 'clients' (list) and there is a top-level 'traders' registry
-                if sample_admin is not None and 'clients' in sample_admin and 'traders' not in sample_admin:
-                    trader_registry = data.get('traders', {}) if isinstance(data.get('traders', {}), dict) else {}
-                    new_admins = {}
-                    for admin_name, admin_data in data.get('admins', {}).items():
-                        traders_map = {}
-                        for client in admin_data.get('clients', []):
-                            assigned = (client.get('assigned_trader') or '').strip()
-                            # Use assigned trader as key; if missing, group under empty-string key
-                            key = assigned
-                            if key not in traders_map:
-                                tr_email = trader_registry.get(key, {}).get('email', '') if key else ''
-                                tr_active = trader_registry.get(key, {}).get('active_status', 'active') if key else 'active'
-                                traders_map[key] = {'email': tr_email, 'clients': [], 'active_status': tr_active}
-                            # Keep assigned_trader on the client object for frontend/UI use
-                            client_copy = dict(client)
-                            traders_map[key]['clients'].append(client_copy)
-                        # Traders with no clients yet (assigned_traders on disk)
-                        for trader_name in admin_data.get('assigned_traders', []):
-                            key = (trader_name or '').strip()
-                            if key and key not in traders_map:
-                                tr_email = trader_registry.get(key, {}).get('email', '')
-                                tr_active = trader_registry.get(key, {}).get('active_status', 'active')
-                                traders_map[key] = {'email': tr_email, 'clients': [], 'active_status': tr_active}
-                        # Preserve all original admin fields (email, slack_user_id, etc.)
-                        preserved = {
-                            k: v for k, v in admin_data.items()
-                            if k not in ('clients', 'assigned_traders')
-                        }
-                        preserved['traders'] = traders_map
-                        new_admins[admin_name] = preserved
-                    data['admins'] = new_admins
+            data = _materialize_admin_traders_tree(data)
         except Exception:
-            # If conversion fails for any reason, fall back to raw data
             pass
 
         return data
@@ -429,20 +456,51 @@ def add_trader(admin_name, trader_name, email=""):
     return False
 
 def add_client(admin_name, trader_name, client_name, email="", category=""):
-    if admin_name in SYSTEM_HIERARCHY["admins"]:
-        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
-        if trader_name in traders:
-            # Check if client exists
-            existing_clients = [c["name"] for c in traders[trader_name]["clients"]]
-            if client_name not in existing_clients and not find_client_email_conflict(email):
-                traders[trader_name]["clients"].append({
-                    "name": client_name,
-                    "email": email,
-                    "category": category
-                })
-                save_hierarchy(SYSTEM_HIERARCHY)
-                return True
-    return False
+    reload_hierarchy()
+    admin_name = _norm_person_name(admin_name)
+    trader_name = _norm_person_name(trader_name)
+    client_name = _norm_person_name(client_name)
+    if not admin_name or not trader_name or not client_name:
+        return False
+
+    admins = SYSTEM_HIERARCHY.get("admins", {}) or {}
+    admin_key = None
+    for key in _iter_admin_keys(admins, admin_name):
+        admin_key = key
+        break
+    if not admin_key:
+        return False
+
+    traders = admins[admin_key].setdefault("traders", {})
+    trader_key = None
+    for key in _iter_trader_keys(traders, trader_name):
+        trader_key = key
+        break
+    if not trader_key:
+        trader_email = (SYSTEM_HIERARCHY.get("traders", {}) or {}).get(trader_name, {}).get("email", "")
+        traders[trader_name] = {
+            "email": trader_email,
+            "clients": [],
+            "active_status": "active",
+        }
+        trader_key = trader_name
+
+    lane = traders[trader_key]
+    clients = lane.setdefault("clients", [])
+    target_lower = client_name.lower()
+    for c in clients:
+        if _norm_person_name(c.get("name")).lower() == target_lower:
+            return False
+    if find_client_email_conflict(email):
+        return False
+
+    clients.append({
+        "name": client_name,
+        "email": (email or "").strip(),
+        "category": category or "",
+    })
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
 
 def remove_admin(admin_name):
     if admin_name in SYSTEM_HIERARCHY["admins"]:

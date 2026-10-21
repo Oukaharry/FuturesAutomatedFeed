@@ -1011,8 +1011,14 @@
             const emailInput = document.getElementById('new-client-email');
             const email = emailInput ? emailInput.value : '';
             
-            if(!trader || !name) return alert('Trader and Name required');
-            apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email });
+            if(!admin || !trader || !name) return alert('Admin, trader, and name required');
+            apiCall('/api/admin/create_user', {
+                username: name,
+                user_type: 'client',
+                parent_admin: admin,
+                parent_user: trader,
+                email: email
+            });
         }
         
         // Modal Logic

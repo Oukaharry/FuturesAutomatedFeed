@@ -31,7 +31,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.9"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
+APP_VERSION = "1.12.10"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 # /api/client/data — retry when the dashboard is queued (small worker pool + minute scans).
 COMPANION_DATA_POST_TIMEOUT = 30
@@ -6541,8 +6541,70 @@ class TradeOpssAIApp:
                 return True
         return False
 
+    def _live_prop_accounts_by_family(self, prop_accounts):
+        """Prop Firm Accounts rows marked Live → broker-login family."""
+        by_family = {}
+        for pa in prop_accounts or []:
+            if not isinstance(pa, dict):
+                continue
+            if self._prop_account_status(pa) != "live":
+                continue
+            pf = str(pa.get("prop_firm") or "").strip()
+            if not pf:
+                continue
+            family = self._broker_login_family(pf)
+            if family and family not in by_family:
+                by_family[family] = pa
+        return by_family
+
+    def _active_prop_accounts_by_family(self, prop_accounts):
+        """Non-live launchable prop-account creds (sim / active eval logins)."""
+        by_family = {}
+        for pa in prop_accounts or []:
+            if not isinstance(pa, dict):
+                continue
+            status = self._prop_account_status(pa)
+            if status not in ("active",):
+                continue
+            pf = str(pa.get("prop_firm") or "").strip()
+            if not pf:
+                continue
+            family = self._broker_login_family(pf)
+            if family and family not in by_family:
+                by_family[family] = pa
+        return by_family
+
+    def _client_needs_live_tradovate(self, evaluations=None, prop_accounts=None):
+        """True when dashboard marks any account Live (eval row or prop-account tab)."""
+        evals = evaluations if evaluations is not None else getattr(
+            self, "_last_dashboard_evaluations", []) or []
+        for ev in evals:
+            if isinstance(ev, dict) and self._is_live_account(ev):
+                return True
+        for pa in prop_accounts or []:
+            if not isinstance(pa, dict):
+                continue
+            if self._prop_account_status(pa) == "live" and self._prop_account_launchable(pa):
+                return True
+        return False
+
+    def _sync_trading_mode_from_dashboard(self, evaluations=None, prop_accounts=None):
+        """Reflect Live vs Simulation in the Mode dropdown from dashboard state."""
+        if not getattr(self, "trading_mode_var", None):
+            return
+        if self._client_needs_live_tradovate(evaluations, prop_accounts):
+            if self.trading_mode_var.get() != "Live":
+                self.trading_mode_var.set("Live")
+                self.log(
+                    "📡 Dashboard has Live account(s) — Tradovate mode set to Live",
+                    "INFO",
+                )
+
     def _firm_has_live_account(self, firm_name):
         """True when any non-failed account routed to this broker is marked Live."""
+        live_families = getattr(self, "_live_prop_account_families", None) or set()
+        if firm_name in live_families:
+            return True
         aliases = getattr(self, "_broker_firm_aliases", {}) or {}
         for ev in getattr(self, "_last_dashboard_evaluations", []) or []:
             if not isinstance(ev, dict) or not self._is_live_account(ev):
@@ -9918,8 +9980,11 @@ class TradeOpssAIApp:
                     return
                 self.root.after(
                     0,
-                    lambda ce=connect_evals, pa=prop_accounts, af=active_trade_firms:
-                    self._populate_broker_rows(ce, pa, priority_firms=af),
+                    lambda ce=connect_evals, pa=prop_accounts, af=active_trade_firms, evs=evaluations:
+                    (
+                        self._sync_trading_mode_from_dashboard(evs, pa),
+                        self._populate_broker_rows(ce, pa, priority_firms=af),
+                    ),
                 )
                 self.root.after(1500, lambda evs=evaluations: self._resume_pending_account_closes(evs))
             except Exception as exc:
@@ -10090,8 +10155,11 @@ class TradeOpssAIApp:
                     connect_evals, prop_accounts)
                 self.root.after(
                     0,
-                    lambda ce=connect_evals_with_stubs, pa=prop_accounts, af=active_trade_firms:
-                    self._populate_broker_rows(ce, pa, priority_firms=af),
+                    lambda ce=connect_evals_with_stubs, pa=prop_accounts, af=active_trade_firms, evs=evaluations:
+                    (
+                        self._sync_trading_mode_from_dashboard(evs, pa),
+                        self._populate_broker_rows(ce, pa, priority_firms=af),
+                    ),
                 )
                 # Queue eligibility excludes $0.00 markers, so recover their
                 # close watches from the complete dashboard data separately.
@@ -14185,6 +14253,10 @@ class TradeOpssAIApp:
             ctk.CTkLabel(hdr, text="PASSWORD", width=110, font=("Consolas", 8, "bold"),
                          text_color="#4A5568", anchor="w").pack(side="left", padx=(8, 0))
 
+        live_pa_by_family = self._live_prop_accounts_by_family(prop_accounts)
+        active_pa_by_family = self._active_prop_accounts_by_family(prop_accounts)
+        self._live_prop_account_families = set(live_pa_by_family.keys())
+
         # Build lookup from prop_accounts by prop_firm name
         pa_lookup = {}
         pa_unmatched = []  # accounts with creds but no firm match yet
@@ -14211,8 +14283,19 @@ class TradeOpssAIApp:
             ]
             display_firm = firm
             strip_color = self.PROP_FIRM_COLORS.get(display_firm, "#95A5A6")
+            family_key = (
+                display_firm[: -len(self._LIVE_KEY_SUFFIX)]
+                if self._is_live_connection_key(display_firm)
+                else self._broker_login_family(display_firm)
+            )
             # Try exact match first, then case-insensitive, then alias match, then unmatched pool
             pa = pa_lookup.get(display_firm, {})
+            if self._is_live_connection_key(display_firm):
+                pa = live_pa_by_family.get(family_key) or pa
+            elif family_key in active_pa_by_family:
+                pa = active_pa_by_family.get(family_key) or pa
+            elif family_key in live_pa_by_family and family_key in self._LIVE_LOGIN_FAMILIES:
+                pa = {}
             if not pa:
                 for member_firm in member_firms:
                     pa = pa_lookup.get(member_firm, {})
