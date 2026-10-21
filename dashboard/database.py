@@ -4234,6 +4234,19 @@ def purge_daily_events() -> int:
 # ============ Payout processing (KYC portfolio withdrawals via Rise) ============
 
 PAYOUT_PROCESSING_FIELDS = ('processed', 'status', 'assigned_to', 'assignor', 'processed_by')
+PAYOUT_LOCK_HOURS = 24
+
+
+def is_payout_locked(row) -> bool:
+    """A processed payout becomes read-only PAYOUT_LOCK_HOURS after it was checked."""
+    if not row or not row.get('processed'):
+        return False
+    stamp = row.get('processed_at') or row.get('updated_at')
+    try:
+        processed_at = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError):
+        return False
+    return datetime.now() - processed_at >= timedelta(hours=PAYOUT_LOCK_HOURS)
 
 
 def _ensure_payout_processing_table():
@@ -4258,6 +4271,9 @@ def _ensure_payout_processing_table():
         )
         cursor.execute(
             "ALTER TABLE payout_processing ADD COLUMN IF NOT EXISTS assignor TEXT DEFAULT ''"
+        )
+        cursor.execute(
+            "ALTER TABLE payout_processing ADD COLUMN IF NOT EXISTS processed_at TEXT"
         )
         conn.commit()
 
@@ -4293,6 +4309,8 @@ def save_payout_processing(client_id: str, account: str, payout_num: int,
     payout_num = int(payout_num)
     _ensure_payout_processing_table()
     current = get_payout_processing([client_id]).get((client_id, account, payout_num)) or {}
+    if is_payout_locked(current):
+        raise PermissionError('Payout is locked (processed more than 24 hours ago)')
     row = {
         'processed': 1 if current.get('processed') else 0,
         'status': current.get('status') or '',
@@ -4308,14 +4326,20 @@ def save_payout_processing(client_id: str, account: str, payout_num: int,
         else:
             row[key] = str(fields[key] or '').strip()[:500]
     now = datetime.now().isoformat(timespec='seconds')
+    if not row['processed']:
+        processed_at = None
+    elif current.get('processed') and (current.get('processed_at') or current.get('updated_at')):
+        processed_at = current.get('processed_at') or current.get('updated_at')
+    else:
+        processed_at = now
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             '''
             INSERT INTO payout_processing
                 (client_id, account, payout_num, processed, status, assigned_to,
-                 assignor, processed_by, updated_by, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 assignor, processed_by, updated_by, updated_at, processed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(client_id, account, payout_num) DO UPDATE SET
                 processed = excluded.processed,
                 status = excluded.status,
@@ -4323,14 +4347,15 @@ def save_payout_processing(client_id: str, account: str, payout_num: int,
                 assignor = excluded.assignor,
                 processed_by = excluded.processed_by,
                 updated_by = excluded.updated_by,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                processed_at = excluded.processed_at
             ''',
             (client_id, account, payout_num, row['processed'], row['status'],
              row['assigned_to'], row['assignor'], row['processed_by'],
-             str(updated_by or ''), now),
+             str(updated_by or ''), now, processed_at),
         )
         conn.commit()
-    return {**row, 'updated_by': updated_by or '', 'updated_at': now}
+    return {**row, 'updated_by': updated_by or '', 'updated_at': now, 'processed_at': processed_at}
 
 
 # Schema/connectivity checks run from app startup (background thread), not on import.

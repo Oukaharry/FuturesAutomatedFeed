@@ -10703,7 +10703,7 @@ _KYC_PAYOUT_SUPERVISORS = (
     ('bari', 'Chris'),
     ('kellen', 'Joe'),
     ('annah', 'Tyler'),
-    ('shalline', 'Adam'),
+    ('shalline', 'Tyler'),
 )
 
 
@@ -11096,7 +11096,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
     prop_firm_list.sort(key=lambda x: x["payouts"], reverse=True)
 
     all_payouts.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
-    from dashboard.database import get_payout_processing
+    from dashboard.database import get_payout_processing, is_payout_locked
     processing = get_payout_processing({p["client"] for p in all_payouts})
     for p in all_payouts:
         p.pop("_sort_date", None)
@@ -11107,6 +11107,16 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         p["assigned_to"] = proc.get("assigned_to") or _kyc_payout_auto_assignee(p["client"])
         p["assignor"] = proc.get("assignor") or ''
         p["processed_by"] = proc.get("processed_by") or ''
+        p["locked"] = is_payout_locked(proc)
+
+    processed_rows = [p for p in all_payouts if p["processed"]]
+    pending_rows = [p for p in all_payouts if not p["processed"]]
+    payout_status_summary = {
+        "processed_count": len(processed_rows),
+        "processed_amount": round(sum(p["amount"] for p in processed_rows), 2),
+        "pending_count": len(pending_rows),
+        "pending_amount": round(sum(p["amount"] for p in pending_rows), 2),
+    }
 
     all_fees.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
     for row in all_fees:
@@ -11125,6 +11135,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
         "totals": totals,
         "accounts": per_account,
         "payouts": all_payouts,
+        "payout_status_summary": payout_status_summary,
         "fee_records": all_fees,
         "by_prop_firm": prop_firm_list,
         "period": {"from": from_date, "to": to_date},
@@ -11204,6 +11215,8 @@ def api_kyc_payout_processing():
     actor = session_user.get('user_identifier', '')
     try:
         row = save_payout_processing(payout_client, account, payout_num, fields, updated_by=actor)
+    except PermissionError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 423
     except Exception as exc:
         logging.error(f"[PAYOUT PROCESSING] save failed for {payout_client}/{account}#{payout_num}: {exc}")
         return jsonify({"status": "error", "message": "Save failed"}), 500

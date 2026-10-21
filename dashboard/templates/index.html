@@ -3304,6 +3304,7 @@
                         <h4 style="color: #94a3b8; margin: 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
                             <i class="fas fa-money-bill-wave" style="margin-right: 6px;"></i> All Payouts
                             <span id="kyc-payouts-count" style="font-size:0.8rem; color:#64748b; font-weight:400; margin-left:6px;"></span>
+                            <span id="kyc-payouts-status-summary" style="display:inline-flex; gap:8px; margin-left:12px; vertical-align:middle; text-transform:none; letter-spacing:0;"></span>
                         </h4>
                         <button onclick="toggleKycPayouts()" id="kyc-payouts-toggle-btn" style="background:linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,78,59,0.5)); border:1px solid rgba(52,211,153,0.4); color:#34d399; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
                             <i class="fas fa-eye"></i> See All Payouts
@@ -3831,10 +3832,15 @@
                         return db - da;
                     });
                     payoutsCount.textContent = `(${payouts.length} payouts — ${fmt(payouts.reduce((s, p) => s + p.amount, 0))})`;
+                    const ps = data.payout_status_summary || {};
+                    document.getElementById('kyc-payouts-status-summary').innerHTML = `
+                        <span title="Payouts with a check mark" style="padding:2px 10px; border-radius:999px; font-size:0.75rem; font-weight:700; background:rgba(52,211,153,0.12); border:1px solid rgba(52,211,153,0.4); color:#34d399;">Processed ${ps.processed_count || 0} · ${fmt(ps.processed_amount || 0)}</span>
+                        <span title="Payouts without a check mark" style="padding:2px 10px; border-radius:999px; font-size:0.75rem; font-weight:700; background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.4); color:#fbbf24;">Pending ${ps.pending_count || 0} · ${fmt(ps.pending_amount || 0)}</span>`;
                     if (payouts.length) {
                         payoutsBody.innerHTML = payouts.map(p => {
                             const linkUrl = `/dashboard/${encodeURIComponent(p.client)}?highlight_account=${encodeURIComponent(p.account)}&highlight_payout=${p.payout_num}`;
-                            const ro = IS_KWOK_ADMIN ? 'disabled' : '';
+                            const ro = (IS_KWOK_ADMIN || p.locked) ? 'disabled' : '';
+                            const lockTitle = p.locked ? 'Locked: processed more than 24 hours ago' : '';
                             const key = `data-client="${_kycEsc(p.client)}" data-account="${_kycEsc(p.account)}" data-payout-num="${p.payout_num}"`;
                             return `
                             <tr class="${p.processed ? 'is-processed' : ''}" style="border-bottom:1px solid #1e293b; cursor:pointer; transition:background 0.15s;" onclick="window.location.href='${linkUrl}'" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'" title="Click to view this payout">
@@ -3843,7 +3849,7 @@
                                 <td style="color:#94a3b8; font-size:0.85rem;">${p.account}</td>
                                 <td style="color:#94a3b8;">${p.date}</td>
                                 <td style="font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
-                                <td class="kyc-proc-cell" style="text-align:center; cursor:default;" onclick="event.stopPropagation()">
+                                <td class="kyc-proc-cell" style="text-align:center; cursor:default;" title="${lockTitle}" onclick="event.stopPropagation()">
                                     <input type="checkbox" class="kyc-check" ${key} data-field="processed" ${p.processed ? 'checked' : ''} ${ro} onchange="saveKycPayoutProcessing(this)" aria-label="Processed">
                                 </td>
                                 <td class="kyc-proc-cell" style="cursor:default;" onclick="event.stopPropagation()">
@@ -3885,7 +3891,10 @@
                     el.classList.remove('is-saving');
                     el.classList.add('is-saved');
                     setTimeout(() => el.classList.remove('is-saved'), 1200);
-                    if (field === 'processed') el.closest('tr').classList.toggle('is-processed', el.checked);
+                    if (field === 'processed') {
+                        el.closest('tr').classList.toggle('is-processed', el.checked);
+                        loadKycPortfolio();
+                    }
                 })
                 .catch(err => {
                     el.classList.remove('is-saving');
