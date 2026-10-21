@@ -11,12 +11,17 @@ from dashboard.watermark_service import save_daily_profit
 
 stop_event = threading.Event()
 
-# The whole quality bot (daily quality summary + trade attribution report) is
-# paused: nothing it produces is posted to traders-hub. The quality scan still
-# runs and saves the super-admin report, and purchase/breach alerts are a
-# separate path that keeps working. Set QUALITY_SLACK_PAUSED=0 to resume Slack.
+# Daily quality summary (02:30 EAT → traders-hub). Scan always runs; posting is optional.
+# Set QUALITY_SLACK_PAUSED=1 to refresh scan only without Slack.
 QUALITY_SLACK_PAUSED = (
-    str(os.environ.get('QUALITY_SLACK_PAUSED', '1')).strip().lower()
+    str(os.environ.get('QUALITY_SLACK_PAUSED', '0')).strip().lower()
+    in ('1', 'true', 'yes')
+)
+
+# Trade ledger attribution report (02:45 EAT) — independent of the daily summary.
+# Set TRADE_ATTRIBUTION_SLACK_PAUSED=0 to resume.
+TRADE_ATTRIBUTION_SLACK_PAUSED = (
+    str(os.environ.get('TRADE_ATTRIBUTION_SLACK_PAUSED', '1')).strip().lower()
     in ('1', 'true', 'yes')
 )
 
@@ -128,10 +133,9 @@ def run_scheduler():
                 time.sleep(60)
 
             # 23:45 UTC (02:45 EAT) — Trade ledger attribution report.
-            # Part of the quality bot, so it stays off while the bot is paused.
             if now.hour == 23 and now.minute == 45 and ran.get('trade_attribution') != today:
-                if QUALITY_SLACK_PAUSED:
-                    logging.info("Trade attribution report paused (quality bot off) — skipping Slack post.")
+                if TRADE_ATTRIBUTION_SLACK_PAUSED:
+                    logging.info("Trade attribution report paused — skipping Slack post.")
                 else:
                     logging.info("Posting trade attribution report to Slack (02:45 EAT)...")
                     try:
