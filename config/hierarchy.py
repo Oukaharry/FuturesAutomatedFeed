@@ -114,7 +114,27 @@ def _to_flat_format(hierarchy_data):
     return out
 
 
+def _hierarchy_structure_signature(hierarchy_data: dict) -> tuple:
+    """Stable tuple of (admin, trader, client) placements — for cache bust on tree edits."""
+    parts = []
+    for admin_name, admin_data in sorted((hierarchy_data.get("admins") or {}).items()):
+        traders = (admin_data or {}).get("traders") or {}
+        if not isinstance(traders, dict):
+            continue
+        for trader_name, trader_data in sorted(traders.items(), key=lambda x: (x[0] or "").lower()):
+            for client in (trader_data or {}).get("clients") or []:
+                if not isinstance(client, dict):
+                    continue
+                nm = str(client.get("name", "") or "").strip()
+                parts.append((admin_name, (trader_name or "").strip(), nm))
+    return tuple(parts)
+
+
 def save_hierarchy(hierarchy_data):
+    old_sig = _hierarchy_structure_signature(SYSTEM_HIERARCHY)
+    new_sig = _hierarchy_structure_signature(hierarchy_data)
+    structure_changed = old_sig != new_sig
+
     # Ensure directory exists
     os.makedirs(os.path.dirname(HIERARCHY_FILE), exist_ok=True)
     # Always persist in flat format so the JSON structure stays consistent
@@ -127,11 +147,14 @@ def save_hierarchy(hierarchy_data):
         SYSTEM_HIERARCHY.clear()
         SYSTEM_HIERARCHY.update(hierarchy_data)
 
-    try:
-        from dashboard.shared_cache import invalidate_prefix
-        invalidate_prefix('hierarchy:')
-    except Exception:
-        pass
+    # Identity fields refresh via TTL; bust enriched cache only when tree shape changes.
+    if structure_changed:
+        try:
+            from dashboard.shared_cache import invalidate_key
+
+            invalidate_key("hierarchy:enriched:full")
+        except Exception:
+            pass
 
 def reassign_client_trader(client_name, admin_name, new_trader):
     """

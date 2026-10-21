@@ -12,6 +12,7 @@ Run files in order during an incident:
   03_problem_sessions.sql    — idle-in-transaction, long queries
   04_locks_blocking.sql      — if UI hangs with few "active" queries
   05_database_size.sql       — disk / table size (not connection limits)
+  07_clear_cache_compute_locks.sql — stuck hierarchy/cache-warm ::computing rows (disable web first)
 
 Emergency (kills connections — use only when app is down):
   99_emergency_free_slots.sql
