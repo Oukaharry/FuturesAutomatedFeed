@@ -7274,6 +7274,22 @@ def get_filtered_hierarchy(user_type, user_identifier):
 HIERARCHY_ENRICHED_CACHE_KEY = 'hierarchy:enriched:full'
 
 
+def _hierarchy_client_names_from_tree(tree: dict) -> list[str]:
+    """Client names referenced in the hierarchy tree (for scoped identity lookup)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for admin_data in (tree.get('admins') or {}).values():
+        for trader_data in (admin_data.get('traders') or {}).values():
+            for client in (trader_data.get('clients') or []):
+                if not isinstance(client, dict):
+                    continue
+                cname = str(client.get('name', '') or '').strip()
+                if cname and cname not in seen:
+                    seen.add(cname)
+                    names.append(cname)
+    return names
+
+
 def _build_hierarchy_enriched_full():
     """Build enriched hierarchy for the full tree (cached once, filtered per user on read)."""
     from config.hierarchy import reload_hierarchy
@@ -7284,9 +7300,10 @@ def _build_hierarchy_enriched_full():
             reload_hierarchy()
         _kyc_hierarchy_sync_at = time.time()
 
-    from dashboard.database import get_all_client_identities
+    from dashboard.database import get_client_identities_for_clients
     import copy
-    all_identities = get_all_client_identities()
+    client_names = _hierarchy_client_names_from_tree(hierarchy)
+    all_identities = get_client_identities_for_clients(client_names)
     trader_users = {u['username']: u for u in (list_users('trader') or [])}
     enriched = copy.deepcopy(hierarchy)
     for admin_data in enriched.get('admins', {}).values():
@@ -7786,9 +7803,14 @@ def _start_optional_admin_cache_warm():
     """One cross-worker leader pre-warms super-admin caches sequentially after boot."""
     def _run():
         import random
+        from dashboard.shared_cache import boot_cache_warm_disabled
+
+        if boot_cache_warm_disabled():
+            logging.info("[cache-warm] skipped (DISABLE_BOOT_CACHE_WARM is set)")
+            return
         time.sleep(random.uniform(5, 20))
         from dashboard.shared_cache import (
-            cache_get, run_heavy_cache_job, try_claim_compute, release_claim,
+            cache_get, cache_get_stale, run_heavy_cache_job, try_claim_compute, release_claim,
             SUPER_ADMIN_STATS_CACHE_TTL, HIERARCHY_CACHE_TTL,
         )
         leader_key = 'cache-warm::global-leader'
@@ -7805,6 +7827,9 @@ def _start_optional_admin_cache_warm():
                 )
                 for key, ttl, fn in jobs:
                     if cache_get(key) is not None:
+                        continue
+                    if key == HIERARCHY_ENRICHED_CACHE_KEY and cache_get_stale(key) is not None:
+                        logging.info("[cache-warm] skip %s (stale row exists; refresh on demand)", key)
                         continue
                     logging.info("[cache-warm] queued %s", key)
                     run_heavy_cache_job(key, ttl, fn, app=app)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -22,8 +23,8 @@ _local_guard = threading.Lock()
 _key_locks_guard = threading.Lock()
 _refreshing: set[str] = set()
 
-# Default TTLs (seconds).
-HIERARCHY_CACHE_TTL = 300
+# Default TTLs (seconds). Override HIERARCHY_CACHE_TTL in .env (e.g. 7200 on PythonAnywhere).
+HIERARCHY_CACHE_TTL = int(os.environ.get("HIERARCHY_CACHE_TTL", "3600"))
 # Super Admin financial cards: recompute at most once per hour; serve stale while refreshing.
 SUPER_ADMIN_STATS_CACHE_TTL = 3600
 SUPER_ADMIN_TOTALS_CACHE_TTL = SUPER_ADMIN_STATS_CACHE_TTL
@@ -34,9 +35,20 @@ AVG_PROFIT_SPLITS_CACHE_TTL = SUPER_ADMIN_STATS_CACHE_TTL
 CACHE_PENDING = object()
 
 _CLAIM_TTL_SECONDS = 600
+# Steal stuck compute claims after this many seconds (hung worker / reload mid-job).
+_STALE_CLAIM_STEAL_SECONDS = int(os.environ.get("CACHE_CLAIM_STEAL_SECONDS", "900"))
 _CLAIM_SUFFIX = "::computing"
 # Only one multi-minute scan at a time across all uWSGI workers.
 HEAVY_COMPUTE_GLOBAL_KEY = "heavy_compute::global"
+
+
+def boot_cache_warm_disabled() -> bool:
+    """When true, skip _start_optional_admin_cache_warm (on-demand cache via API)."""
+    return os.environ.get("DISABLE_BOOT_CACHE_WARM", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def _claim_key(key: str) -> str:
@@ -262,9 +274,11 @@ def try_claim_compute(key: str, claim_ttl: int = _CLAIM_TTL_SECONDS) -> bool:
                     expires_at = EXCLUDED.expires_at,
                     updated_at = NOW()
                 WHERE api_response_cache.expires_at < NOW()
+                   OR api_response_cache.updated_at
+                      < NOW() - (? * INTERVAL '1 second')
                 RETURNING cache_key
                 """,
-                (claim_key, int(claim_ttl)),
+                (claim_key, int(claim_ttl), int(_STALE_CLAIM_STEAL_SECONDS)),
             )
             row = cur.fetchone()
             conn.commit()
@@ -297,8 +311,14 @@ def _compute_and_store(key: str, ttl: int, compute_fn: Callable[[], Any]) -> Non
         return
     logger.info("[shared_cache] computing %s", key)
     started = time.time()
-    value = compute_fn()
-    cache_set(key, value, ttl)
+    try:
+        value = compute_fn()
+        cache_set(key, value, ttl)
+        if cache_get(key) is None:
+            raise RuntimeError(f"cache_set did not persist {key!r}")
+    except Exception:
+        logger.exception("[shared_cache] compute/store failed for %s", key)
+        raise
     logger.info("[shared_cache] computed %s in %.1fs", key, time.time() - started)
 
 

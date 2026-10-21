@@ -1716,6 +1716,38 @@ def get_all_client_identities() -> dict:
             result[row['client_id']] = identity
         return result
 
+
+def get_client_identities_for_clients(client_ids: list[str]) -> dict:
+    """Fetch identity JSON for named clients only (hierarchy enrich; avoids full-table scan)."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for cid in client_ids or []:
+        n = _normalize_identifier(cid)
+        if n and n not in seen:
+            seen.add(n)
+            normalized.append(n)
+    if not normalized:
+        return {}
+
+    result: dict = {}
+    chunk_size = 400
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        for i in range(0, len(normalized), chunk_size):
+            chunk = normalized[i : i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(
+                f"SELECT client_id, identity FROM clients_data WHERE client_id IN ({placeholders})",
+                chunk,
+            )
+            for row in cursor.fetchall():
+                try:
+                    identity = json.loads(row["identity"] or "{}") or {}
+                except Exception:
+                    identity = {}
+                result[row["client_id"]] = identity
+    return result
+
 def delete_client_data(client_id: str) -> bool:
     """Permanently delete all data for a client from the database."""
     with get_connection() as conn:
