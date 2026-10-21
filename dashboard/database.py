@@ -1505,12 +1505,18 @@ def _lookup_client_data_row(
     _conn=None,
     include_deals: bool = True,
     include_deals_count: bool = False,
+    companion_minimal: bool = False,
 ):
     """
     Find a clients_data row. Returns (row, legacy_id_to_rename).
     Rename is deferred so callers never nest pool connections.
     """
-    if include_deals:
+    if companion_minimal:
+        select_columns = (
+            'client_id, evaluations, prop_accounts, hedge_accounts, '
+            'mt5_credentials, identity, last_updated'
+        )
+    elif include_deals:
         select_columns = '*'
     else:
         columns = [
@@ -1568,15 +1574,19 @@ def get_client_data(
     _conn=None,
     include_deals: bool = True,
     include_deals_count: bool = False,
+    companion_minimal: bool = False,
 ) -> dict:
     """Get client data, optionally omitting the potentially large deal history."""
     norm_id = _normalize_identifier(client_id)
+    if companion_minimal:
+        include_deals = False
     row, legacy_id = _lookup_client_data_row(
         client_id,
         norm_id,
         _conn=_conn,
         include_deals=include_deals,
         include_deals_count=include_deals_count,
+        companion_minimal=companion_minimal,
     )
     if legacy_id and _conn is None:
         try:
@@ -1588,6 +1598,7 @@ def get_client_data(
                     _conn=conn,
                     include_deals=include_deals,
                     include_deals_count=include_deals_count,
+                    companion_minimal=companion_minimal,
                 )
         except Exception:
             pass
@@ -1597,6 +1608,15 @@ def get_client_data(
             identity = json.loads(row['identity'] or '{}') or {}
         except Exception:
             identity = {}
+        if companion_minimal:
+            return {
+                'evaluations': json.loads(row['evaluations']),
+                'identity': identity,
+                'last_updated': row['last_updated'],
+                'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
+                'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
+                'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
+            }
         client_data = {
             'deals': json.loads(row['deals']) if include_deals else [],
             'positions': json.loads(row['positions']),
@@ -1620,6 +1640,34 @@ def get_client_data(
         return client_data
 
     return None
+
+
+def get_client_identity(client_id: str) -> dict:
+    """Lightweight identity read for companion_scan (no deals/evaluations parse)."""
+    norm_id = _normalize_identifier(client_id)
+    try:
+        with get_direct_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT identity FROM clients_data WHERE client_id = ?',
+                (norm_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute(
+                    'SELECT identity FROM clients_data WHERE btrim(client_id) = ? LIMIT 1',
+                    (norm_id,),
+                )
+                row = cursor.fetchone()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    try:
+        return json.loads(row['identity'] or '{}') or {}
+    except Exception:
+        return {}
+
 
 def get_all_clients() -> dict:
     """Get all client data in a single query (avoids N+1 pattern)."""
