@@ -1483,6 +1483,12 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
             ))
             if _conn is None:
                 conn.commit()
+            try:
+                from dashboard.client_data_cache import invalidate_client_data_cache
+
+                invalidate_client_data_cache(client_id)
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"Error saving client data: {e}")
@@ -1672,6 +1678,12 @@ def delete_client_data(client_id: str) -> bool:
         cursor.execute('DELETE FROM daily_watermarks WHERE client_id = ?', (client_id,))
         cursor.execute('DELETE FROM waterlog_periods WHERE client_id = ?', (client_id,))
         conn.commit()
+        try:
+            from dashboard.client_data_cache import invalidate_client_data_cache
+
+            invalidate_client_data_cache(_normalize_identifier(client_id))
+        except Exception:
+            pass
         return cursor.rowcount >= 0
 
 def get_clients_count() -> int:
