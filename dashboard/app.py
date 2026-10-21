@@ -7300,12 +7300,14 @@ def _build_hierarchy_enriched_full():
             reload_hierarchy()
         _kyc_hierarchy_sync_at = time.time()
 
+    from config.hierarchy import SYSTEM_HIERARCHY
     from dashboard.database import get_client_identities_for_clients
     import copy
-    client_names = _hierarchy_client_names_from_tree(hierarchy)
+    tree = SYSTEM_HIERARCHY
+    client_names = _hierarchy_client_names_from_tree(tree)
     all_identities = get_client_identities_for_clients(client_names)
     trader_users = {u['username']: u for u in (list_users('trader') or [])}
-    enriched = copy.deepcopy(hierarchy)
+    enriched = copy.deepcopy(tree)
     for admin_data in enriched.get('admins', {}).values():
         for trader_name, trader_data in (admin_data.get('traders') or {}).items():
             lane_status = (trader_data or {}).get('active_status', 'active')
@@ -10177,11 +10179,36 @@ def api_create_user():
         elif user_type == 'client':
             if not hierarchy_exists:
                 p_trader = data.get('parent_user') or parent_trader
+                p_admin = (data.get('parent_admin') or parent_admin or '').strip()
+                if not p_admin or not p_trader:
+                    try:
+                        cd = get_client_data(username) or {}
+                        ident = cd.get('identity') or {}
+                        p_admin = p_admin or (ident.get('admin') or '').strip()
+                        p_trader = p_trader or (ident.get('trader') or '').strip()
+                    except Exception:
+                        pass
                 found_admin = None
-                if hierarchy.get('admins'):
-                    for adm, a_data in hierarchy['admins'].items():
-                        if p_trader in a_data.get('traders', {}):
-                            found_admin = adm
+                admins_map = hierarchy.get('admins') or {}
+                if p_admin and p_trader:
+                    for adm_key in admins_map:
+                        if adm_key.strip().lower() == p_admin.lower():
+                            traders = admins_map[adm_key].get('traders') or {}
+                            for t_key in traders:
+                                if t_key.strip().lower() == p_trader.strip().lower():
+                                    found_admin = adm_key
+                                    p_trader = t_key
+                                    break
+                            break
+                if not found_admin and p_trader and admins_map:
+                    for adm, a_data in admins_map.items():
+                        traders = a_data.get('traders') or {}
+                        for t_key in traders:
+                            if t_key.strip().lower() == p_trader.strip().lower():
+                                found_admin = adm
+                                p_trader = t_key
+                                break
+                        if found_admin:
                             break
                 if found_admin and p_trader:
                     if not add_client(found_admin, p_trader, username, email):
@@ -10207,6 +10234,11 @@ def api_create_user():
         }), 500
 
     reload_hierarchy()
+    try:
+        from dashboard.shared_cache import invalidate_key
+        invalidate_key(HIERARCHY_ENRICHED_CACHE_KEY)
+    except Exception:
+        pass
     log_action('CREATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
     return jsonify({"status": "success", "message": f"{user_type.title()} '{username}' created successfully"})
 
@@ -11493,6 +11525,11 @@ def api_add_client():
         except Exception as e:
              print(f"Error creating client DB record: {e}")
              
+        try:
+            from dashboard.shared_cache import invalidate_key
+            invalidate_key(HIERARCHY_ENRICHED_CACHE_KEY)
+        except Exception:
+            pass
         log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
