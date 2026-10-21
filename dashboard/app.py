@@ -11279,6 +11279,79 @@ def api_kyc_portfolio_export_fees_csv():
     )
     return resp
 
+
+@app.route('/api/kyc/portfolio/export_payouts_csv', methods=['GET'])
+@require_session
+def api_kyc_portfolio_export_payouts_csv():
+    """CSV export of all payouts across a KYC portfolio for the selected period."""
+    import csv
+    import io
+
+    from flask import Response
+
+    client_id, err = _resolve_kyc_portfolio_client_id(request.session_user)
+    if err:
+        return err
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    admin_filter = request.args.get('admin', '').strip()
+    is_bef = request.session_user.get('user_type') == 'bef_admin'
+    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_filter or None)
+
+    period = payload.get("period") or {}
+    period_label = "All time"
+    if period.get("from") or period.get("to"):
+        period_label = f"{period.get('from') or '…'} to {period.get('to') or '…'}"
+
+    payouts = payload.get("payouts") or []
+    totals = payload.get("totals") or {}
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["KYC Portfolio Payouts"])
+    writer.writerow(["Primary", client_id])
+    writer.writerow(["Period", period_label])
+    writer.writerow(["Total Payouts", round(totals.get("total_payouts", 0) or 0, 2)])
+    writer.writerow([])
+    writer.writerow([
+        "Account", "Prop Firm", "Account #", "Payout #", "Date", "Amount",
+        "Processed", "Status", "Who Has to Process", "Assignor", "Processed By",
+    ])
+    for row in payouts:
+        writer.writerow([
+            row.get("client", ""),
+            row.get("prop_firm", ""),
+            row.get("account", ""),
+            row.get("payout_num", ""),
+            row.get("date", ""),
+            row.get("amount", 0),
+            "Yes" if row.get("processed") else "No",
+            row.get("processing_status", ""),
+            row.get("assigned_to", ""),
+            row.get("assignor", ""),
+            row.get("processed_by", ""),
+        ])
+
+    writer.writerow([])
+    writer.writerow(["--- Payouts by KYC account ---"])
+    writer.writerow(["Account", "Total Payouts"])
+    for acc in payload.get("accounts") or []:
+        writer.writerow([acc.get("name", ""), acc.get("payouts", 0)])
+
+    writer.writerow([])
+    writer.writerow(["--- Payouts by prop firm ---"])
+    writer.writerow(["Prop Firm", "Total Payouts"])
+    for pf in payload.get("by_prop_firm") or []:
+        writer.writerow([pf.get("name", ""), pf.get("payouts", 0)])
+
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', client_id)
+    resp = Response(output.getvalue(), mimetype='text/csv')
+    resp.headers['Content-Disposition'] = (
+        f'attachment; filename={safe_name}_kyc_payouts.csv'
+    )
+    return resp
+
 # ============ Admin/Trader/Client Management ============
 
 @app.route('/api/add_admin', methods=['POST'])

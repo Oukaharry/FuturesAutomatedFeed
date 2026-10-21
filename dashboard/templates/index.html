@@ -3145,7 +3145,11 @@
                         <div id="kyc-total-evals" style="font-size:1.8rem; font-weight:800; color:#60a5fa;">0</div>
                     </div>
                     <!-- Total Payouts -->
-                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); padding: 16px; border-radius: 12px; text-align:center; position:relative;">
+                        <button type="button" onclick="exportKycPayoutsCsv()" title="Export payouts CSV for selected period"
+                                style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.25); border:1px solid rgba(52,211,153,0.35); color:#a7f3d0; width:30px; height:30px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-download" style="font-size:0.8rem;"></i>
+                        </button>
                         <div style="font-size:0.75rem; color:#6ee7b7; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">TOTAL PAYOUTS</div>
                         <div id="kyc-total-payouts" style="font-size:1.8rem; font-weight:800; color:#34d399;">$0.00</div>
                     </div>
@@ -3902,14 +3906,20 @@
             syncKycPfFilterInputs();
             loadKycPortfolio();
         }
-        function exportKycChallengeFeesCsv() {
+        function _kycExportUrl(endpoint) {
             const fromDate = document.getElementById('kyc-date-from').value;
             const toDate = document.getElementById('kyc-date-to').value;
-            let url = `/api/kyc/portfolio/export_fees_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
+            let url = `/api/kyc/portfolio/${endpoint}?client_id=${encodeURIComponent(CLIENT_ID)}`;
             if (fromDate) url += `&from=${encodeURIComponent(fromDate)}`;
             if (toDate) url += `&to=${encodeURIComponent(toDate)}`;
             if (kycAdminFilter) url += `&admin=${encodeURIComponent(kycAdminFilter)}`;
-            window.location.href = url;
+            return url;
+        }
+        function exportKycChallengeFeesCsv() {
+            window.location.href = _kycExportUrl('export_fees_csv');
+        }
+        function exportKycPayoutsCsv() {
+            window.location.href = _kycExportUrl('export_payouts_csv');
         }
         function toggleKycPayouts() {
             const section = document.getElementById('kyc-payouts-section');
@@ -8762,7 +8772,23 @@
 
         function downloadCSV() {
             if (!CLIENT_ID) return;
-            window.location.href = `/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
+            fetch(`/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`, { credentials: 'same-origin' })
+                .then(async resp => {
+                    if (!resp.ok) {
+                        let msg = `Export failed (${resp.status})`;
+                        try { msg = (await resp.json()).message || msg; } catch (e) {}
+                        throw new Error(msg);
+                    }
+                    const blob = await resp.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${CLIENT_ID.replace(/[^a-zA-Z0-9_-]/g, '_')}_evaluations.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                })
+                .catch(err => alert(err.message || 'CSV export failed'));
         }
 
         function _evaluationRowLabel(index) {
