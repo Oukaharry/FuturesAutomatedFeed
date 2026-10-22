@@ -463,6 +463,60 @@ def check_and_repair_database():
     except Exception as e:
         return False, f'PostgreSQL connection failed: {e}'
 
+_CLIENTS_DATA_OPTIONAL_COLUMNS = (
+    ('prop_accounts', "'[]'"),
+    ('vps_accounts', "'[]'"),
+    ('hedge_accounts', "'[]'"),
+    ('mt5_credentials', "'{}'"),
+    ('payment_info', "'[]'"),
+    ('payment_address', "'{}'"),
+)
+# One global advisory lock so uWSGI/gunicorn workers do not pile ALTER TABLE on clients_data.
+_CLIENTS_DATA_SCHEMA_ADVISORY_LOCK = 88442201
+
+
+def _missing_clients_data_columns(cursor):
+    names = [c[0] for c in _CLIENTS_DATA_OPTIONAL_COLUMNS]
+    cursor.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'clients_data'
+          AND column_name = ANY(%s)
+        """,
+        (names,),
+    )
+    existing = {row[0] for row in cursor.fetchall()}
+    return [(col, default) for col, default in _CLIENTS_DATA_OPTIONAL_COLUMNS
+            if col not in existing]
+
+
+def _ensure_clients_data_optional_columns(conn):
+    """Legacy column backfill — skip when Alembic already applied (normal prod)."""
+    cursor = conn.cursor()
+    missing = _missing_clients_data_columns(cursor)
+    if not missing:
+        return
+    cursor.execute("SELECT pg_try_advisory_lock(%s)", (_CLIENTS_DATA_SCHEMA_ADVISORY_LOCK,))
+    if not cursor.fetchone()[0]:
+        logger.info(
+            "[DB] clients_data column backfill in progress on another worker — skipping"
+        )
+        return
+    try:
+        missing = _missing_clients_data_columns(cursor)
+        for _col, _default in missing:
+            cursor.execute(
+                f"ALTER TABLE clients_data ADD COLUMN IF NOT EXISTS {_col} TEXT DEFAULT {_default}"
+            )
+    finally:
+        try:
+            cursor.execute(
+                "SELECT pg_advisory_unlock(%s)", (_CLIENTS_DATA_SCHEMA_ADVISORY_LOCK,)
+            )
+        except Exception:
+            pass
+
+
 def init_database():
     """Schema is managed by Alembic migrations — verify connectivity and ensure columns exist."""
     try:
@@ -473,13 +527,7 @@ def init_database():
         # Defensive: ensure columns exist even if Alembic migration was stamped on legacy DB
         with get_connection() as conn:
             cursor = conn.cursor()
-            for _col, _default in [('prop_accounts', "'[]'"), ('vps_accounts', "'[]'"),
-                                    ('hedge_accounts', "'[]'"), ('mt5_credentials', "'{}'"),
-                                    ('payment_info', "'[]'"), ('payment_address', "'{}'")]:
-                try:
-                    cursor.execute(f"ALTER TABLE clients_data ADD COLUMN IF NOT EXISTS {_col} TEXT DEFAULT {_default}")
-                except Exception:
-                    pass
+            _ensure_clients_data_optional_columns(conn)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS m1_bars (
                     client_id   TEXT NOT NULL,
