@@ -75,8 +75,6 @@ def log_mailbox_boot_status(boot_logger: logging.Logger) -> None:
                 "Login mailbox (IMAP): configured but login failed (%s) — fix credentials on this host",
                 exc)
     else:
-        boot_logger.warning(
-            "Login mailbox (IMAP): NOT configured on this PC — add MAIL_IMAP_USER and "
-            "MAIL_IMAP_PASSWORD to .env next to TradeopssAI.exe or %%LOCALAPPDATA%%\\TradeOpsAI\\.env "
-            "(all clients: forward firm login Gmail → that inbox; dashboard vest_email / breakout_email "
-            "must match each login address)")
+        boot_logger.info(
+            "Login mailbox (IMAP): not on this PC — after sign-in, Vest/Breakout codes are "
+            "fetched via tradeopss.com (server must have MAIL_IMAP_* for central @tradeopss.com)")

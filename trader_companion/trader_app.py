@@ -2111,6 +2111,12 @@ class TradeOpssAIApp:
         # Set the email and trigger lookup
         self.client_email_entry.delete(0, tk.END)
         self.client_email_entry.insert(0, email)
+        try:
+            from trader_companion.mailbox_client import set_companion_mailbox_context
+            dash = self.url_entry.get().strip().rstrip("/") if hasattr(self, "url_entry") else ""
+            set_companion_mailbox_context(dash, email)
+        except Exception:
+            pass
         self.root.after(200, self.lookup_client)
         self._start_auto_wake_scheduler()
         self._start_resolution_retry()

@@ -193,18 +193,23 @@ def _mailbox_code(since: float, recipient: str = None, timeout: int = 180):
     except ImportError:
         return None
     mb = Mailbox.from_env()
+    code = None
     if mb is None:
-        msg = ("Mailbox not configured (MAIL_IMAP_USER / MAIL_IMAP_PASSWORD) — "
-               "Vest code must be typed manually or add .env on this PC")
-        print(msg)
-        log.warning(msg)
-        return None
-    log.info("Fetching Vest code for %s from %s@%s…",
-             recipient or "this login", mb.user, mb.host)
-    code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)
+        log.info("No local IMAP — will use dashboard mailbox API for Vest code")
+    if mb:
+        log.info("Fetching Vest code for %s from %s@%s…",
+                 recipient or "this login", mb.user, mb.host)
+        code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)
+    if not code:
+        try:
+            from trader_companion.mailbox_client import wait_for_code_remote
+            code = wait_for_code_remote(
+                since, recipient, ("vest", "privy"), timeout=timeout)
+        except ImportError:
+            pass
     if code:
         log.info("Vest mailbox code received for %s", recipient or "login")
-    else:
+    elif mb:
         log.warning("Vest mailbox: no code in time for %s — check Gmail forwards to %s",
                     recipient or "login", mb.user)
     return code

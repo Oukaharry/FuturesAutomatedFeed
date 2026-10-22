@@ -108,19 +108,28 @@ def _mailbox_numbered_links(since: float, recipient: str = None, timeout: int = 
     except ImportError:
         return {}
     mb = Mailbox.from_env()
-    if mb is None:
-        mlog.warning(
-            "Mailbox not configured — Breakout sign-in link must be clicked manually in Chrome")
-        return {}
-    mlog.info("Fetching Breakout sign-in links for %s from %s@%s…",
-              recipient or "this login", mb.user, mb.host)
-    links = mb.wait_for_numbered_links(since, match=("breakout",), link_match="descope-login-flow=",
-                                       timeout=timeout, recipient=recipient)
+    links = {}
+    if mb:
+        mlog.info("Fetching Breakout sign-in links for %s from %s@%s…",
+                  recipient or "this login", mb.user, mb.host)
+        links = mb.wait_for_numbered_links(
+            since, match=("breakout",), link_match="descope-login-flow=",
+            timeout=timeout, recipient=recipient)
+    if not links:
+        if not mb:
+            mlog.info("No local IMAP — using dashboard mailbox API for Breakout links")
+        try:
+            from trader_companion.mailbox_client import wait_for_numbered_links_remote
+            links = wait_for_numbered_links_remote(
+                since, recipient, ("breakout",), "descope-login-flow=",
+                timeout=timeout)
+        except ImportError:
+            pass
     if links:
         mlog.info("Breakout mailbox links for %s: %s", recipient or "login", sorted(links))
-    else:
+    elif mb:
         mlog.warning("Breakout mailbox: no links in time for %s — forward %s → %s",
-                       recipient or "login", recipient or "login Gmail", mb.user)
+                     recipient or "login", recipient or "login Gmail", mb.user)
     return links
 
 
