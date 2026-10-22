@@ -23,8 +23,8 @@ class Config:
     # Must match trader_companion/trader_app.py APP_VERSION on each TradeOpssAI release.
     # Only the latest companion may connect: exact-match is on and the floor equals
     # the required release. Override with the env vars to loosen it deliberately.
-    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.10') or '1.12.10'
-    MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.10') or '1.12.10'
+    REQUIRED_COMPANION_VERSION = os.getenv('REQUIRED_COMPANION_VERSION', '1.12.9') or '1.12.9'
+    MIN_COMPANION_VERSION = os.getenv('MIN_COMPANION_VERSION', '1.12.9') or '1.12.9'
     COMPANION_VERSION_EXACT = os.getenv('COMPANION_VERSION_EXACT', '1').strip().lower() in (
         '1', 'true', 'yes',
     )

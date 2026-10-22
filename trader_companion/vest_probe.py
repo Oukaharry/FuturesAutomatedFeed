@@ -187,18 +187,31 @@ def _logged_in(d):
 
 def _mailbox_code(since: float, recipient: str = None, timeout: int = 180):
     """6-digit Privy code addressed to `recipient`, or None when not configured / not received."""
+    log = logging.getLogger("TradeOpssAI.mailbox")
     try:
         from trader_companion.email_codes import Mailbox
     except ImportError:
         return None
     mb = Mailbox.from_env()
+    code = None
     if mb is None:
-        print("Mailbox not configured (MAIL_IMAP_USER / MAIL_IMAP_PASSWORD missing from .env) "
-              "— the code must be typed manually.")
-        return None
-    print(f"Fetching the code for {recipient or 'this login'} from the mailbox…")
-    code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)
-    print("Mailbox code:", "received" if code else "not received in time")
+        log.info("No local IMAP — will use dashboard mailbox API for Vest code")
+    if mb:
+        log.info("Fetching Vest code for %s from %s@%s…",
+                 recipient or "this login", mb.user, mb.host)
+        code = mb.wait_for_code(since, match=("vest", "privy"), timeout=timeout, recipient=recipient)
+    if not code:
+        try:
+            from trader_companion.mailbox_client import wait_for_code_remote
+            code = wait_for_code_remote(
+                since, recipient, ("vest", "privy"), timeout=timeout)
+        except ImportError:
+            pass
+    if code:
+        log.info("Vest mailbox code received for %s", recipient or "login")
+    elif mb:
+        log.warning("Vest mailbox: no code in time for %s — check Gmail forwards to %s",
+                    recipient or "login", mb.user)
     return code
 
 

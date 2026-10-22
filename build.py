@@ -152,6 +152,8 @@ def build(trader_release: bool = False):
         'trader_companion.perps_md_feed', 'trader_companion.perps_account_stream',
         'trader_companion.perps_login', 'perps_connector', 'perps_executor', 'perps_login',
         'trader_companion.email_codes', 'email_codes',
+        'trader_companion.mailbox_client', 'mailbox_client',
+        'trader_companion.companion_env', 'companion_env',
         'trader_companion.audit_log', 'audit_log',
     ]
     if not trader_release:
