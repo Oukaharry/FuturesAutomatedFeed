@@ -1,4 +1,6 @@
 -- Lock waits: useful when dashboards hang but connections look idle.
+-- If many rows show ALTER TABLE clients_data ADD COLUMN prop_accounts, terminate
+-- duplicate ALTER pids (keep one), then deploy init_database fix / reload workers.
 -- \c tradeopss
 
 -- Sessions waiting on a lock.
