@@ -31,7 +31,14 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.12.10"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
+
+try:
+    from trader_companion.companion_env import load_companion_dotenv
+    load_companion_dotenv()
+except Exception:
+    pass
+
+APP_VERSION = "1.12.9"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 # /api/client/data — retry when the dashboard is queued (small worker pool + minute scans).
 COMPANION_DATA_POST_TIMEOUT = 30

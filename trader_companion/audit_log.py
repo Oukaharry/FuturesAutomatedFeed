@@ -67,6 +67,11 @@ def ensure_mt5_trading_log_handler(log_path: Optional[str] = None) -> str:
     boot.info("TradeOpssAI companion logging started")
     boot.info("Log file: %s", path)
     boot.info("Working directory: %s", os.getcwd())
+    try:
+        from trader_companion.companion_env import log_mailbox_boot_status
+        log_mailbox_boot_status(boot)
+    except Exception:
+        pass
     boot.info("=" * 60)
 
     _configure_module_loggers()
