@@ -47,13 +47,6 @@ LABELED_CODE_RE = re.compile(
 )
 LINK_RE = re.compile(r"https?://[^\s\"'<>\]\)]+")
 
-# Headers that may carry the original firm login address after Gmail → ops forwarding.
-_RECIPIENT_HEADERS = (
-    "To", "Delivered-To", "Cc", "Bcc", "Envelope-To",
-    "X-Original-To", "X-Forwarded-To", "X-Forwarded-For",
-    "X-Gm-Original-To", "Originally-To", "Resent-To",
-)
-
 
 class Mailbox:
     def __init__(self, user: str, password: str, host: str = TITAN_IMAP_HOST, port: int = 993,
@@ -67,11 +60,6 @@ class Mailbox:
 
     @classmethod
     def from_env(cls) -> Optional["Mailbox"]:
-        try:
-            from trader_companion.companion_env import load_companion_dotenv
-            load_companion_dotenv()
-        except Exception:
-            pass
         user = (os.environ.get("MAIL_IMAP_USER") or "").strip()
         pw = (os.environ.get("MAIL_IMAP_PASSWORD") or "").strip()
         host = (os.environ.get("MAIL_IMAP_HOST") or "").strip()
@@ -188,7 +176,8 @@ class Mailbox:
                 if ts < since - 90:          # clock skew tolerance
                     continue
                 subj = str(make_header(decode_header(msg.get("Subject") or "")))
-                rcpts = " ".join(str(v) for h in _RECIPIENT_HEADERS
+                rcpts = " ".join(str(v) for h in ("To", "Delivered-To", "X-Forwarded-For", "X-Original-To",
+                                                  "Envelope-To", "Cc")
                                  for v in (msg.get_all(h) or []))
                 out.append({"ts": ts, "from": msg.get("From") or "", "subject": subj,
                             "recipients": rcpts.lower(), "text": self._text(msg), "html": self._html(msg)})
@@ -238,16 +227,6 @@ class Mailbox:
                   if recipient in (r.get("recipients") or "").lower()]
         if routed:
             return routed
-        # Gmail → Titan forwards sometimes drop the login address from headers;
-        # the forwarded body still contains "To: client@gmail.com".
-        body_routed = [
-            r for r in matched
-            if recipient in (r.get("text") or "")[:8000].lower()
-            or recipient in (r.get("subject") or "").lower()
-        ]
-        if len(body_routed) == 1:
-            logger.info("mailbox: matched %s via body/subject (forwarded headers)", recipient)
-            return body_routed
         unrouted = [r for r in matched if not (r.get("recipients") or "").strip()]
         if len(unrouted) == 1:
             logger.warning("using the only unrouted matching mail for requested recipient")
