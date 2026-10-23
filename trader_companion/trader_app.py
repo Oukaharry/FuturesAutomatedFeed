@@ -31,13 +31,6 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-
-try:
-    from trader_companion.companion_env import load_companion_dotenv
-    load_companion_dotenv()
-except Exception:
-    pass
-
 APP_VERSION = "1.12.9"  # Keep in sync with config/production.py REQUIRED_COMPANION_VERSION
 COMPANION_AUTH_PATH = "/api/companion/auth"
 # /api/client/data — retry when the dashboard is queued (small worker pool + minute scans).
@@ -2111,12 +2104,6 @@ class TradeOpssAIApp:
         # Set the email and trigger lookup
         self.client_email_entry.delete(0, tk.END)
         self.client_email_entry.insert(0, email)
-        try:
-            from trader_companion.mailbox_client import set_companion_mailbox_context
-            dash = self.url_entry.get().strip().rstrip("/") if hasattr(self, "url_entry") else ""
-            set_companion_mailbox_context(dash, email)
-        except Exception:
-            pass
         self.root.after(200, self.lookup_client)
         self._start_auto_wake_scheduler()
         self._start_resolution_retry()

@@ -102,34 +102,17 @@ def _drive_helper_tab(target_id: str, port: int, wait_sec: int = 60, url: str = 
 
 def _mailbox_numbered_links(since: float, recipient: str = None, timeout: int = 180) -> dict:
     """{number: url} from the Breakout 'click the number that matches your screen' mail."""
-    mlog = logging.getLogger("TradeOpssAI.mailbox")
     try:
         from trader_companion.email_codes import Mailbox
     except ImportError:
         return {}
     mb = Mailbox.from_env()
-    links = {}
-    if mb:
-        mlog.info("Fetching Breakout sign-in links for %s from %s@%s…",
-                  recipient or "this login", mb.user, mb.host)
-        links = mb.wait_for_numbered_links(
-            since, match=("breakout",), link_match="descope-login-flow=",
-            timeout=timeout, recipient=recipient)
-    if not links:
-        if not mb:
-            mlog.info("No local IMAP — using dashboard mailbox API for Breakout links")
-        try:
-            from trader_companion.mailbox_client import wait_for_numbered_links_remote
-            links = wait_for_numbered_links_remote(
-                since, recipient, ("breakout",), "descope-login-flow=",
-                timeout=timeout)
-        except ImportError:
-            pass
-    if links:
-        mlog.info("Breakout mailbox links for %s: %s", recipient or "login", sorted(links))
-    elif mb:
-        mlog.warning("Breakout mailbox: no links in time for %s — forward %s → %s",
-                     recipient or "login", recipient or "login Gmail", mb.user)
+    if mb is None:
+        return {}
+    print(f"Fetching the numbered sign-in links for {recipient or 'this login'} from the mailbox…")
+    links = mb.wait_for_numbered_links(since, match=("breakout",), link_match="descope-login-flow=",
+                                       timeout=timeout, recipient=recipient)
+    print("Mailbox links:", sorted(links) if links else "not received in time")
     return links
 
 
